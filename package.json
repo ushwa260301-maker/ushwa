@@ -1,0 +1,18 @@
+{
+  "name": "eoseohwa",
+  "version": "1.0.0",
+  "description": "어서화 - 꽃 중개 플랫폼",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "seed": "npm run seed --workspace=backend",
+    "lint": "npm run lint --workspaces",
+    "build": "npm run build --workspaces"
+  }
+}
