@@ -1,0 +1,250 @@
+import { Order } from '../models/order.model';
+
+export async function seedOrders(
+  users: { customers: any[] },
+  shops: any[],
+  products: any[],
+) {
+  console.log('📋 주문 데이터 생성 중...');
+
+  const [c1, c2, c3] = users.customers;
+
+  const getProductsForShop = (shopId: string) =>
+    products.filter((p: any) => p.shop.toString() === shopId.toString());
+
+  const makeItem = (product: any, qty = 1) => ({
+    product: product._id,
+    productSnapshot: {
+      name: product.name,
+      price: product.salePrice || product.price,
+      thumbnail: product.thumbnail || '',
+    },
+    quantity: qty,
+    selectedOptions: product.options.length > 0
+      ? [{ name: product.options[0].name, value: product.options[0].values[0].label, price: product.options[0].values[0].price }]
+      : [],
+    selectedAddOns: [],
+    subtotal: (product.salePrice || product.price) * qty,
+  });
+
+  const now = new Date();
+  const daysAgo = (d: number) => new Date(now.getTime() - d * 86400000);
+
+  const ordersData = [];
+
+  // 배달완료된 주문들 (리뷰 가능)
+  const shop0Products = getProductsForShop(shops[0]._id);
+  const shop1Products = getProductsForShop(shops[1]._id);
+  const shop2Products = getProductsForShop(shops[2]._id);
+  const shop3Products = getProductsForShop(shops[3]._id);
+  const shop4Products = getProductsForShop(shops[4]._id);
+
+  // Order 1: delivered
+  ordersData.push({
+    customer: c1._id, shop: shops[0]._id,
+    items: [makeItem(shop0Products[0])],
+    pricing: { subtotal: 39000, deliveryFee: 3000, discount: 0, total: 42000 },
+    delivery: {
+      type: 'delivery', address: '서울특별시 강남구 테헤란로 123', addressDetail: '아파트 101동 1501호',
+      recipientName: '김민지', recipientPhone: '010-1234-5678',
+      requestedDate: daysAgo(7), requestedTime: '오후 2시', message: '생일 축하해요!',
+    },
+    payment: { method: 'card', status: 'completed', paidAt: daysAgo(7), transactionId: 'TXN-001' },
+    status: 'delivered',
+    statusHistory: [
+      { status: 'pending', timestamp: daysAgo(7) },
+      { status: 'accepted', timestamp: daysAgo(7) },
+      { status: 'preparing', timestamp: daysAgo(7) },
+      { status: 'ready', timestamp: daysAgo(7) },
+      { status: 'delivering', timestamp: daysAgo(7) },
+      { status: 'delivered', timestamp: daysAgo(7) },
+    ],
+  });
+
+  // Order 2: delivered
+  ordersData.push({
+    customer: c2._id, shop: shops[1]._id,
+    items: [makeItem(shop1Products[0]), makeItem(shop1Products[3])],
+    pricing: { subtotal: 83000, deliveryFee: 0, discount: 0, total: 83000 },
+    delivery: {
+      type: 'delivery', address: '서울특별시 마포구 와우산로 94', addressDetail: '홍대 오피스텔 302호',
+      recipientName: '이준호', recipientPhone: '010-2345-6789',
+      requestedDate: daysAgo(5), requestedTime: '오전 11시', message: '',
+    },
+    payment: { method: 'card', status: 'completed', paidAt: daysAgo(5), transactionId: 'TXN-002' },
+    status: 'delivered',
+    statusHistory: [
+      { status: 'pending', timestamp: daysAgo(5) },
+      { status: 'accepted', timestamp: daysAgo(5) },
+      { status: 'preparing', timestamp: daysAgo(5) },
+      { status: 'ready', timestamp: daysAgo(5) },
+      { status: 'delivering', timestamp: daysAgo(5) },
+      { status: 'delivered', timestamp: daysAgo(5) },
+    ],
+  });
+
+  // Order 3: delivered
+  ordersData.push({
+    customer: c3._id, shop: shops[2]._id,
+    items: [makeItem(shop2Products[2])],
+    pricing: { subtotal: 58000, deliveryFee: 5000, discount: 0, total: 63000 },
+    delivery: {
+      type: 'delivery', address: '서울특별시 송파구 올림픽로 300', addressDetail: '잠실 엘스 205동 801호',
+      recipientName: '박서연', recipientPhone: '010-3456-7890',
+      requestedDate: daysAgo(3), requestedTime: '오후 5시', message: '축하드립니다!',
+    },
+    payment: { method: 'transfer', status: 'completed', paidAt: daysAgo(3), transactionId: 'TXN-003' },
+    status: 'delivered',
+    statusHistory: [
+      { status: 'pending', timestamp: daysAgo(3) },
+      { status: 'accepted', timestamp: daysAgo(3) },
+      { status: 'preparing', timestamp: daysAgo(3) },
+      { status: 'ready', timestamp: daysAgo(3) },
+      { status: 'delivering', timestamp: daysAgo(3) },
+      { status: 'delivered', timestamp: daysAgo(3) },
+    ],
+  });
+
+  // Order 4: delivered
+  ordersData.push({
+    customer: c1._id, shop: shops[4]._id,
+    items: [makeItem(shop4Products[0])],
+    pricing: { subtotal: 52000, deliveryFee: 4000, discount: 0, total: 56000 },
+    delivery: {
+      type: 'delivery', address: '서울특별시 강남구 테헤란로 123', addressDetail: '아파트 101동 1501호',
+      recipientName: '김민지', recipientPhone: '010-1234-5678',
+      requestedDate: daysAgo(10), requestedTime: '오후 3시', message: '기념일 축하!',
+    },
+    payment: { method: 'card', status: 'completed', paidAt: daysAgo(10), transactionId: 'TXN-004' },
+    status: 'delivered',
+    statusHistory: [
+      { status: 'pending', timestamp: daysAgo(10) },
+      { status: 'accepted', timestamp: daysAgo(10) },
+      { status: 'preparing', timestamp: daysAgo(10) },
+      { status: 'delivered', timestamp: daysAgo(10) },
+    ],
+  });
+
+  // Order 5: delivered
+  ordersData.push({
+    customer: c2._id, shop: shops[3]._id,
+    items: [makeItem(shop3Products[0]), makeItem(shop3Products[1])],
+    pricing: { subtotal: 47000, deliveryFee: 0, discount: 0, total: 47000 },
+    delivery: {
+      type: 'delivery', address: '서울특별시 마포구 와우산로 94', addressDetail: '홍대 오피스텔 302호',
+      recipientName: '이준호 엄마', recipientPhone: '010-8888-9999',
+      requestedDate: daysAgo(2), requestedTime: '오전 10시', message: '엄마 사랑해요',
+    },
+    payment: { method: 'card', status: 'completed', paidAt: daysAgo(2), transactionId: 'TXN-005' },
+    status: 'delivered',
+    statusHistory: [
+      { status: 'pending', timestamp: daysAgo(2) },
+      { status: 'accepted', timestamp: daysAgo(2) },
+      { status: 'preparing', timestamp: daysAgo(2) },
+      { status: 'delivered', timestamp: daysAgo(2) },
+    ],
+  });
+
+  // Order 6: preparing (진행중)
+  ordersData.push({
+    customer: c1._id, shop: shops[1]._id,
+    items: [makeItem(shop1Products[5])],
+    pricing: { subtotal: 55000, deliveryFee: 4000, discount: 0, total: 59000 },
+    delivery: {
+      type: 'delivery', address: '서울특별시 강남구 테헤란로 123', addressDetail: '아파트 101동 1501호',
+      recipientName: '김민지 친구', recipientPhone: '010-7777-8888',
+      requestedDate: now, requestedTime: '오후 4시', message: '졸업 축하해!',
+    },
+    payment: { method: 'card', status: 'completed', paidAt: now, transactionId: 'TXN-006' },
+    status: 'preparing',
+    statusHistory: [
+      { status: 'pending', timestamp: now },
+      { status: 'accepted', timestamp: now },
+      { status: 'preparing', timestamp: now },
+    ],
+  });
+
+  // Order 7: accepted
+  ordersData.push({
+    customer: c3._id, shop: shops[0]._id,
+    items: [makeItem(shop0Products[1])],
+    pricing: { subtotal: 150000, deliveryFee: 0, discount: 0, total: 150000 },
+    delivery: {
+      type: 'delivery', address: '서울특별시 송파구 올림픽로 300', addressDetail: '잠실 엘스 205동 801호',
+      recipientName: '박서연 남자친구', recipientPhone: '010-5555-6666',
+      requestedDate: now, requestedTime: '저녁 7시', message: '사랑해',
+    },
+    payment: { method: 'card', status: 'completed', paidAt: now, transactionId: 'TXN-007' },
+    status: 'accepted',
+    statusHistory: [
+      { status: 'pending', timestamp: now },
+      { status: 'accepted', timestamp: now },
+    ],
+  });
+
+  // Order 8: pending (신규)
+  ordersData.push({
+    customer: c2._id, shop: shops[4]._id,
+    items: [makeItem(shop4Products[1])],
+    pricing: { subtotal: 58000, deliveryFee: 4000, discount: 0, total: 62000 },
+    delivery: {
+      type: 'delivery', address: '서울특별시 마포구 와우산로 94', addressDetail: '홍대 오피스텔 302호',
+      recipientName: '이준호', recipientPhone: '010-2345-6789',
+      requestedDate: now, requestedTime: '오후 2시', message: '',
+    },
+    payment: { method: 'transfer', status: 'completed', paidAt: now, transactionId: 'TXN-008' },
+    status: 'pending',
+    statusHistory: [{ status: 'pending', timestamp: now }],
+  });
+
+  // Order 9: cancelled
+  ordersData.push({
+    customer: c1._id, shop: shops[2]._id,
+    items: [makeItem(shop2Products[4])],
+    pricing: { subtotal: 65000, deliveryFee: 5000, discount: 0, total: 70000 },
+    delivery: {
+      type: 'delivery', address: '서울특별시 강남구 테헤란로 123', addressDetail: '아파트 101동 1501호',
+      recipientName: '김민지', recipientPhone: '010-1234-5678',
+      requestedDate: daysAgo(1), requestedTime: '오후 1시', message: '',
+    },
+    payment: { method: 'card', status: 'refunded', paidAt: daysAgo(1), transactionId: 'TXN-009' },
+    status: 'cancelled',
+    cancelReason: '배송일 변경이 필요해서 취소합니다.',
+    statusHistory: [
+      { status: 'pending', timestamp: daysAgo(1) },
+      { status: 'cancelled', timestamp: daysAgo(1) },
+    ],
+  });
+
+  // Order 10: delivering
+  ordersData.push({
+    customer: c3._id, shop: shops[3]._id,
+    items: [makeItem(shop3Products[3])],
+    pricing: { subtotal: 65000, deliveryFee: 0, discount: 0, total: 65000 },
+    delivery: {
+      type: 'delivery', address: '서울특별시 송파구 올림픽로 300', addressDetail: '잠실 엘스 205동 801호',
+      recipientName: '박서연 언니', recipientPhone: '010-4444-5555',
+      requestedDate: now, requestedTime: '오후 3시', message: '생일 축하합니다!',
+    },
+    payment: { method: 'card', status: 'completed', paidAt: now, transactionId: 'TXN-010' },
+    status: 'delivering',
+    statusHistory: [
+      { status: 'pending', timestamp: now },
+      { status: 'accepted', timestamp: now },
+      { status: 'preparing', timestamp: now },
+      { status: 'ready', timestamp: now },
+      { status: 'delivering', timestamp: now },
+    ],
+  });
+
+ const orders = [];
+
+for (const data of ordersData) {
+  const order = new Order(data);
+  await order.save();
+  orders.push(order);
+}
+
+console.log(`  ✅ 주문 ${orders.length}건 생성 완료`);
+return orders;
+}
