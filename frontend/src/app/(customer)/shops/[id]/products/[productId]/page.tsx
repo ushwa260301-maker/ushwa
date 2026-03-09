@@ -17,10 +17,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 export default function ProductDetailPage({
   params,
 }: {
-  params: Promise<{ shopId: string; id: string }>;
+  params: Promise<{ id: string; productId: string }>;
 }) {
-  const { shopId, id } = use(params);
-  const { data, isLoading } = useProductDetail(id);
+  const { id: shopId, productId } = use(params);
+  const { data, isLoading } = useProductDetail(productId);
   const addItem = useCartStore((s) => s.addItem);
 
   const [quantity, setQuantity] = useState(1);

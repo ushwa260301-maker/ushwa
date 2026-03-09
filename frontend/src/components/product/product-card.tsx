@@ -15,8 +15,10 @@ export function ProductCard({ product }: ProductCardProps) {
     ? Math.round(((product.price - product.salePrice!) / product.price) * 100)
     : 0;
 
+  const shopId = typeof product.shop === 'object' ? product.shop._id : product.shop;
+
   return (
-    <Link href={`/products/${product._id}`} className="block group">
+    <Link href={`/shops/${shopId}/products/${product._id}`} className="block group">
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden transition-shadow hover:shadow-md">
         {/* Product image */}
         <div className="relative aspect-square bg-muted overflow-hidden">
