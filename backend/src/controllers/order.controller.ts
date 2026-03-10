@@ -6,6 +6,7 @@ import { Notification } from '../models/notification.model';
 import { ApiError } from '../utils/api-error';
 import { successResponse, paginatedResponse } from '../utils/api-response';
 import { parsePagination, createPaginationResult } from '../utils/pagination';
+import { emitToUser } from '../config/socket';
 
 export const createOrder = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -103,13 +104,14 @@ export const createOrder = async (req: Request, res: Response, next: NextFunctio
     });
 
     // Create notification for shop owner
-    await Notification.create({
+    const notification = await Notification.create({
       recipient: shop.owner,
       type: 'order',
       title: '새로운 주문',
       body: `새로운 주문이 접수되었습니다. (${order.orderNumber})`,
       data: { orderId: order._id, shopId: shop._id, screen: 'ShopOrderDetail' },
     });
+    emitToUser(shop.owner.toString(), 'notification', notification.toObject());
 
     const populatedOrder = await Order.findById(order._id)
       .populate('shop', 'name')
@@ -231,13 +233,14 @@ export const acceptOrder = async (req: Request, res: Response, next: NextFunctio
     await order.save();
 
     // Notify customer
-    await Notification.create({
+    const notification = await Notification.create({
       recipient: order.customer,
       type: 'order',
       title: '주문 수락',
       body: `주문(${order.orderNumber})이 수락되었습니다.`,
       data: { orderId: order._id, shopId: shop._id, screen: 'OrderDetail' },
     });
+    emitToUser(order.customer.toString(), 'notification', notification.toObject());
 
     successResponse(res, order, '주문이 수락되었습니다.');
   } catch (error) {
@@ -276,13 +279,14 @@ export const rejectOrder = async (req: Request, res: Response, next: NextFunctio
     await order.save();
 
     // Notify customer
-    await Notification.create({
+    const notification = await Notification.create({
       recipient: order.customer,
       type: 'order',
       title: '주문 거절',
       body: `주문(${order.orderNumber})이 거절되었습니다. 사유: ${order.rejectionReason}`,
       data: { orderId: order._id, shopId: shop._id, screen: 'OrderDetail' },
     });
+    emitToUser(order.customer.toString(), 'notification', notification.toObject());
 
     successResponse(res, order, '주문이 거절되었습니다.');
   } catch (error) {
@@ -343,13 +347,14 @@ export const updateOrderStatus = async (req: Request, res: Response, next: NextF
       delivered: '배달이 완료되었습니다.',
     };
 
-    await Notification.create({
+    const notification = await Notification.create({
       recipient: order.customer,
       type: 'order',
       title: '주문 상태 변경',
       body: `주문(${order.orderNumber}): ${statusMessages[status] || status}`,
       data: { orderId: order._id, shopId: shop._id, screen: 'OrderDetail' },
     });
+    emitToUser(order.customer.toString(), 'notification', notification.toObject());
 
     successResponse(res, order, '주문 상태가 변경되었습니다.');
   } catch (error) {
@@ -385,13 +390,14 @@ export const cancelOrder = async (req: Request, res: Response, next: NextFunctio
     // Notify shop owner
     const shop = await Shop.findById(order.shop);
     if (shop) {
-      await Notification.create({
+      const notification = await Notification.create({
         recipient: shop.owner,
         type: 'order',
         title: '주문 취소',
         body: `주문(${order.orderNumber})이 고객에 의해 취소되었습니다.`,
         data: { orderId: order._id, shopId: shop._id, screen: 'ShopOrderDetail' },
       });
+      emitToUser(shop.owner.toString(), 'notification', notification.toObject());
     }
 
     successResponse(res, order, '주문이 취소되었습니다.');

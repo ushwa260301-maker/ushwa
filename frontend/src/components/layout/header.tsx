@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Search, ShoppingCart, User, LogOut, ClipboardList } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useCartStore } from '@/stores/cart.store';
+import { NotificationBell } from '@/components/layout/notification-bell';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -54,6 +55,9 @@ export function Header() {
           >
             <Search className="size-5" />
           </Button>
+
+          {/* Notifications */}
+          {isAuthenticated && <NotificationBell />}
 
           {/* Cart */}
           <Button

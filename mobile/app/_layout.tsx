@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '../lib/query-client';
 import { useAuthStore } from '../stores/auth.store';
+import { useSocket } from '../hooks/useSocket';
 import { StatusBar } from 'expo-status-bar';
 
 export {
@@ -25,6 +26,11 @@ function AuthInit({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     fetchUser();
   }, [fetchUser]);
+  return <>{children}</>;
+}
+
+function SocketProvider({ children }: { children: React.ReactNode }) {
+  useSocket();
   return <>{children}</>;
 }
 
@@ -51,24 +57,27 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthInit>
-        <StatusBar style="dark" />
-        <Stack
-          screenOptions={{
-            headerStyle: { backgroundColor: '#FFFFFF' },
-            headerTintColor: '#E91E63',
-            headerTitleStyle: { fontWeight: '600', color: '#1A1A1A' },
-          }}
-        >
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="shop/[id]" options={{ title: '꽃집' }} />
-          <Stack.Screen name="product/[id]" options={{ title: '상품 상세' }} />
-          <Stack.Screen name="cart" options={{ title: '장바구니' }} />
-          <Stack.Screen name="checkout" options={{ title: '주문/결제' }} />
-          <Stack.Screen name="order/[id]" options={{ title: '주문 상세' }} />
-          <Stack.Screen name="review/[orderId]" options={{ title: '리뷰 작성' }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', title: '정보' }} />
-        </Stack>
+        <SocketProvider>
+          <StatusBar style="dark" />
+          <Stack
+            screenOptions={{
+              headerStyle: { backgroundColor: '#FFFFFF' },
+              headerTintColor: '#E91E63',
+              headerTitleStyle: { fontWeight: '600', color: '#1A1A1A' },
+            }}
+          >
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack.Screen name="shop/[id]" options={{ title: '꽃집' }} />
+            <Stack.Screen name="product/[id]" options={{ title: '상품 상세' }} />
+            <Stack.Screen name="cart" options={{ title: '장바구니' }} />
+            <Stack.Screen name="checkout" options={{ title: '주문/결제' }} />
+            <Stack.Screen name="order/[id]" options={{ title: '주문 상세' }} />
+            <Stack.Screen name="review/[orderId]" options={{ title: '리뷰 작성' }} />
+            <Stack.Screen name="notifications" options={{ title: '알림' }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal', title: '정보' }} />
+          </Stack>
+        </SocketProvider>
       </AuthInit>
     </QueryClientProvider>
   );

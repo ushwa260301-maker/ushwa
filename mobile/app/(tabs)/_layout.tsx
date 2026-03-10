@@ -1,6 +1,55 @@
 import React from 'react';
-import { Tabs } from 'expo-router';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useUnreadCount } from '@/hooks/useNotifications';
+
+function NotificationBell() {
+  const router = useRouter();
+  const { data } = useUnreadCount();
+  const unreadCount = data?.data?.count || 0;
+
+  return (
+    <TouchableOpacity
+      onPress={() => router.push('/notifications')}
+      style={bellStyles.container}
+      activeOpacity={0.7}
+    >
+      <Ionicons name="notifications-outline" size={24} color="#1A1A1A" />
+      {unreadCount > 0 && (
+        <View style={bellStyles.badge}>
+          <Text style={bellStyles.badgeText}>
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+const bellStyles = StyleSheet.create({
+  container: {
+    marginRight: 16,
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    backgroundColor: '#E91E63',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+});
 
 export default function TabLayout() {
   return (
@@ -28,6 +77,7 @@ export default function TabLayout() {
           fontSize: 18,
         },
         headerShadowVisible: false,
+        headerRight: () => <NotificationBell />,
       }}
     >
       <Tabs.Screen

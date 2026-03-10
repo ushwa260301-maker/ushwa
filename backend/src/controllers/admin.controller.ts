@@ -6,6 +6,7 @@ import { Notification } from '../models/notification.model';
 import { ApiError } from '../utils/api-error';
 import { successResponse, paginatedResponse } from '../utils/api-response';
 import { parsePagination, createPaginationResult } from '../utils/pagination';
+import { emitToUser } from '../config/socket';
 
 export const getDashboard = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -165,13 +166,14 @@ export const approveShop = async (req: Request, res: Response, next: NextFunctio
     await shop.save();
 
     // Notify shop owner
-    await Notification.create({
+    const notification = await Notification.create({
       recipient: shop.owner,
       type: 'shop',
       title: '매장 승인',
       body: `${shop.name} 매장이 승인되었습니다. 이제 영업을 시작할 수 있습니다.`,
       data: { shopId: shop._id, screen: 'ShopDashboard' },
     });
+    emitToUser(shop.owner.toString(), 'notification', notification.toObject());
 
     successResponse(res, shop, '매장이 승인되었습니다.');
   } catch (error) {
@@ -197,13 +199,14 @@ export const rejectShop = async (req: Request, res: Response, next: NextFunction
     await shop.save();
 
     // Notify shop owner
-    await Notification.create({
+    const notification = await Notification.create({
       recipient: shop.owner,
       type: 'shop',
       title: '매장 승인 거절',
       body: `${shop.name} 매장 등록이 거절되었습니다. 사유: ${shop.rejectionReason}`,
       data: { shopId: shop._id, screen: 'ShopDashboard' },
     });
+    emitToUser(shop.owner.toString(), 'notification', notification.toObject());
 
     successResponse(res, shop, '매장이 거절되었습니다.');
   } catch (error) {
@@ -230,13 +233,14 @@ export const suspendShop = async (req: Request, res: Response, next: NextFunctio
     await shop.save();
 
     // Notify shop owner
-    await Notification.create({
+    const notification = await Notification.create({
       recipient: shop.owner,
       type: 'shop',
       title: '매장 정지',
       body: `${shop.name} 매장이 정지되었습니다. 사유: ${shop.rejectionReason}`,
       data: { shopId: shop._id, screen: 'ShopDashboard' },
     });
+    emitToUser(shop.owner.toString(), 'notification', notification.toObject());
 
     successResponse(res, shop, '매장이 정지되었습니다.');
   } catch (error) {
