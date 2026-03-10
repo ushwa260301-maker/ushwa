@@ -1,14 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { ClipboardList } from 'lucide-react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { useMyOrders } from '@/hooks/useOrders';
 import { ordersApi } from '@/lib/api/orders';
 import { OrderCard } from '@/components/order/order-card';
+import { OrderCardSkeleton } from '@/components/ui/loading-skeletons';
+import { EmptyState } from '@/components/ui/empty-states';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useQueryClient } from '@tanstack/react-query';
 
 const statusTabs = [
@@ -69,36 +70,23 @@ export default function OrdersPage() {
       <div className="mt-4 space-y-3">
         {isLoading ? (
           Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-3 w-32 mt-1" />
-                </div>
-                <Skeleton className="h-6 w-16 rounded-full" />
-              </div>
-              <div className="flex gap-3">
-                <Skeleton className="size-16 rounded-lg" />
-                <div className="flex-1">
-                  <Skeleton className="h-4 w-40" />
-                  <Skeleton className="h-4 w-20 mt-1" />
-                </div>
-              </div>
-            </div>
+            <OrderCardSkeleton key={i} />
           ))
         ) : orders.length > 0 ? (
           orders.map((order) => (
             <OrderCard key={order._id} order={order} onCancel={handleCancel} />
           ))
         ) : (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="size-20 rounded-full bg-muted flex items-center justify-center mb-4">
-              <ClipboardList className="size-8 text-muted-foreground" />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              주문 내역이 없습니다
-            </p>
-          </div>
+          <EmptyState
+            icon="📦"
+            title="주문 내역이 없습니다"
+            description="아직 주문하신 내역이 없어요"
+            action={
+              <Link href="/shops">
+                <Button>꽃집 둘러보기</Button>
+              </Link>
+            }
+          />
         )}
       </div>
 

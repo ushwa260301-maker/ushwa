@@ -10,7 +10,8 @@ import { ProductCard } from '@/components/product/product-card';
 import { ReviewCard } from '@/components/review/review-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { ShopDetailHeaderSkeleton, ProductCardSkeleton, ReviewCardSkeleton } from '@/components/ui/loading-skeletons';
+import { EmptyState } from '@/components/ui/empty-states';
 import type { Product } from '@/hooks/useProducts';
 import type { Review } from '@/components/review/review-card';
 
@@ -27,13 +28,10 @@ export default function ShopDetailPage({ params }: { params: Promise<{ id: strin
   if (shopLoading) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-        <Skeleton className="h-48 rounded-2xl" />
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-4 w-64" />
+        <ShopDetailHeaderSkeleton />
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="aspect-square rounded-xl" />
+            <ProductCardSkeleton key={i} />
           ))}
         </div>
       </div>
@@ -42,13 +40,16 @@ export default function ShopDetailPage({ params }: { params: Promise<{ id: strin
 
   if (!shop) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <span className="text-4xl mb-4">😢</span>
-        <p className="text-lg font-medium">꽃집을 찾을 수 없습니다</p>
-        <Link href="/shops" className="text-primary text-sm mt-2 hover:underline">
-          꽃집 목록으로 돌아가기
-        </Link>
-      </div>
+      <EmptyState
+        icon="😢"
+        title="꽃집을 찾을 수 없습니다"
+        description="요청하신 꽃집 정보를 찾을 수 없어요"
+        action={
+          <Link href="/shops" className="text-primary text-sm hover:underline">
+            꽃집 목록으로 돌아가기
+          </Link>
+        }
+      />
     );
   }
 
@@ -144,12 +145,7 @@ export default function ShopDetailPage({ params }: { params: Promise<{ id: strin
             {productsLoading ? (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i}>
-                    <Skeleton className="aspect-square rounded-xl" />
-                    <Skeleton className="h-3 w-16 mt-3" />
-                    <Skeleton className="h-4 w-24 mt-1" />
-                    <Skeleton className="h-4 w-20 mt-1.5" />
-                  </div>
+                  <ProductCardSkeleton key={i} />
                 ))}
               </div>
             ) : products.length > 0 ? (
@@ -159,9 +155,11 @@ export default function ShopDetailPage({ params }: { params: Promise<{ id: strin
                 ))}
               </div>
             ) : (
-              <div className="py-12 text-center text-muted-foreground text-sm">
-                등록된 상품이 없습니다
-              </div>
+              <EmptyState
+                icon="🌸"
+                title="등록된 상품이 없습니다"
+                description="아직 등록된 상품이 없어요"
+              />
             )}
           </TabsContent>
 
@@ -175,16 +173,7 @@ export default function ShopDetailPage({ params }: { params: Promise<{ id: strin
             {reviewsLoading ? (
               <div className="space-y-4">
                 {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="space-y-2 py-4">
-                    <div className="flex items-center gap-2">
-                      <Skeleton className="size-8 rounded-full" />
-                      <div>
-                        <Skeleton className="h-3 w-16" />
-                        <Skeleton className="h-3 w-24 mt-1" />
-                      </div>
-                    </div>
-                    <Skeleton className="h-12 w-full" />
-                  </div>
+                  <ReviewCardSkeleton key={i} />
                 ))}
               </div>
             ) : reviews.length > 0 ? (
@@ -194,9 +183,11 @@ export default function ShopDetailPage({ params }: { params: Promise<{ id: strin
                 ))}
               </div>
             ) : (
-              <div className="py-12 text-center text-muted-foreground text-sm">
-                아직 리뷰가 없습니다
-              </div>
+              <EmptyState
+                icon="💬"
+                title="아직 리뷰가 없습니다"
+                description="첫 번째 리뷰를 작성해보세요"
+              />
             )}
           </TabsContent>
         </Tabs>

@@ -7,7 +7,8 @@ import { useShops } from '@/hooks/useShops';
 import { useFeaturedProducts } from '@/hooks/useProducts';
 import { ShopCard } from '@/components/shop/shop-card';
 import { ProductCard } from '@/components/product/product-card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { CategorySkeleton, ShopCardSkeleton, ProductCardSkeleton } from '@/components/ui/loading-skeletons';
+import { EmptyState } from '@/components/ui/empty-states';
 import { Button } from '@/components/ui/button';
 
 const categoryIcons: Record<string, string> = {
@@ -56,14 +57,7 @@ export default function HomePage() {
       <section className="px-4 mt-8">
         <h3 className="text-lg font-bold mb-4">카테고리</h3>
         {categoriesLoading ? (
-          <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="flex flex-col items-center gap-2">
-                <Skeleton className="size-14 rounded-full" />
-                <Skeleton className="h-3 w-10" />
-              </div>
-            ))}
-          </div>
+          <CategorySkeleton />
         ) : (
           <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
             {categories.map((cat) => (
@@ -97,9 +91,7 @@ export default function HomePage() {
           <div className="flex gap-4 px-4 overflow-x-auto pb-2">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="shrink-0 w-56">
-                <Skeleton className="aspect-[16/10] rounded-xl" />
-                <Skeleton className="h-4 w-32 mt-3" />
-                <Skeleton className="h-3 w-20 mt-2" />
+                <ShopCardSkeleton />
               </div>
             ))}
           </div>
@@ -112,9 +104,11 @@ export default function HomePage() {
             ))}
           </div>
         ) : (
-          <div className="px-4 py-8 text-center text-muted-foreground text-sm">
-            아직 등록된 꽃집이 없습니다
-          </div>
+          <EmptyState
+            icon="🏪"
+            title="아직 등록된 꽃집이 없습니다"
+            description="곧 다양한 꽃집이 등록될 예정이에요"
+          />
         )}
       </section>
 
@@ -132,12 +126,7 @@ export default function HomePage() {
         {featuredLoading ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i}>
-                <Skeleton className="aspect-square rounded-xl" />
-                <Skeleton className="h-3 w-16 mt-3" />
-                <Skeleton className="h-4 w-24 mt-1" />
-                <Skeleton className="h-4 w-20 mt-1.5" />
-              </div>
+              <ProductCardSkeleton key={i} />
             ))}
           </div>
         ) : featuredProducts.length > 0 ? (
@@ -147,9 +136,11 @@ export default function HomePage() {
             ))}
           </div>
         ) : (
-          <div className="py-8 text-center text-muted-foreground text-sm">
-            아직 추천 상품이 없습니다
-          </div>
+          <EmptyState
+            icon="🌸"
+            title="아직 추천 상품이 없습니다"
+            description="곧 다양한 상품이 등록될 예정이에요"
+          />
         )}
       </section>
     </div>

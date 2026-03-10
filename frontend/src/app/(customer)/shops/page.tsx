@@ -9,6 +9,8 @@ import { ShopCard } from '@/components/shop/shop-card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ShopCardSkeleton } from '@/components/ui/loading-skeletons';
+import { EmptyState } from '@/components/ui/empty-states';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ShopListParams } from '@/lib/api/shops';
 
@@ -121,12 +123,7 @@ function ShopsContent() {
         {isLoading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i}>
-                <Skeleton className="aspect-[16/10] rounded-xl" />
-                <Skeleton className="h-4 w-32 mt-3" />
-                <Skeleton className="h-3 w-20 mt-2" />
-                <Skeleton className="h-3 w-28 mt-1" />
-              </div>
+              <ShopCardSkeleton key={i} />
             ))}
           </div>
         ) : shops.length > 0 ? (
@@ -163,13 +160,11 @@ function ShopsContent() {
             )}
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <span className="text-4xl mb-4">🔍</span>
-            <p className="text-muted-foreground">검색 결과가 없습니다</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              다른 검색어나 필터를 시도해보세요
-            </p>
-          </div>
+          <EmptyState
+            icon="🏪"
+            title="등록된 꽃집이 없습니다"
+            description="아직 꽃집이 등록되지 않았어요. 다른 검색어나 필터를 시도해보세요."
+          />
         )}
       </div>
     </div>
@@ -182,11 +177,7 @@ function ShopsPageFallback() {
       <Skeleton className="h-11 rounded-full" />
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i}>
-            <Skeleton className="aspect-[16/10] rounded-xl" />
-            <Skeleton className="h-4 w-32 mt-3" />
-            <Skeleton className="h-3 w-20 mt-2" />
-          </div>
+          <ShopCardSkeleton key={i} />
         ))}
       </div>
     </div>
