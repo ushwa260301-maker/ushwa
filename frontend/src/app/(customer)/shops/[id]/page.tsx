@@ -22,8 +22,8 @@ export default function ShopDetailPage({ params }: { params: Promise<{ id: strin
   const { data: reviewsData, isLoading: reviewsLoading } = useShopReviews(id);
 
   const shop = shopData?.data;
-  const products: Product[] = productsData?.data?.products ?? [];
-  const reviews: Review[] = reviewsData?.data?.reviews ?? [];
+  const products: Product[] = productsData?.data ?? [];
+  const reviews: Review[] = reviewsData?.data ?? [];
 
   if (shopLoading) {
     return (
@@ -69,9 +69,9 @@ export default function ShopDetailPage({ params }: { params: Promise<{ id: strin
       {/* Shop Header */}
       <div className="px-4">
         <div className="relative aspect-[2.5/1] rounded-2xl overflow-hidden bg-muted">
-          {shop.coverImage || shop.profileImage ? (
+          {shop.profileImage ? (
             <Image
-              src={shop.coverImage || shop.profileImage!}
+              src={shop.profileImage}
               alt={shop.name}
               fill
               className="object-cover"
@@ -95,9 +95,9 @@ export default function ShopDetailPage({ params }: { params: Promise<{ id: strin
           <div className="flex items-center gap-2 mt-1">
             <div className="flex items-center gap-1">
               <Star className="size-4 text-yellow-400 fill-yellow-400" />
-              <span className="font-medium">{shop.rating.toFixed(1)}</span>
+              <span className="font-medium">{(shop.rating?.average ?? 0).toFixed(1)}</span>
               <span className="text-sm text-muted-foreground">
-                리뷰 {shop.reviewCount}개
+                리뷰 {shop.rating?.count ?? 0}개
               </span>
             </div>
             {shop.address && (
@@ -113,13 +113,20 @@ export default function ShopDetailPage({ params }: { params: Promise<{ id: strin
           {shop.description && (
             <p className="text-sm text-muted-foreground mt-2">{shop.description}</p>
           )}
-          {shop.tags && shop.tags.length > 0 && (
+          {/* Delivery info badge */}
+          {shop.deliveryInfo && (
             <div className="flex gap-1.5 mt-3 flex-wrap">
-              {shop.tags.map((tag) => (
-                <Badge key={tag} variant="outline" className="text-xs">
-                  {tag}
+              <Badge variant="outline" className="text-xs">
+                배달비 {(shop.deliveryInfo.fee ?? 0).toLocaleString()}원
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                최소주문 {(shop.deliveryInfo.minOrderAmount ?? 0).toLocaleString()}원
+              </Badge>
+              {shop.deliveryInfo.estimatedTime && (
+                <Badge variant="outline" className="text-xs">
+                  {shop.deliveryInfo.estimatedTime}
                 </Badge>
-              ))}
+              )}
             </div>
           )}
         </div>
@@ -136,7 +143,7 @@ export default function ShopDetailPage({ params }: { params: Promise<{ id: strin
               정보
             </TabsTrigger>
             <TabsTrigger value="reviews" className="flex-1">
-              리뷰 ({shop.reviewCount})
+              리뷰 ({shop.rating?.count ?? 0})
             </TabsTrigger>
           </TabsList>
 

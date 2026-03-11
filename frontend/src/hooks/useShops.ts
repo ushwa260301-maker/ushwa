@@ -6,31 +6,46 @@ export interface Shop {
   name: string;
   description?: string;
   profileImage?: string;
-  coverImage?: string;
-  owner: string;
+  images?: string[];
+  owner: { _id: string; name: string } | string;
   phone?: string;
   address?: string;
   addressDetail?: string;
-  coordinates?: { lat: number; lng: number };
+  location?: { type: string; coordinates: number[] };
   categories?: string[];
-  tags?: string[];
-  rating: number;
-  reviewCount: number;
-  deliveryFee: number;
-  minOrderAmount: number;
-  estimatedDeliveryTime?: string;
   operatingHours?: {
     day: string;
     open: string;
     close: string;
     isOpen: boolean;
   }[];
+  deliveryInfo?: {
+    isAvailable: boolean;
+    fee: number;
+    freeDeliveryOver: number;
+    minOrderAmount: number;
+    estimatedTime: string;
+    maxDistance: number;
+  };
+  rating: { average: number; count: number };
+  status?: string;
   isOpen: boolean;
+  isActive?: boolean;
   createdAt: string;
 }
 
 export function useShops(params?: ShopListParams) {
-  return useQuery<{ data: { shops: Shop[]; total: number; page: number; totalPages: number } }>({
+  return useQuery<{
+    data: Shop[];
+    pagination?: {
+      currentPage: number;
+      totalPages: number;
+      totalItems: number;
+      limit: number;
+      hasNextPage: boolean;
+      hasPrevPage: boolean;
+    };
+  }>({
     queryKey: ['shops', params],
     queryFn: () => shopsApi.getList(params),
   });

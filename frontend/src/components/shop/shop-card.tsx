@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { MapPin, Clock } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import type { Shop } from '@/hooks/useShops';
 
 interface ShopCardProps {
@@ -11,6 +10,11 @@ interface ShopCardProps {
 }
 
 export function ShopCard({ shop }: ShopCardProps) {
+  const rating = shop.rating?.average ?? 0;
+  const reviewCount = shop.rating?.count ?? 0;
+  const deliveryFee = shop.deliveryInfo?.fee ?? 0;
+  const estimatedTime = shop.deliveryInfo?.estimatedTime;
+
   return (
     <Link href={`/shops/${shop._id}`} className="block group">
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden transition-shadow hover:shadow-md">
@@ -40,32 +44,23 @@ export function ShopCard({ shop }: ShopCardProps) {
         <div className="p-3">
           <h3 className="font-semibold text-sm truncate">{shop.name}</h3>
           <div className="flex items-center gap-1 mt-1">
-            <span className="text-sm">⭐ {shop.rating.toFixed(1)}</span>
+            <span className="text-sm">⭐ {rating.toFixed(1)}</span>
             <span className="text-xs text-muted-foreground">
-              ({shop.reviewCount})
+              ({reviewCount})
             </span>
           </div>
           <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
             <span className="flex items-center gap-0.5">
               <MapPin className="size-3" />
-              배달비 {shop.deliveryFee.toLocaleString()}원
+              배달비 {deliveryFee.toLocaleString()}원
             </span>
-            {shop.estimatedDeliveryTime && (
+            {estimatedTime && (
               <span className="flex items-center gap-0.5">
                 <Clock className="size-3" />
-                {shop.estimatedDeliveryTime}
+                {estimatedTime}
               </span>
             )}
           </div>
-          {shop.tags && shop.tags.length > 0 && (
-            <div className="flex gap-1 mt-2 flex-wrap">
-              {shop.tags.slice(0, 3).map((tag) => (
-                <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0">
-                  {tag}
-                </Badge>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </Link>

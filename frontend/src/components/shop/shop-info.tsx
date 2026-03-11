@@ -1,6 +1,6 @@
 'use client';
 
-import { MapPin, Phone, Clock } from 'lucide-react';
+import { MapPin, Phone, Clock, Truck } from 'lucide-react';
 import type { Shop } from '@/hooks/useShops';
 
 interface ShopInfoProps {
@@ -8,6 +8,11 @@ interface ShopInfoProps {
 }
 
 export function ShopInfo({ shop }: ShopInfoProps) {
+  const deliveryFee = shop.deliveryInfo?.fee ?? 0;
+  const minOrder = shop.deliveryInfo?.minOrderAmount ?? 0;
+  const estimatedTime = shop.deliveryInfo?.estimatedTime;
+  const freeOver = shop.deliveryInfo?.freeDeliveryOver;
+
   return (
     <div className="space-y-4">
       {/* Address */}
@@ -59,20 +64,29 @@ export function ShopInfo({ shop }: ShopInfoProps) {
 
       {/* Delivery info */}
       <div className="rounded-xl bg-muted/50 p-4 space-y-2">
-        <h4 className="text-sm font-medium">배달 정보</h4>
+        <h4 className="text-sm font-medium flex items-center gap-1.5">
+          <Truck className="size-4" />
+          배달 정보
+        </h4>
         <div className="grid grid-cols-2 gap-2 text-sm">
           <div>
             <span className="text-muted-foreground">배달비</span>
-            <p className="font-medium">{shop.deliveryFee.toLocaleString()}원</p>
+            <p className="font-medium">{deliveryFee.toLocaleString()}원</p>
           </div>
           <div>
             <span className="text-muted-foreground">최소주문</span>
-            <p className="font-medium">{shop.minOrderAmount.toLocaleString()}원</p>
+            <p className="font-medium">{minOrder.toLocaleString()}원</p>
           </div>
-          {shop.estimatedDeliveryTime && (
+          {estimatedTime && (
             <div>
               <span className="text-muted-foreground">예상 배달시간</span>
-              <p className="font-medium">{shop.estimatedDeliveryTime}</p>
+              <p className="font-medium">{estimatedTime}</p>
+            </div>
+          )}
+          {freeOver && (
+            <div>
+              <span className="text-muted-foreground">무료배달</span>
+              <p className="font-medium">{freeOver.toLocaleString()}원 이상</p>
             </div>
           )}
         </div>

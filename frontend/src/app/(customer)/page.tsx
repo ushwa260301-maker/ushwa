@@ -11,15 +11,20 @@ import { CategorySkeleton, ShopCardSkeleton, ProductCardSkeleton } from '@/compo
 import { EmptyState } from '@/components/ui/empty-states';
 import { Button } from '@/components/ui/button';
 
-const categoryIcons: Record<string, string> = {
-  bouquet: '💐',
-  basket: '🧺',
-  plant: '🪴',
-  wedding: '💒',
-  birthday: '🎂',
-  sympathy: '🕊️',
-  anniversary: '💝',
-  wreath: '🌿',
+// lucide icon name → emoji mapping
+const iconToEmoji: Record<string, string> = {
+  'cake': '🎂',
+  'heart': '💝',
+  'gift': '🎁',
+  'flower-tulip': '🌷',
+  'flower': '💐',
+  'store': '🏪',
+  'leaf': '🌿',
+  'basket': '🧺',
+  'sun': '☀️',
+  'star': '⭐',
+  'sparkles': '✨',
+  'home': '🏠',
 };
 
 export default function HomePage() {
@@ -28,7 +33,7 @@ export default function HomePage() {
   const { data: featuredData, isLoading: featuredLoading } = useFeaturedProducts();
 
   const categories = categoriesData?.data ?? [];
-  const shops = shopsData?.data?.shops ?? [];
+  const shops = shopsData?.data ?? [];
   const featuredProducts = featuredData?.data ?? [];
 
   return (
@@ -67,7 +72,7 @@ export default function HomePage() {
                 className="flex flex-col items-center gap-2 group"
               >
                 <div className="size-14 rounded-full bg-primary/5 flex items-center justify-center text-2xl group-hover:bg-primary/10 transition-colors">
-                  {cat.icon || categoryIcons[cat.slug] || '🌸'}
+                  {iconToEmoji[cat.icon ?? ''] || '🌸'}
                 </div>
                 <span className="text-xs text-center font-medium">{cat.name}</span>
               </Link>

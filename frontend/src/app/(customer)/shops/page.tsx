@@ -14,6 +14,12 @@ import { EmptyState } from '@/components/ui/empty-states';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ShopListParams } from '@/lib/api/shops';
 
+const iconToEmoji: Record<string, string> = {
+  'cake': '🎂', 'heart': '💝', 'gift': '🎁', 'flower-tulip': '🌷',
+  'flower': '💐', 'store': '🏪', 'leaf': '🌿', 'basket': '🧺',
+  'sun': '☀️', 'star': '⭐', 'sparkles': '✨', 'home': '🏠',
+};
+
 const sortOptions = [
   { value: 'rating', label: '평점순' },
   { value: 'name', label: '이름순' },
@@ -43,8 +49,8 @@ function ShopsContent() {
   const { data: shopsData, isLoading } = useShops(params);
   const { data: categoriesData } = useCategories();
 
-  const shops = shopsData?.data?.shops ?? [];
-  const totalPages = shopsData?.data?.totalPages ?? 1;
+  const shops = shopsData?.data ?? [];
+  const totalPages = shopsData?.pagination?.totalPages ?? 1;
   const categories = categoriesData?.data ?? [];
 
   const handleSearch = (e: React.FormEvent) => {
@@ -91,7 +97,7 @@ function ShopsContent() {
                 setPage(1);
               }}
             >
-              {cat.icon || ''} {cat.name}
+              {iconToEmoji[cat.icon ?? ''] || '🌸'} {cat.name}
             </Badge>
           ))}
         </div>
