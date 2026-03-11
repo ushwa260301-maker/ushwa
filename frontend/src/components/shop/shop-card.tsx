@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { MapPin, Clock } from 'lucide-react';
 import type { Shop } from '@/hooks/useShops';
 
 interface ShopCardProps {
@@ -17,9 +16,9 @@ export function ShopCard({ shop }: ShopCardProps) {
 
   return (
     <Link href={`/shops/${shop._id}`} className="block group">
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden transition-shadow hover:shadow-md">
-        {/* Shop image */}
-        <div className="relative aspect-[16/10] bg-muted overflow-hidden">
+      <div className="bg-white rounded-xl overflow-hidden card-hover-lift shadow-sm">
+        {/* Shop image with overlay gradient */}
+        <div className="relative aspect-[4/3] bg-[#F5F5F5] overflow-hidden">
           {shop.profileImage ? (
             <Image
               src={shop.profileImage}
@@ -29,38 +28,45 @@ export function ShopCard({ shop }: ShopCardProps) {
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-primary/5">
-              <span className="text-4xl">🌸</span>
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-50 to-pink-100">
+              <span className="text-5xl">🌸</span>
             </div>
           )}
+          {/* Bottom gradient overlay */}
+          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/20 to-transparent" />
+          {/* Status badges */}
+          <div className="absolute top-2.5 left-2.5 flex gap-1.5">
+            {shop.isOpen ? (
+              <span className="bg-[#00C853] text-white text-[11px] font-medium px-2 py-0.5 rounded-full">
+                영업중
+              </span>
+            ) : (
+              <span className="bg-[#666] text-white text-[11px] font-medium px-2 py-0.5 rounded-full">
+                준비중
+              </span>
+            )}
+          </div>
           {!shop.isOpen && (
-            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-              <span className="text-white font-medium text-sm">준비중</span>
-            </div>
+            <div className="absolute inset-0 bg-black/30" />
           )}
         </div>
 
         {/* Shop info */}
-        <div className="p-3">
-          <h3 className="font-semibold text-sm truncate">{shop.name}</h3>
+        <div className="p-3.5">
+          <h3 className="font-semibold text-[15px] text-[#111] truncate">{shop.name}</h3>
           <div className="flex items-center gap-1 mt-1">
-            <span className="text-sm">⭐ {rating.toFixed(1)}</span>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-sm">⭐</span>
+            <span className="text-sm font-medium text-[#111]">{rating.toFixed(1)}</span>
+            <span className="text-xs text-[#999]">
               ({reviewCount})
             </span>
           </div>
-          <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
-            <span className="flex items-center gap-0.5">
-              <MapPin className="size-3" />
-              배달비 {deliveryFee.toLocaleString()}원
-            </span>
-            {estimatedTime && (
-              <span className="flex items-center gap-0.5">
-                <Clock className="size-3" />
-                {estimatedTime}
-              </span>
-            )}
-          </div>
+          <p className="text-xs text-[#999] mt-1.5 truncate">
+            {estimatedTime && `배달 ${estimatedTime}`}
+            {estimatedTime && deliveryFee > 0 && ' · '}
+            {deliveryFee > 0 && `배달비 ${deliveryFee.toLocaleString()}원`}
+            {deliveryFee === 0 && '무료배달'}
+          </p>
         </div>
       </div>
     </Link>

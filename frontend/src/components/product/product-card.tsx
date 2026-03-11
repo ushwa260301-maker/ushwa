@@ -19,9 +19,9 @@ export function ProductCard({ product }: ProductCardProps) {
 
   return (
     <Link href={`/shops/${shopId}/products/${product._id}`} className="block group">
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden transition-shadow hover:shadow-md">
+      <div className="bg-white rounded-xl overflow-hidden card-hover-lift">
         {/* Product image */}
-        <div className="relative aspect-square bg-muted overflow-hidden">
+        <div className="relative aspect-square bg-[#F5F5F5] overflow-hidden rounded-xl">
           {product.images && product.images.length > 0 ? (
             <Image
               src={product.images[0]}
@@ -31,38 +31,50 @@ export function ProductCard({ product }: ProductCardProps) {
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-primary/5">
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-50 to-pink-100">
               <span className="text-4xl">💐</span>
             </div>
           )}
+          {/* Discount badge - top left */}
+          {hasDiscount && (
+            <span className="absolute top-2 left-2 bg-[#E91E63] text-white text-[11px] font-bold px-2 py-0.5 rounded-full">
+              {discountPercent}%
+            </span>
+          )}
+          {/* Sold out overlay */}
           {!product.isAvailable && (
-            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-              <span className="text-white font-medium text-sm">품절</span>
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-xl">
+              <span className="text-white font-semibold text-sm">품절</span>
             </div>
           )}
         </div>
 
         {/* Product info */}
-        <div className="p-3">
-          <p className="text-xs text-muted-foreground truncate">
+        <div className="pt-3 pb-1">
+          <p className="text-xs text-[#999] truncate">
             {typeof product.shop === 'object' ? product.shop.name : ''}
           </p>
-          <h3 className="font-medium text-sm mt-0.5 truncate">{product.name}</h3>
-          <div className="flex items-center gap-1.5 mt-1.5">
+          <h3 className="font-semibold text-[14px] text-[#111] mt-0.5 line-clamp-2 leading-snug">
+            {product.name}
+          </h3>
+          <div className="flex items-baseline gap-1.5 mt-1.5">
             {hasDiscount && (
-              <span className="text-sm font-bold text-primary">{discountPercent}%</span>
+              <span className="text-[16px] font-bold text-primary">{discountPercent}%</span>
             )}
-            <span className="text-sm font-bold">{displayPrice.toLocaleString()}원</span>
-            {hasDiscount && (
-              <span className="text-xs text-muted-foreground line-through">
-                {product.price.toLocaleString()}원
-              </span>
-            )}
+            <span className="text-[16px] font-bold text-[#111]">
+              {displayPrice.toLocaleString()}원
+            </span>
           </div>
+          {hasDiscount && (
+            <span className="text-xs text-[#999] line-through">
+              {product.price.toLocaleString()}원
+            </span>
+          )}
           {product.rating > 0 && (
-            <div className="flex items-center gap-1 mt-1">
-              <span className="text-xs">⭐ {product.rating.toFixed(1)}</span>
-              <span className="text-xs text-muted-foreground">
+            <div className="flex items-center gap-1 mt-1.5">
+              <span className="text-xs">⭐</span>
+              <span className="text-xs text-[#666]">{product.rating.toFixed(1)}</span>
+              <span className="text-xs text-[#999]">
                 ({product.reviewCount})
               </span>
             </div>

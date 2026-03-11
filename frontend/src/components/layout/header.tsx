@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Search, ShoppingCart, User, LogOut, ClipboardList } from 'lucide-react';
+import { Search, ShoppingCart, User, LogOut, ClipboardList, MapPin } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useCartStore } from '@/stores/cart.store';
 import { NotificationBell } from '@/components/layout/notification-bell';
@@ -26,36 +26,22 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-white border-b border-border">
-      <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
-        {/* Logo */}
-        <Link href="/" className="flex items-center gap-1 shrink-0">
-          <span className="text-xl font-bold text-primary">🌸 어서화</span>
-        </Link>
-
-        {/* Search - hidden on mobile, shown on md+ */}
-        <div className="hidden md:flex flex-1 max-w-md">
-          <button
-            onClick={() => router.push('/shops')}
-            className="w-full flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-sm text-muted-foreground hover:bg-muted/80 transition-colors"
-          >
-            <Search className="size-4" />
-            <span>꽃집이나 상품을 검색해보세요</span>
+    <header className="sticky top-0 z-50 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+      {/* Row 1: Logo + Location + Actions */}
+      <div className="max-w-6xl mx-auto px-5 h-[52px] flex items-center justify-between gap-3">
+        {/* Logo + Location */}
+        <div className="flex items-center gap-3">
+          <Link href="/" className="flex items-center shrink-0">
+            <span className="text-xl font-extrabold text-primary tracking-tight">어서화</span>
+          </Link>
+          <button className="flex items-center gap-0.5 text-sm text-[#666] hover:text-[#111] transition-colors">
+            <MapPin className="size-3.5 text-primary" />
+            <span className="font-medium">서울</span>
           </button>
         </div>
 
         {/* Right actions */}
-        <div className="flex items-center gap-2">
-          {/* Mobile search icon */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden"
-            onClick={() => router.push('/shops')}
-          >
-            <Search className="size-5" />
-          </Button>
-
+        <div className="flex items-center gap-1">
           {/* Notifications */}
           {isAuthenticated && <NotificationBell />}
 
@@ -63,12 +49,12 @@ export function Header() {
           <Button
             variant="ghost"
             size="icon"
-            className="relative"
+            className="relative size-9"
             onClick={() => router.push('/cart')}
           >
-            <ShoppingCart className="size-5" />
+            <ShoppingCart className="size-[22px]" />
             {itemCount > 0 && (
-              <span className="absolute -top-1 -right-1 size-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
+              <span className="absolute -top-0.5 -right-0.5 size-[18px] rounded-full bg-primary text-white text-[10px] flex items-center justify-center font-bold">
                 {itemCount > 99 ? '99+' : itemCount}
               </span>
             )}
@@ -78,14 +64,14 @@ export function Header() {
           {isAuthenticated && user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
-                  <User className="size-5" />
+                <Button variant="ghost" size="icon" className="size-9">
+                  <User className="size-[22px]" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <div className="px-2 py-1.5">
-                  <p className="text-sm font-medium">{user.name}</p>
-                  <p className="text-xs text-muted-foreground">{user.email}</p>
+              <DropdownMenuContent align="end" className="w-48 rounded-xl">
+                <div className="px-3 py-2">
+                  <p className="text-sm font-semibold">{user.name}</p>
+                  <p className="text-xs text-[#999]">{user.email}</p>
                 </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => router.push('/mypage')}>
@@ -108,12 +94,23 @@ export function Header() {
               variant="ghost"
               size="sm"
               onClick={() => router.push('/login')}
-              className="text-sm"
+              className="text-sm font-medium h-9"
             >
               로그인
             </Button>
           )}
         </div>
+      </div>
+
+      {/* Row 2: Full-width search bar */}
+      <div className="px-5 pb-3">
+        <button
+          onClick={() => router.push('/shops')}
+          className="w-full flex items-center gap-2.5 rounded-full bg-[#F5F5F5] px-4 py-2.5 text-sm text-[#999] hover:bg-[#EFEFEF] transition-colors"
+        >
+          <Search className="size-4 text-[#999]" />
+          <span>어떤 꽃을 찾으시나요?</span>
+        </button>
       </div>
     </header>
   );
