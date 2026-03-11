@@ -4,10 +4,15 @@ import Image from 'next/image';
 
 export interface Review {
   _id: string;
-  user: {
+  customer: {
     _id: string;
     name: string;
     profileImage?: string;
+  };
+  product?: {
+    _id: string;
+    name: string;
+    thumbnail?: string;
   };
   rating: number;
   content: string;
@@ -46,22 +51,22 @@ export function ReviewCard({ review }: ReviewCardProps) {
       {/* User info */}
       <div className="flex items-center gap-2">
         <div className="size-8 rounded-full bg-muted overflow-hidden flex items-center justify-center">
-          {review.user.profileImage ? (
+          {review.customer?.profileImage ? (
             <Image
-              src={review.user.profileImage}
-              alt={review.user.name}
+              src={review.customer?.profileImage ?? ''}
+              alt={review.customer?.name ?? ''}
               width={32}
               height={32}
               className="object-cover"
             />
           ) : (
             <span className="text-xs text-muted-foreground">
-              {review.user.name.charAt(0)}
+              {(review.customer?.name ?? '?').charAt(0)}
             </span>
           )}
         </div>
         <div className="flex-1">
-          <p className="text-sm font-medium">{review.user.name}</p>
+          <p className="text-sm font-medium">{review.customer?.name}</p>
           <div className="flex items-center gap-1.5">
             <span className="text-xs flex">{renderStars(review.rating)}</span>
             <span className="text-xs text-muted-foreground">

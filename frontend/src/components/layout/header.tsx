@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { Search, ShoppingCart, User, LogOut, ClipboardList, MapPin } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useCartStore } from '@/stores/cart.store';
@@ -17,6 +17,7 @@ import {
 
 export function Header() {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, isAuthenticated, logout } = useAuthStore();
   const itemCount = useCartStore((s) => s.getItemCount());
 
@@ -102,16 +103,18 @@ export function Header() {
         </div>
       </div>
 
-      {/* Row 2: Full-width search bar */}
-      <div className="px-5 pb-3">
-        <button
-          onClick={() => router.push('/shops')}
-          className="w-full flex items-center gap-2.5 rounded-full bg-[#F5F5F5] px-4 py-2.5 text-sm text-[#999] hover:bg-[#EFEFEF] transition-colors"
-        >
-          <Search className="size-4 text-[#999]" />
-          <span>어떤 꽃을 찾으시나요?</span>
-        </button>
-      </div>
+      {/* Row 2: Full-width search bar (hidden on /shops since it has its own) */}
+      {!pathname.startsWith('/shops') && (
+        <div className="px-5 pb-3">
+          <button
+            onClick={() => router.push('/shops')}
+            className="w-full flex items-center gap-2.5 rounded-full bg-[#F5F5F5] px-4 py-2.5 text-sm text-[#999] hover:bg-[#EFEFEF] transition-colors"
+          >
+            <Search className="size-4 text-[#999]" />
+            <span>꽃집이나 상품을 검색해보세요</span>
+          </button>
+        </div>
+      )}
     </header>
   );
 }

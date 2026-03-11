@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 interface ShopReview {
   _id: string;
-  user: { _id: string; name: string; profileImage?: string };
+  customer: { _id: string; name: string; profileImage?: string };
   rating: number;
   content: string;
   images?: string[];
@@ -86,20 +86,20 @@ export default function OwnerReviewsPage() {
               {/* Review Header */}
               <div className="flex items-center gap-2">
                 <div className="size-8 rounded-full bg-muted overflow-hidden flex items-center justify-center">
-                  {review.user.profileImage ? (
+                  {review.customer?.profileImage ? (
                     <Image
-                      src={review.user.profileImage}
-                      alt={review.user.name}
+                      src={review.customer.profileImage}
+                      alt={review.customer.name}
                       width={32}
                       height={32}
                       className="object-cover"
                     />
                   ) : (
-                    <span className="text-xs">{review.user.name.charAt(0)}</span>
+                    <span className="text-xs">{(review.customer?.name ?? '?').charAt(0)}</span>
                   )}
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium">{review.user.name}</p>
+                  <p className="text-sm font-medium">{review.customer?.name ?? '고객'}</p>
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs flex">{renderStars(review.rating)}</span>
                     <span className="text-xs text-muted-foreground">

@@ -63,7 +63,7 @@ function ShopsContent() {
       <form onSubmit={handleSearch} className="relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-[#999]" />
         <Input
-          placeholder="꽃집 이름으로 검색"
+          placeholder="꽃집이나 상품을 검색해보세요"
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
