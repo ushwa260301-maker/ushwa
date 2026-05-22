@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>시공 운영 관리 시트</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --panel:#ffffff; --border:#e2e5ea; --line:#eef0f3;
+    --text:#1c1f24; --muted:#6b7280; --accent:#2563eb; --accent-soft:#eaf1ff;
+    --green:#16a34a; --red:#dc2626; --amber:#d97706;
+    --head:#f8fafc;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,
+      "Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    background:var(--bg); color:var(--text); font-size:14px;
+  }
+  header{
+    background:var(--panel); border-bottom:1px solid var(--border);
+    padding:14px 20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  }
+  header h1{font-size:17px; margin:0; font-weight:700;}
+  header .meta{color:var(--muted); font-size:12px;}
+  .toolbar{margin-left:auto; display:flex; gap:8px; flex-wrap:wrap;}
+  button{
+    font:inherit; cursor:pointer; border:1px solid var(--border);
+    background:var(--panel); color:var(--text); padding:7px 12px;
+    border-radius:8px; transition:.12s;
+  }
+  button:hover{background:#f0f2f5;}
+  button.primary{background:var(--accent); color:#fff; border-color:var(--accent);}
+  button.primary:hover{filter:brightness(1.05);}
+  button.danger{color:var(--red); border-color:#f3c2c2;}
+  button.small{padding:4px 9px; font-size:12px;}
+
+  .tabs{display:flex; gap:4px; padding:12px 20px 0; background:var(--bg); flex-wrap:wrap;}
+  .tab{
+    padding:10px 18px; border:1px solid var(--border); border-bottom:none;
+    background:#eceef1; border-radius:10px 10px 0 0; color:var(--muted);
+    font-weight:600;
+  }
+  .tab.active{background:var(--panel); color:var(--text); box-shadow:0 -2px 0 var(--accent) inset;}
+
+  main{padding:0 20px 40px;}
+  .sheet{background:var(--panel); border:1px solid var(--border); border-radius:0 10px 10px 10px; padding:16px;}
+  .sheet.hidden{display:none;}
+  .sheet-head{display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap;}
+  .sheet-head h2{font-size:15px; margin:0;}
+  .sheet-head .desc{color:var(--muted); font-size:12px;}
+  .sheet-actions{margin-left:auto; display:flex; gap:8px;}
+
+  .table-wrap{overflow-x:auto;}
+  table{border-collapse:collapse; width:100%; min-width:640px;}
+  th,td{border:1px solid var(--line); padding:0; text-align:center;}
+  th{background:var(--head); color:var(--muted); font-weight:600; padding:9px 8px; font-size:12.5px; white-space:nowrap;}
+  td{height:38px;}
+  td input,td select{
+    width:100%; height:100%; border:none; background:transparent; font:inherit;
+    text-align:center; padding:6px 8px; color:var(--text); outline:none;
+  }
+  td input:focus,td select:focus{background:var(--accent-soft); box-shadow:inset 0 0 0 2px var(--accent);}
+  td.num input{text-align:right;}
+  td.calc{background:#fafbfc; color:var(--muted); padding:6px 10px; text-align:right; font-variant-numeric:tabular-nums;}
+  td.rowdel{width:40px;}
+  td.rowdel button{border:none; background:none; color:var(--muted); font-size:16px; line-height:1;}
+  td.rowdel button:hover{color:var(--red);}
+  tr.total td{background:var(--head); font-weight:700; text-align:right; padding:9px 10px; font-variant-numeric:tabular-nums;}
+  tr.total td.label{text-align:left; color:var(--muted); font-weight:600;}
+  .pill{display:inline-block; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:600;}
+  .pill.ok{background:#e7f6ec; color:var(--green);}
+  .pill.warn{background:#fdf0d9; color:var(--amber);}
+  .pill.neg{background:#fbe6e6; color:var(--red);}
+  .hint{color:var(--muted); font-size:12px; margin:6px 2px 0;}
+  .stock-neg{color:var(--red); font-weight:700;}
+  .footer-note{color:var(--muted); font-size:12px; margin-top:18px; padding:0 4px;}
+
+  @media print{
+    header .toolbar,.tabs,.sheet-actions,td.rowdel,.add-row,.hint,.footer-note{display:none !important;}
+    .sheet.hidden{display:block !important;}
+    .sheet{border:none; border-radius:0; page-break-after:always;}
+    body{background:#fff;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>시공 운영 관리 시트</h1>
+    <div class="meta">견적서 · 스케줄 · 실비명세서 — 로우데이터(재고·단가) 자동 연동</div>
+  </div>
+  <div class="toolbar">
+    <button class="small" onclick="printSheet()">현재 시트 인쇄</button>
+    <button class="small" onclick="exportJSON()">전체 백업(JSON)</button>
+    <button class="small" onclick="document.getElementById('importFile').click()">불러오기(JSON)</button>
+    <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importJSON(event)" />
+    <button class="small danger" onclick="resetAll()">초기화</button>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs"></nav>
+
+<main>
+  <!-- 로우데이터 -->
+  <section class="sheet" data-sheet="raw">
+    <div class="sheet-head">
+      <h2>로우데이터 (자재/재고)</h2>
+      <span class="desc">여기에 등록한 품목과 단가가 견적서·실비명세서에서 선택·자동계산됩니다.</span>
+      <div class="sheet-actions">
+        <button class="small" onclick="exportCSV('raw')">CSV 내보내기</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table id="tbl-raw"></table></div>
+    <button class="small add-row" onclick="addRow('raw')">+ 품목 추가</button>
+    <p class="hint">잔여재고 = 재고수량 − 실비명세서 실사용수량 합계. 마이너스면 빨간색으로 표시됩니다.</p>
+  </section>
+
+  <!-- 견적서 -->
+  <section class="sheet hidden" data-sheet="estimate">
+    <div class="sheet-head">
+      <h2>견적서</h2>
+      <span class="desc">품목을 선택하면 단가가 자동 입력됩니다. (단가는 직접 수정 가능)</span>
+      <div class="sheet-actions">
+        <button class="small" onclick="exportCSV('estimate')">CSV 내보내기</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table id="tbl-estimate"></table></div>
+    <button class="small add-row" onclick="addRow('estimate')">+ 항목 추가</button>
+  </section>
+
+  <!-- 스케줄 -->
+  <section class="sheet hidden" data-sheet="schedule">
+    <div class="sheet-head">
+      <h2>스케줄</h2>
+      <span class="desc">공정/작업 일정과 진행 상태를 관리합니다.</span>
+      <div class="sheet-actions">
+        <button class="small" onclick="exportCSV('schedule')">CSV 내보내기</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table id="tbl-schedule"></table></div>
+    <button class="small add-row" onclick="addRow('schedule')">+ 일정 추가</button>
+  </section>
+
+  <!-- 실비명세서 -->
+  <section class="sheet hidden" data-sheet="actual">
+    <div class="sheet-head">
+      <h2>실비명세서</h2>
+      <span class="desc">실제 사용 수량을 입력하면 실비금액과 견적 대비 차액이 자동 계산됩니다.</span>
+      <div class="sheet-actions">
+        <button class="small" onclick="exportCSV('actual')">CSV 내보내기</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table id="tbl-actual"></table></div>
+    <button class="small add-row" onclick="addRow('actual')">+ 항목 추가</button>
+    <p class="hint">차액 = 견적금액 − 실비금액. 양수(절감)는 초록, 음수(초과)는 빨강.</p>
+  </section>
+
+  <p class="footer-note">데이터는 이 브라우저에 자동 저장됩니다. 다른 기기/사람과 공유하려면 「전체 백업(JSON)」으로 파일을 내보내 전달하세요.</p>
+</main>
+
+<script>
+"use strict";
+
+const SHEETS = [
+  {key:"raw",      label:"① 로우데이터"},
+  {key:"estimate", label:"② 견적서"},
+  {key:"schedule", label:"③ 스케줄"},
+  {key:"actual",   label:"④ 실비명세서"},
+];
+
+const STORE_KEY = "construction-sheets-v1";
+
+// ---- 기본 데이터 ----
+function seed(){
+  return {
+    raw: [
+      {id:uid(), name:"시멘트(40kg)", spec:"포틀랜드", unit:"포", price:8500,  stock:100},
+      {id:uid(), name:"철근 D10",     spec:"SD400",     unit:"본", price:12000, stock:200},
+      {id:uid(), name:"합판 12T",     spec:"1220x2440", unit:"장", price:23000, stock:60},
+    ],
+    estimate: [
+      {id:uid(), itemId:null, name:"", qty:0, unitPrice:0, note:""},
+    ],
+    schedule: [
+      {id:uid(), task:"가설/철거", start:"", end:"", owner:"", status:"예정", note:""},
+    ],
+    actual: [
+      {id:uid(), itemId:null, name:"", qty:0, unitPrice:0, note:""},
+    ],
+  };
+}
+
+let state = load();
+
+function uid(){ return "r" + Math.random().toString(36).slice(2,9); }
+function load(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return seed();
+}
+function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+function won(n){ return (Number(n)||0).toLocaleString("ko-KR"); }
+
+// ---- 재고 계산: 품목별 실비 실사용 합계 ----
+function usedByItem(itemId){
+  return state.actual
+    .filter(r => r.itemId === itemId)
+    .reduce((s,r)=> s + (Number(r.qty)||0), 0);
+}
+
+// ---- 탭 ----
+let current = "raw";
+function buildTabs(){
+  const nav = document.getElementById("tabs");
+  nav.innerHTML = "";
+  SHEETS.forEach(s=>{
+    const b = document.createElement("button");
+    b.className = "tab" + (s.key===current ? " active" : "");
+    b.textContent = s.label;
+    b.onclick = ()=> switchTab(s.key);
+    nav.appendChild(b);
+  });
+}
+function switchTab(key){
+  current = key;
+  document.querySelectorAll(".sheet").forEach(el=>{
+    el.classList.toggle("hidden", el.dataset.sheet !== key);
+  });
+  buildTabs();
+}
+
+// ---- 품목 select 옵션 ----
+function itemOptions(selectedId){
+  let html = '<option value="">— 품목 선택 —</option>';
+  state.raw.forEach(it=>{
+    const label = it.name ? it.name + (it.spec? " ("+it.spec+")":"") : "(이름없음)";
+    html += `<option value="${it.id}" ${it.id===selectedId?"selected":""}>${esc(label)}</option>`;
+  });
+  return html;
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+// ---- 렌더 ----
+function renderAll(){
+  renderRaw();
+  renderEstimate();
+  renderSchedule();
+  renderActual();
+}
+
+function renderRaw(){
+  const t = document.getElementById("tbl-raw");
+  let h = `<thead><tr>
+    <th style="width:34px">No</th><th>품목명</th><th>규격</th><th>단위</th>
+    <th>단가(원)</th><th>재고수량</th><th>실사용</th><th>잔여재고</th><th></th>
+  </tr></thead><tbody>`;
+  state.raw.forEach((r,i)=>{
+    const used = usedByItem(r.id);
+    const remain = (Number(r.stock)||0) - used;
+    h += `<tr>
+      <td class="calc">${i+1}</td>
+      <td><input value="${esc(r.name)}" oninput="upd('raw','${r.id}','name',this.value)"></td>
+      <td><input value="${esc(r.spec)}" oninput="upd('raw','${r.id}','spec',this.value)"></td>
+      <td><input value="${esc(r.unit)}" oninput="upd('raw','${r.id}','unit',this.value)"></td>
+      <td class="num"><input value="${r.price}" oninput="upd('raw','${r.id}','price',this.value)"></td>
+      <td class="num"><input value="${r.stock}" oninput="upd('raw','${r.id}','stock',this.value)"></td>
+      <td class="calc">${won(used)}</td>
+      <td class="calc ${remain<0?'stock-neg':''}">${won(remain)}</td>
+      <td class="rowdel"><button title="삭제" onclick="delRow('raw','${r.id}')">×</button></td>
+    </tr>`;
+  });
+  h += `</tbody>`;
+  t.innerHTML = h;
+}
+
+function renderEstimate(){
+  const t = document.getElementById("tbl-estimate");
+  let h = `<thead><tr>
+    <th style="width:34px">No</th><th style="min-width:200px">품목</th><th>수량</th>
+    <th>단가(원)</th><th>금액(원)</th><th>비고</th><th></th>
+  </tr></thead><tbody>`;
+  let sum = 0;
+  state.estimate.forEach((r,i)=>{
+    const amount = (Number(r.qty)||0)*(Number(r.unitPrice)||0);
+    sum += amount;
+    h += `<tr>
+      <td class="calc">${i+1}</td>
+      <td><select onchange="pickItem('estimate','${r.id}',this.value)">${itemOptions(r.itemId)}</select></td>
+      <td class="num"><input value="${r.qty}" oninput="upd('estimate','${r.id}','qty',this.value)"></td>
+      <td class="num"><input value="${r.unitPrice}" oninput="upd('estimate','${r.id}','unitPrice',this.value)"></td>
+      <td class="calc">${won(amount)}</td>
+      <td><input value="${esc(r.note)}" oninput="upd('estimate','${r.id}','note',this.value)"></td>
+      <td class="rowdel"><button title="삭제" onclick="delRow('estimate','${r.id}')">×</button></td>
+    </tr>`;
+  });
+  h += `<tr class="total"><td></td><td class="label">합계</td><td></td><td></td><td>${won(sum)}</td><td></td><td></td></tr>`;
+  h += `</tbody>`;
+  t.innerHTML = h;
+}
+
+function renderSchedule(){
+  const t = document.getElementById("tbl-schedule");
+  const statuses = ["예정","진행중","완료","보류"];
+  let h = `<thead><tr>
+    <th style="width:34px">No</th><th>작업/공정</th><th>시작일</th><th>종료일</th>
+    <th>담당</th><th>상태</th><th>비고</th><th></th>
+  </tr></thead><tbody>`;
+  state.schedule.forEach((r,i)=>{
+    const opts = statuses.map(s=>`<option ${s===r.status?"selected":""}>${s}</option>`).join("");
+    h += `<tr>
+      <td class="calc">${i+1}</td>
+      <td><input value="${esc(r.task)}" oninput="upd('schedule','${r.id}','task',this.value)"></td>
+      <td><input type="date" value="${esc(r.start)}" oninput="upd('schedule','${r.id}','start',this.value)"></td>
+      <td><input type="date" value="${esc(r.end)}" oninput="upd('schedule','${r.id}','end',this.value)"></td>
+      <td><input value="${esc(r.owner)}" oninput="upd('schedule','${r.id}','owner',this.value)"></td>
+      <td><select onchange="upd('schedule','${r.id}','status',this.value)">${opts}</select></td>
+      <td><input value="${esc(r.note)}" oninput="upd('schedule','${r.id}','note',this.value)"></td>
+      <td class="rowdel"><button title="삭제" onclick="delRow('schedule','${r.id}')">×</button></td>
+    </tr>`;
+  });
+  h += `</tbody>`;
+  t.innerHTML = h;
+}
+
+function renderActual(){
+  const t = document.getElementById("tbl-actual");
+  let h = `<thead><tr>
+    <th style="width:34px">No</th><th style="min-width:200px">품목</th><th>실사용수량</th>
+    <th>단가(원)</th><th>실비금액(원)</th><th>견적금액(원)</th><th>차액(원)</th><th></th>
+  </tr></thead><tbody>`;
+  let sumActual = 0, sumEst = 0;
+  state.actual.forEach((r,i)=>{
+    const amount = (Number(r.qty)||0)*(Number(r.unitPrice)||0);
+    const estAmount = estimateAmountForItem(r.itemId);
+    const diff = estAmount - amount;
+    sumActual += amount; sumEst += estAmount;
+    const cls = diff<0 ? "neg" : (diff>0 ? "ok" : "");
+    h += `<tr>
+      <td class="calc">${i+1}</td>
+      <td><select onchange="pickItem('actual','${r.id}',this.value)">${itemOptions(r.itemId)}</select></td>
+      <td class="num"><input value="${r.qty}" oninput="upd('actual','${r.id}','qty',this.value)"></td>
+      <td class="num"><input value="${r.unitPrice}" oninput="upd('actual','${r.id}','unitPrice',this.value)"></td>
+      <td class="calc">${won(amount)}</td>
+      <td class="calc">${won(estAmount)}</td>
+      <td class="calc"><span class="pill ${cls}">${diff>=0?"+":""}${won(diff)}</span></td>
+      <td class="rowdel"><button title="삭제" onclick="delRow('actual','${r.id}')">×</button></td>
+    </tr>`;
+  });
+  const totalDiff = sumEst - sumActual;
+  const tcls = totalDiff<0 ? "neg" : (totalDiff>0 ? "ok":"");
+  h += `<tr class="total">
+    <td></td><td class="label">합계</td><td></td><td></td>
+    <td>${won(sumActual)}</td><td>${won(sumEst)}</td>
+    <td><span class="pill ${tcls}">${totalDiff>=0?"+":""}${won(totalDiff)}</span></td><td></td>
+  </tr></tbody>`;
+  t.innerHTML = h;
+}
+
+// 같은 품목의 견적 금액 합계 (실비 대비 비교용)
+function estimateAmountForItem(itemId){
+  if(!itemId) return 0;
+  return state.estimate
+    .filter(r=> r.itemId===itemId)
+    .reduce((s,r)=> s + (Number(r.qty)||0)*(Number(r.unitPrice)||0), 0);
+}
+
+// ---- 편집 핸들러 ----
+function upd(sheet, id, field, value){
+  const row = state[sheet].find(r=>r.id===id);
+  if(!row) return;
+  row[field] = value;
+  save();
+  // 단가/수량/재고/품목 변동은 다른 시트 계산에 영향 → 관련 시트 재렌더
+  if(sheet==="raw"){ renderRaw(); }
+  if(sheet==="estimate"){ renderEstimate(); renderActual(); }
+  if(sheet==="actual"){ renderActual(); renderRaw(); }
+  if(sheet==="schedule"){ /* 계산 영향 없음 */ }
+}
+
+function pickItem(sheet, id, itemId){
+  const row = state[sheet].find(r=>r.id===id);
+  if(!row) return;
+  row.itemId = itemId || null;
+  const item = state.raw.find(it=>it.id===itemId);
+  if(item){
+    row.name = item.name;
+    row.unitPrice = Number(item.price)||0; // 로우데이터 단가 자동 반영
+  }
+  save();
+  renderEstimate(); renderActual(); renderRaw();
+}
+
+function addRow(sheet){
+  const blanks = {
+    raw:      ()=>({id:uid(), name:"", spec:"", unit:"", price:0, stock:0}),
+    estimate: ()=>({id:uid(), itemId:null, name:"", qty:0, unitPrice:0, note:""}),
+    schedule: ()=>({id:uid(), task:"", start:"", end:"", owner:"", status:"예정", note:""}),
+    actual:   ()=>({id:uid(), itemId:null, name:"", qty:0, unitPrice:0, note:""}),
+  };
+  state[sheet].push(blanks[sheet]());
+  save(); renderAll();
+}
+
+function delRow(sheet, id){
+  state[sheet] = state[sheet].filter(r=>r.id!==id);
+  save(); renderAll();
+}
+
+// ---- 내보내기/불러오기 ----
+function exportCSV(sheet){
+  const cols = {
+    raw:["품목명","규격","단위","단가","재고수량","실사용","잔여재고"],
+    estimate:["품목","수량","단가","금액","비고"],
+    schedule:["작업/공정","시작일","종료일","담당","상태","비고"],
+    actual:["품목","실사용수량","단가","실비금액","견적금액","차액"],
+  }[sheet];
+  const rows = state[sheet].map(r=>{
+    if(sheet==="raw"){
+      const used = usedByItem(r.id);
+      return [r.name,r.spec,r.unit,r.price,r.stock,used,(Number(r.stock)||0)-used];
+    }
+    if(sheet==="estimate"){
+      return [r.name,r.qty,r.unitPrice,(Number(r.qty)||0)*(Number(r.unitPrice)||0),r.note];
+    }
+    if(sheet==="schedule"){
+      return [r.task,r.start,r.end,r.owner,r.status,r.note];
+    }
+    if(sheet==="actual"){
+      const amt=(Number(r.qty)||0)*(Number(r.unitPrice)||0);
+      const est=estimateAmountForItem(r.itemId);
+      return [r.name,r.qty,r.unitPrice,amt,est,est-amt];
+    }
+  });
+  const csv = [cols, ...rows]
+    .map(line=> line.map(c=>`"${String(c==null?"":c).replace(/"/g,'""')}"`).join(",")).join("\r\n");
+  download("﻿"+csv, sheet+".csv", "text/csv;charset=utf-8;");
+}
+
+function exportJSON(){
+  download(JSON.stringify(state,null,2), "construction-backup.json", "application/json");
+}
+
+function importJSON(ev){
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const data = JSON.parse(reader.result);
+      if(!data.raw || !data.estimate || !data.schedule || !data.actual)
+        throw new Error("형식이 맞지 않습니다.");
+      state = data; save(); renderAll();
+      alert("불러오기 완료");
+    }catch(e){ alert("불러오기 실패: "+e.message); }
+    ev.target.value = "";
+  };
+  reader.readAsText(file);
+}
+
+function download(content, filename, type){
+  const blob = new Blob([content], {type});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function resetAll(){
+  if(confirm("모든 데이터를 초기화하고 예시 데이터로 되돌릴까요? (되돌릴 수 없습니다)")){
+    state = seed(); save(); renderAll();
+  }
+}
+
+function printSheet(){ window.print(); }
+
+// ---- 시작 ----
+buildTabs();
+renderAll();
+switchTab("raw");
+</script>
+</body>
+</html>
