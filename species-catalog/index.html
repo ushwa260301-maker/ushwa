@@ -3,122 +3,232 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>수종 카탈로그 · 개화시기 · 단가 · 수급처</title>
+  <title>수종 도감 · Species Catalog</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <header class="header">
-    <div class="container">
-      <h1>🌿 수종 카탈로그</h1>
-      <p class="subtitle">개화시기 · 단가표 · 수급처를 한눈에</p>
-    </div>
-  </header>
-
-  <main class="container main">
-    <aside class="filters" aria-label="필터">
-      <div class="filter-header">
-        <h2>필터</h2>
-        <button id="resetBtn" class="btn-ghost">초기화</button>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <div class="brand">
+        <span class="kicker">Species · 수종 도감</span>
+        <h1>개화·단가·<em>수급처</em> 대조표</h1>
       </div>
-
-      <div class="filter-group">
-        <label for="searchInput">이름 검색</label>
-        <input type="text" id="searchInput" placeholder="수종명 또는 학명 검색" />
-      </div>
-
-      <div class="filter-group">
-        <label>개화월</label>
-        <div id="monthChips" class="chips" role="group" aria-label="개화월 선택"></div>
-      </div>
-
-      <div class="filter-group">
-        <label>카테고리</label>
-        <div id="categoryChips" class="chips" role="group" aria-label="카테고리 선택"></div>
-      </div>
-
-      <div class="filter-group">
-        <label>개화색</label>
-        <div id="colorChips" class="chips" role="group" aria-label="개화색 선택"></div>
-      </div>
-
-      <div class="filter-group">
-        <label for="supplierSelect">수급처</label>
-        <select id="supplierSelect">
-          <option value="">전체</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label>가격 범위 (원)</label>
-        <div class="price-range">
-          <input type="number" id="minPrice" placeholder="최소" min="0" />
-          <span>~</span>
-          <input type="number" id="maxPrice" placeholder="최대" min="0" />
-        </div>
-        <small class="hint">단가표 중 하나라도 범위 내면 매칭</small>
-      </div>
-    </aside>
-
-    <section class="results" aria-label="검색 결과">
-      <div class="results-header">
-        <div>
-          <strong id="resultCount">0</strong> 종의 수종
-        </div>
-        <div class="sort-wrap">
-          <label for="sortSelect">정렬</label>
-          <select id="sortSelect">
+      <div class="masthead-meta">
+        <div class="count"><strong id="resultCount">0</strong><span>종</span></div>
+        <div class="sort">
+          <label for="sortSelect">Sort</label>
+          <select id="sortSelect" aria-label="정렬 방식">
             <option value="name">이름순</option>
             <option value="priceAsc">최저가 낮은순</option>
             <option value="priceDesc">최저가 높은순</option>
             <option value="bloomEarly">개화 이른순</option>
           </select>
         </div>
+        <button id="themeToggle" class="theme-toggle" type="button" aria-label="테마 전환">Theme</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page">
+    <aside class="rail" aria-label="필터">
+      <div class="rail-head">
+        <h2>Filter</h2>
+        <button id="resetBtn" class="btn-reset" type="button">Reset</button>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="searchInput">검색</label>
+        <input type="text" id="searchInput" placeholder="수종명 또는 학명" autocomplete="off" />
+      </div>
+
+      <div class="field">
+        <span class="field-label">개화월</span>
+        <div id="monthGrid" class="month-grid" role="group" aria-label="개화월 필터"></div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">카테고리</span>
+        <div id="categoryChips" class="chip-row" role="group" aria-label="카테고리 필터"></div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">개화색</span>
+        <div id="colorChips" class="chip-row" role="group" aria-label="색상 필터"></div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="supplierSelect">수급처</label>
+        <select id="supplierSelect">
+          <option value="">전체</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <span class="field-label">가격 범위 (원)</span>
+        <div class="price-range">
+          <input type="number" id="minPrice" placeholder="최소" min="0" inputmode="numeric" />
+          <span>—</span>
+          <input type="number" id="maxPrice" placeholder="최대" min="0" inputmode="numeric" />
+        </div>
+        <small class="hint">단가표 항목 중 하나라도 범위 내면 매칭</small>
+      </div>
+    </aside>
+
+    <section class="stage" aria-label="검색 결과">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <button id="addBtn" class="btn-primary" type="button">+ 수종 추가</button>
+        </div>
+        <div class="toolbar-right">
+          <button id="exportBtn" class="btn-secondary" type="button">내보내기</button>
+          <label class="btn-secondary" for="importFile">가져오기</label>
+          <input type="file" id="importFile" accept="application/json,.json" hidden />
+          <button id="resetSeedBtn" class="btn-ghost-sm" type="button" title="시드 데이터로 초기화">시드 복원</button>
+        </div>
       </div>
 
       <div id="cardGrid" class="grid"></div>
-      <p id="emptyState" class="empty" hidden>조건에 맞는 수종이 없습니다. 필터를 완화해 보세요.</p>
+      <div id="emptyState" class="empty" hidden>
+        <div class="h">조건에 맞는 수종이 없습니다</div>
+        <div>필터를 완화하거나 새 수종을 추가해 보세요.</div>
+      </div>
     </section>
   </main>
 
   <template id="cardTemplate">
     <article class="card">
+      <div class="card-actions">
+        <button class="icon-btn edit-btn" type="button" aria-label="수정" title="수정">✎</button>
+        <button class="icon-btn delete-btn" type="button" aria-label="삭제" title="삭제">✕</button>
+      </div>
       <div class="card-head">
         <div>
+          <span class="card-id"></span>
           <h3 class="card-title"></h3>
-          <p class="card-scientific"></p>
+          <p class="card-latin"></p>
         </div>
-        <span class="badge category-badge"></span>
+        <span class="card-cat"></span>
       </div>
 
-      <div class="card-meta">
-        <div class="meta-item">
-          <span class="meta-label">개화시기</span>
-          <span class="bloom-months"></span>
+      <div class="phenology">
+        <div class="phenology-label">
+          <span class="lbl">Phenology · 개화</span>
+          <span class="val"></span>
         </div>
-        <div class="meta-item">
-          <span class="meta-label">개화색</span>
-          <span class="color-dots"></span>
-        </div>
+        <div class="phenology-strip"></div>
       </div>
 
-      <details class="card-section">
-        <summary>단가표</summary>
+      <div class="color-row">
+        <span class="lbl">Color</span>
+      </div>
+
+      <div>
+        <div class="section-label"><span>Price list · 단가표</span><span class="n"></span></div>
         <table class="price-table">
-          <thead>
-            <tr><th>규격</th><th>단위</th><th>단가</th></tr>
-          </thead>
           <tbody class="price-body"></tbody>
         </table>
-      </details>
+      </div>
 
-      <details class="card-section">
-        <summary>수급처</summary>
+      <div>
+        <div class="section-label"><span>Suppliers · 수급처</span><span class="n"></span></div>
         <ul class="supplier-list"></ul>
-      </details>
+      </div>
 
       <p class="card-notes"></p>
     </article>
   </template>
+
+  <div id="modal" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-panel" role="document">
+      <header class="modal-head">
+        <h2 id="modalTitle">수종 추가</h2>
+        <button class="icon-btn modal-close" type="button" aria-label="닫기" data-close>✕</button>
+      </header>
+
+      <form id="speciesForm" class="modal-body">
+        <input type="hidden" id="fEditingId" />
+
+        <fieldset class="form-section">
+          <legend>기본 정보</legend>
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="fName">수종명 <span class="req">*</span></label>
+              <input type="text" id="fName" required maxlength="80" />
+            </div>
+            <div class="form-field">
+              <label for="fLatin">학명</label>
+              <input type="text" id="fLatin" maxlength="120" />
+            </div>
+            <div class="form-field">
+              <label for="fCategory">카테고리 <span class="req">*</span></label>
+              <div class="input-with-add">
+                <select id="fCategory" required></select>
+                <input type="text" id="fCategoryNew" placeholder="새 카테고리" maxlength="20" />
+              </div>
+            </div>
+            <div class="form-field span-2">
+              <label for="fNotes">비고</label>
+              <textarea id="fNotes" rows="2" maxlength="200"></textarea>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend>개화</legend>
+          <div class="form-field">
+            <label>개화월 <small>(다중 선택)</small></label>
+            <div id="fMonthGrid" class="month-grid" role="group" aria-label="개화월 입력"></div>
+          </div>
+          <div class="form-field">
+            <label>개화색</label>
+            <div id="fColorChips" class="chip-row" role="group" aria-label="색상 입력"></div>
+            <div class="add-inline">
+              <input type="text" id="fColorNew" placeholder="새 색상" maxlength="10" />
+              <button type="button" id="fColorAddBtn" class="btn-mini">추가</button>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend>단가표</legend>
+          <div id="fPriceRows" class="row-editor"></div>
+          <button type="button" id="fPriceAdd" class="btn-mini">+ 규격 추가</button>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend>수급처</legend>
+          <div id="fSupplierRows" class="row-editor"></div>
+          <button type="button" id="fSupplierAdd" class="btn-mini">+ 수급처 추가</button>
+        </fieldset>
+
+        <footer class="modal-foot">
+          <button type="button" class="btn-secondary" data-close>취소</button>
+          <button type="submit" class="btn-primary">저장</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <template id="priceRowTemplate">
+    <div class="row-item price-row">
+      <input type="text" class="rf-spec" placeholder="규격 (R6, H1.0 등)" maxlength="20" />
+      <input type="text" class="rf-unit" placeholder="단위 (주, 포트)" maxlength="10" />
+      <input type="number" class="rf-price" placeholder="단가 (원)" min="0" inputmode="numeric" />
+      <button type="button" class="icon-btn row-remove" aria-label="행 제거">✕</button>
+    </div>
+  </template>
+
+  <template id="supplierRowTemplate">
+    <div class="row-item supplier-row">
+      <input type="text" class="rf-name" placeholder="농원/수목원명" maxlength="40" />
+      <input type="text" class="rf-region" placeholder="지역" maxlength="30" />
+      <input type="text" class="rf-contact" placeholder="연락처" maxlength="30" />
+      <button type="button" class="icon-btn row-remove" aria-label="행 제거">✕</button>
+    </div>
+  </template>
+
+  <div id="toast" class="toast" hidden></div>
 
   <script src="js/app.js"></script>
 </body>
