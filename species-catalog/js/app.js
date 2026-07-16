@@ -581,6 +581,37 @@
     });
   }
 
+  // Public API for other modules (e.g., importer.js)
+  window.SpeciesCatalog = {
+    getData: () => state.data,
+    findSpecies: (id) => state.data.species.find(s => s.id === id),
+    createSpecies: (payload) => {
+      const sp = { id: nextId(), ...payload };
+      state.data.species.push(sp);
+      saveData();
+      refreshFilterUi();
+      render();
+      return sp;
+    },
+    updateSpecies: (id, updater) => {
+      const idx = state.data.species.findIndex(s => s.id === id);
+      if (idx < 0) return null;
+      const updated = updater({ ...state.data.species[idx] });
+      state.data.species[idx] = { ...updated, id };
+      saveData();
+      refreshFilterUi();
+      render();
+      return state.data.species[idx];
+    },
+    ensureCategory: (name) => {
+      if (name && !state.data.categories.includes(name)) {
+        state.data.categories.push(name);
+        saveData();
+      }
+    },
+    toast: (msg) => toast(msg)
+  };
+
   async function init() {
     els.grid = q("cardGrid");
     els.empty = q("emptyState");
