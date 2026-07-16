@@ -1,0 +1,210 @@
+{
+  "categories": ["교목", "관목", "초본", "야생화", "지피식물", "덩굴식물"],
+  "colors": ["백색", "황색", "적색", "분홍", "자색", "청색", "주황", "혼색"],
+  "species": [
+    {
+      "id": "sp-001",
+      "name": "왕벚나무",
+      "scientificName": "Prunus × yedoensis",
+      "category": "교목",
+      "bloomMonths": [3, 4],
+      "colors": ["백색", "분홍"],
+      "prices": [
+        { "spec": "R6", "unit": "주", "price": 45000 },
+        { "spec": "R8", "unit": "주", "price": 85000 },
+        { "spec": "R10", "unit": "주", "price": 150000 },
+        { "spec": "R15", "unit": "주", "price": 380000 }
+      ],
+      "suppliers": [
+        { "name": "천리포수목원", "region": "충남 태안", "contact": "041-672-9982" },
+        { "name": "완주농원", "region": "전북 완주", "contact": "063-243-1122" }
+      ],
+      "notes": "가로수·공원용으로 다용. 4월 초 개화."
+    },
+    {
+      "id": "sp-002",
+      "name": "산수유",
+      "scientificName": "Cornus officinalis",
+      "category": "교목",
+      "bloomMonths": [3, 4],
+      "colors": ["황색"],
+      "prices": [
+        { "spec": "R4", "unit": "주", "price": 22000 },
+        { "spec": "R6", "unit": "주", "price": 55000 },
+        { "spec": "R8", "unit": "주", "price": 120000 }
+      ],
+      "suppliers": [
+        { "name": "구례산수유마을조합", "region": "전남 구례", "contact": "061-782-3300" }
+      ],
+      "notes": "이른 봄 노란 꽃, 가을 붉은 열매."
+    },
+    {
+      "id": "sp-003",
+      "name": "이팝나무",
+      "scientificName": "Chionanthus retusus",
+      "category": "교목",
+      "bloomMonths": [5],
+      "colors": ["백색"],
+      "prices": [
+        { "spec": "R8", "unit": "주", "price": 130000 },
+        { "spec": "R10", "unit": "주", "price": 220000 },
+        { "spec": "R12", "unit": "주", "price": 350000 }
+      ],
+      "suppliers": [
+        { "name": "김해조경농장", "region": "경남 김해", "contact": "055-336-8010" }
+      ],
+      "notes": "5월 백색 꽃, 가로수 인기 수종."
+    },
+    {
+      "id": "sp-004",
+      "name": "배롱나무",
+      "scientificName": "Lagerstroemia indica",
+      "category": "교목",
+      "bloomMonths": [7, 8, 9],
+      "colors": ["분홍", "자색", "백색"],
+      "prices": [
+        { "spec": "R6", "unit": "주", "price": 40000 },
+        { "spec": "R8", "unit": "주", "price": 90000 },
+        { "spec": "R10", "unit": "주", "price": 180000 }
+      ],
+      "suppliers": [
+        { "name": "담양원예", "region": "전남 담양", "contact": "061-381-4455" }
+      ],
+      "notes": "여름 100일간 개화, 남부 지방 적합."
+    },
+    {
+      "id": "sp-005",
+      "name": "철쭉",
+      "scientificName": "Rhododendron schlippenbachii",
+      "category": "관목",
+      "bloomMonths": [4, 5],
+      "colors": ["분홍", "적색", "백색"],
+      "prices": [
+        { "spec": "H0.3", "unit": "주", "price": 3500 },
+        { "spec": "H0.5", "unit": "주", "price": 6500 },
+        { "spec": "H0.8", "unit": "주", "price": 15000 }
+      ],
+      "suppliers": [
+        { "name": "덕유산농원", "region": "전북 무주", "contact": "063-322-9010" },
+        { "name": "화천철쭉원", "region": "강원 화천", "contact": "033-441-2020" }
+      ],
+      "notes": "군식·경계용으로 다용."
+    },
+    {
+      "id": "sp-006",
+      "name": "수국",
+      "scientificName": "Hydrangea macrophylla",
+      "category": "관목",
+      "bloomMonths": [6, 7, 8],
+      "colors": ["청색", "분홍", "백색", "자색"],
+      "prices": [
+        { "spec": "3분", "unit": "포트", "price": 4500 },
+        { "spec": "5분", "unit": "포트", "price": 9000 },
+        { "spec": "8분", "unit": "포트", "price": 18000 }
+      ],
+      "suppliers": [
+        { "name": "제주수국농원", "region": "제주 서귀포", "contact": "064-732-1155" }
+      ],
+      "notes": "토양 pH에 따라 색상 변화."
+    },
+    {
+      "id": "sp-007",
+      "name": "무궁화",
+      "scientificName": "Hibiscus syriacus",
+      "category": "관목",
+      "bloomMonths": [7, 8, 9, 10],
+      "colors": ["분홍", "자색", "백색", "혼색"],
+      "prices": [
+        { "spec": "H1.0", "unit": "주", "price": 8000 },
+        { "spec": "H1.5", "unit": "주", "price": 18000 },
+        { "spec": "H2.0", "unit": "주", "price": 35000 }
+      ],
+      "suppliers": [
+        { "name": "완주농원", "region": "전북 완주", "contact": "063-243-1122" }
+      ],
+      "notes": "국화(國花), 100일 연속 개화."
+    },
+    {
+      "id": "sp-008",
+      "name": "라벤더",
+      "scientificName": "Lavandula angustifolia",
+      "category": "초본",
+      "bloomMonths": [6, 7],
+      "colors": ["자색"],
+      "prices": [
+        { "spec": "3분", "unit": "포트", "price": 3000 },
+        { "spec": "5분", "unit": "포트", "price": 6500 }
+      ],
+      "suppliers": [
+        { "name": "허브아일랜드", "region": "경기 포천", "contact": "031-535-6494" },
+        { "name": "제주라벤더팜", "region": "제주", "contact": "064-799-8181" }
+      ],
+      "notes": "허브식물, 배수 좋은 토양 필수."
+    },
+    {
+      "id": "sp-009",
+      "name": "구절초",
+      "scientificName": "Dendranthema zawadskii",
+      "category": "야생화",
+      "bloomMonths": [9, 10, 11],
+      "colors": ["백색", "분홍"],
+      "prices": [
+        { "spec": "3분", "unit": "포트", "price": 2200 },
+        { "spec": "5분", "unit": "포트", "price": 4500 }
+      ],
+      "suppliers": [
+        { "name": "정읍구절초축제조합", "region": "전북 정읍", "contact": "063-535-4321" }
+      ],
+      "notes": "가을 대표 야생화, 다년생."
+    },
+    {
+      "id": "sp-010",
+      "name": "맥문동",
+      "scientificName": "Liriope platyphylla",
+      "category": "지피식물",
+      "bloomMonths": [7, 8],
+      "colors": ["자색"],
+      "prices": [
+        { "spec": "2~3본", "unit": "포트", "price": 900 },
+        { "spec": "5~7본", "unit": "포트", "price": 1800 }
+      ],
+      "suppliers": [
+        { "name": "부여맥문동농장", "region": "충남 부여", "contact": "041-833-7788" }
+      ],
+      "notes": "그늘·반그늘에 강함, 가로변 지피용."
+    },
+    {
+      "id": "sp-011",
+      "name": "능소화",
+      "scientificName": "Campsis grandiflora",
+      "category": "덩굴식물",
+      "bloomMonths": [7, 8, 9],
+      "colors": ["주황", "적색"],
+      "prices": [
+        { "spec": "H1.5", "unit": "주", "price": 12000 },
+        { "spec": "H2.0", "unit": "주", "price": 25000 }
+      ],
+      "suppliers": [
+        { "name": "김해조경농장", "region": "경남 김해", "contact": "055-336-8010" }
+      ],
+      "notes": "덩굴성, 벽면·아치 조경용."
+    },
+    {
+      "id": "sp-012",
+      "name": "목련",
+      "scientificName": "Magnolia kobus",
+      "category": "교목",
+      "bloomMonths": [3, 4],
+      "colors": ["백색", "분홍"],
+      "prices": [
+        { "spec": "R6", "unit": "주", "price": 55000 },
+        { "spec": "R8", "unit": "주", "price": 110000 },
+        { "spec": "R10", "unit": "주", "price": 210000 }
+      ],
+      "suppliers": [
+        { "name": "천리포수목원", "region": "충남 태안", "contact": "041-672-9982" }
+      ],
+      "notes": "이른 봄 잎보다 꽃이 먼저 개화."
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>수종 카탈로그 · 개화시기 · 단가 · 수급처</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <h1>🌿 수종 카탈로그</h1>
+      <p class="subtitle">개화시기 · 단가표 · 수급처를 한눈에</p>
+    </div>
+  </header>
+
+  <main class="container main">
+    <aside class="filters" aria-label="필터">
+      <div class="filter-header">
+        <h2>필터</h2>
+        <button id="resetBtn" class="btn-ghost">초기화</button>
+      </div>
+
+      <div class="filter-group">
+        <label for="searchInput">이름 검색</label>
+        <input type="text" id="searchInput" placeholder="수종명 또는 학명 검색" />
+      </div>
+
+      <div class="filter-group">
+        <label>개화월</label>
+        <div id="monthChips" class="chips" role="group" aria-label="개화월 선택"></div>
+      </div>
+
+      <div class="filter-group">
+        <label>카테고리</label>
+        <div id="categoryChips" class="chips" role="group" aria-label="카테고리 선택"></div>
+      </div>
+
+      <div class="filter-group">
+        <label>개화색</label>
+        <div id="colorChips" class="chips" role="group" aria-label="개화색 선택"></div>
+      </div>
+
+      <div class="filter-group">
+        <label for="supplierSelect">수급처</label>
+        <select id="supplierSelect">
+          <option value="">전체</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label>가격 범위 (원)</label>
+        <div class="price-range">
+          <input type="number" id="minPrice" placeholder="최소" min="0" />
+          <span>~</span>
+          <input type="number" id="maxPrice" placeholder="최대" min="0" />
+        </div>
+        <small class="hint">단가표 중 하나라도 범위 내면 매칭</small>
+      </div>
+    </aside>
+
+    <section class="results" aria-label="검색 결과">
+      <div class="results-header">
+        <div>
+          <strong id="resultCount">0</strong> 종의 수종
+        </div>
+        <div class="sort-wrap">
+          <label for="sortSelect">정렬</label>
+          <select id="sortSelect">
+            <option value="name">이름순</option>
+            <option value="priceAsc">최저가 낮은순</option>
+            <option value="priceDesc">최저가 높은순</option>
+            <option value="bloomEarly">개화 이른순</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="cardGrid" class="grid"></div>
+      <p id="emptyState" class="empty" hidden>조건에 맞는 수종이 없습니다. 필터를 완화해 보세요.</p>
+    </section>
+  </main>
+
+  <template id="cardTemplate">
+    <article class="card">
+      <div class="card-head">
+        <div>
+          <h3 class="card-title"></h3>
+          <p class="card-scientific"></p>
+        </div>
+        <span class="badge category-badge"></span>
+      </div>
+
+      <div class="card-meta">
+        <div class="meta-item">
+          <span class="meta-label">개화시기</span>
+          <span class="bloom-months"></span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">개화색</span>
+          <span class="color-dots"></span>
+        </div>
+      </div>
+
+      <details class="card-section">
+        <summary>단가표</summary>
+        <table class="price-table">
+          <thead>
+            <tr><th>규격</th><th>단위</th><th>단가</th></tr>
+          </thead>
+          <tbody class="price-body"></tbody>
+        </table>
+      </details>
+
+      <details class="card-section">
+        <summary>수급처</summary>
+        <ul class="supplier-list"></ul>
+      </details>
+
+      <p class="card-notes"></p>
+    </article>
+  </template>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
