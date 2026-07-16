@@ -532,6 +532,14 @@
     els.applyBtn.addEventListener("click", apply);
   }
 
+  // Public utilities for other modules (e.g., species add modal)
+  window.SpeciesImporter = {
+    extract,
+    parseText,
+    detectSupplier,
+    extractCandidateRows
+  };
+
   function init() {
     els.modal = document.getElementById("importerModal");
     els.docFile = document.getElementById("docFile");

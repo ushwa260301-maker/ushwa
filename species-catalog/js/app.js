@@ -299,6 +299,15 @@
     state.editingId = id ?? null;
     const sp = id ? state.data.species.find(s => s.id === id) : null;
     document.getElementById("modalTitle").textContent = sp ? "수종 수정" : "수종 추가";
+    // 명세서 첨부 UI 리셋 (수정 모드에서는 섹션 자체를 숨김)
+    const attachSec = document.getElementById("speciesAttachSection");
+    const attachProg = document.getElementById("fAttachProgress");
+    const attachSum = document.getElementById("fAttachSummary");
+    if (attachSec) attachSec.hidden = !!sp;
+    if (attachProg) attachProg.hidden = true;
+    if (attachSum) { attachSum.hidden = true; attachSum.textContent = ""; attachSum.classList.remove("attach-empty"); }
+    const attachFile = document.getElementById("fAttachFile");
+    if (attachFile) attachFile.value = "";
     q("fEditingId").value = sp?.id || "";
     q("fName").value = sp?.name || "";
     q("fLatin").value = sp?.scientificName || "";
@@ -579,6 +588,127 @@
       rebuildFormColorChips();
       q("fColorNew").value = "";
     });
+
+    // 명세서 첨부 → 폼 자동 채움
+    q("fAttachFile").addEventListener("change", handleAttachFile);
+  }
+
+  async function handleAttachFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!window.SpeciesImporter) {
+      alert("명세서 파서가 아직 로드되지 않았습니다. 잠시 후 다시 시도해 주세요.");
+      e.target.value = "";
+      return;
+    }
+    const progress = q("fAttachProgress");
+    const summary = q("fAttachSummary");
+    const fillEl = q("fAttachFill");
+    const pctEl = q("fAttachPercent");
+    const statusEl = q("fAttachStatus");
+    progress.hidden = false;
+    summary.hidden = true;
+    fillEl.style.width = "0%";
+    pctEl.textContent = "0%";
+    statusEl.textContent = "시작…";
+
+    // 진행률 폴링용 옵저버 (importer.js의 내부 progress DOM을 재사용하지 않고 별도)
+    const observer = new MutationObserver(() => {
+      const importerFill = document.getElementById("ocrFill");
+      const importerPct = document.getElementById("ocrPercent");
+      const importerStatus = document.getElementById("ocrStatus");
+      if (importerFill) fillEl.style.width = importerFill.style.width;
+      if (importerPct) pctEl.textContent = importerPct.textContent;
+      if (importerStatus) statusEl.textContent = importerStatus.textContent;
+    });
+    const importerProgress = document.getElementById("ocrFill")?.parentElement;
+    if (importerProgress) observer.observe(importerProgress, { attributes: true, subtree: true, childList: true, characterData: true });
+
+    try {
+      const text = await window.SpeciesImporter.extract(file);
+      observer.disconnect();
+      fillEl.style.width = "100%";
+      pctEl.textContent = "100%";
+      statusEl.textContent = "파싱 중…";
+
+      const { supplier, rows } = window.SpeciesImporter.parseText(text);
+      applyExtractedToForm(supplier, rows);
+
+      const parts = [];
+      if (supplier.name) parts.push(`상호: ${supplier.name}`);
+      if (supplier.region) parts.push(`소재지: ${supplier.region.slice(0, 30)}${supplier.region.length > 30 ? "…" : ""}`);
+      if (supplier.contact) parts.push(`연락처: ${supplier.contact}`);
+      const rowSummary = `품목 ${rows.length}건`;
+      const detected = [rowSummary, ...parts].join(" · ");
+      summary.hidden = false;
+      summary.textContent = rows.length || parts.length
+        ? `✓ 인식 완료 — ${detected}. 아래 필드를 검토·수정하고 저장하세요.`
+        : "⚠ 자동 인식된 값이 없습니다. 아래 필드를 직접 입력해 주세요. (손글씨·저해상도 문서는 OCR 정확도가 낮습니다)";
+      summary.classList.toggle("attach-empty", !rows.length && !parts.length);
+      setTimeout(() => { progress.hidden = true; }, 800);
+    } catch (err) {
+      observer.disconnect();
+      console.error(err);
+      progress.hidden = true;
+      summary.hidden = false;
+      summary.textContent = "⚠ 추출 실패: " + err.message;
+      summary.classList.add("attach-empty");
+    } finally {
+      e.target.value = "";
+    }
+  }
+
+  function applyExtractedToForm(supplier, rows) {
+    // 수종명 (기존 값이 비어있을 때만 채움)
+    const firstRow = rows[0];
+    if (firstRow && !q("fName").value.trim()) {
+      q("fName").value = firstRow.name;
+    }
+    // 단가표: 기존 비어있는 초기 행을 지우고 추출값 삽입
+    const priceWrap = q("fPriceRows");
+    // 완전히 비어있는 행만 삭제
+    [...priceWrap.querySelectorAll(".price-row")].forEach(row => {
+      const spec = row.querySelector(".rf-spec").value.trim();
+      const unit = row.querySelector(".rf-unit").value.trim();
+      const price = row.querySelector(".rf-price").value.trim();
+      if (!spec && !unit && !price) row.remove();
+    });
+    rows.forEach(r => {
+      const tpl = q("priceRowTemplate").content.firstElementChild.cloneNode(true);
+      tpl.querySelector(".rf-spec").value = r.spec || "";
+      tpl.querySelector(".rf-unit").value = r.unit || "";
+      tpl.querySelector(".rf-price").value = r.price ?? "";
+      tpl.querySelector(".row-remove").addEventListener("click", () => tpl.remove());
+      priceWrap.appendChild(tpl);
+    });
+    if (!priceWrap.querySelector(".price-row")) {
+      // 아무것도 없으면 빈 행 하나 남겨두기
+      priceWrap.appendChild(makePriceRowEmpty());
+    }
+    // 수급처: 첫 행에 채우거나 새 행 추가
+    if (supplier.name || supplier.region || supplier.contact) {
+      const supWrap = q("fSupplierRows");
+      const firstSup = supWrap.querySelector(".supplier-row");
+      const isEmpty = firstSup &&
+        !firstSup.querySelector(".rf-name").value.trim() &&
+        !firstSup.querySelector(".rf-region").value.trim() &&
+        !firstSup.querySelector(".rf-contact").value.trim();
+      const target = isEmpty ? firstSup : (() => {
+        const tpl = q("supplierRowTemplate").content.firstElementChild.cloneNode(true);
+        tpl.querySelector(".row-remove").addEventListener("click", () => tpl.remove());
+        supWrap.appendChild(tpl);
+        return tpl;
+      })();
+      target.querySelector(".rf-name").value = supplier.name || "";
+      target.querySelector(".rf-region").value = supplier.region || "";
+      target.querySelector(".rf-contact").value = supplier.contact || "";
+    }
+  }
+
+  function makePriceRowEmpty() {
+    const tpl = q("priceRowTemplate").content.firstElementChild.cloneNode(true);
+    tpl.querySelector(".row-remove").addEventListener("click", () => tpl.remove());
+    return tpl;
   }
 
   // Public API for other modules (e.g., importer.js)
