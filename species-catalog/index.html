@@ -272,19 +272,19 @@
 
         <section class="step-panel" data-panel="3" hidden>
           <fieldset class="form-section">
-            <legend>수급처 (전체 항목에 적용)</legend>
+            <legend>수급처 (전체 항목에 적용) · 필수</legend>
             <div class="form-grid">
               <div class="form-field">
-                <label for="impSupplierName">농원/수목원명</label>
-                <input type="text" id="impSupplierName" maxlength="40" />
+                <label for="impSupplierName">상호 <span class="req">*</span></label>
+                <input type="text" id="impSupplierName" maxlength="40" required />
               </div>
               <div class="form-field">
-                <label for="impSupplierRegion">지역</label>
-                <input type="text" id="impSupplierRegion" maxlength="30" />
+                <label for="impSupplierContact">핸드폰 번호 <span class="req">*</span></label>
+                <input type="text" id="impSupplierContact" maxlength="30" required inputmode="tel" />
               </div>
               <div class="form-field span-2">
-                <label for="impSupplierContact">연락처</label>
-                <input type="text" id="impSupplierContact" maxlength="30" />
+                <label for="impSupplierRegion">사업장 소재지 <span class="req">*</span></label>
+                <input type="text" id="impSupplierRegion" maxlength="120" required />
               </div>
             </div>
           </fieldset>
@@ -296,10 +296,10 @@
                 <thead>
                   <tr>
                     <th style="width: 30px"><input type="checkbox" id="candAll" checked /></th>
-                    <th>수종명</th>
-                    <th>규격</th>
+                    <th>품목 <span class="req">*</span></th>
+                    <th>규격 <span class="req">*</span></th>
                     <th>단위</th>
-                    <th>단가(원)</th>
+                    <th>단가(원) <span class="req">*</span></th>
                     <th>대상 수종</th>
                   </tr>
                 </thead>

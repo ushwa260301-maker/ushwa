@@ -1023,6 +1023,21 @@ label.btn-secondary { cursor: pointer; }
   font-size: 13px;
   margin: 0;
 }
+.cand-table thead th .req {
+  color: var(--danger);
+  margin-left: 2px;
+  font-weight: 700;
+}
+.cand-table tbody tr.incomplete {
+  background: var(--danger-soft);
+}
+.cand-table tbody tr.incomplete td:first-child {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+.cand-table tbody tr.incomplete input::placeholder {
+  color: var(--danger);
+  opacity: 0.7;
+}
 
 /* ===== Toast ===== */
 .toast {
