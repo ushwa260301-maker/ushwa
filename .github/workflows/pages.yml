@@ -1,3 +1,4 @@
+# Trigger: re-run after repo visibility + Pages Source enablement.
 name: Deploy species-catalog to GitHub Pages
 
 on:
