@@ -1,0 +1,308 @@
+/* ============================================================
+   card.css — Species card component + subsections:
+   phenology strip, purchase-frequency heatmap, colors, price
+   table, supplier list, notes, empty state.
+   ============================================================ */
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 22px 22px 20px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: relative;
+  animation: fadein 0.24s ease-out both;
+}
+@keyframes fadein {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card { animation: none; }
+  * { transition: none !important; }
+}
+
+/* -------------- Hover-revealed edit / delete -------------- */
+.card-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.14s;
+}
+.card:hover .card-actions,
+.card:focus-within .card-actions { opacity: 1; }
+.card-actions .delete-btn:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+/* -------------- Head (id, title, latin, category badge) -------------- */
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.card-id {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: var(--mono);
+  margin-bottom: 6px;
+}
+.card-title {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-wrap: balance;
+  line-height: 1.15;
+}
+.card-latin {
+  margin: 4px 0 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--muted);
+}
+.card-cat {
+  flex-shrink: 0;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* -------------- Phenology strip (bloom months) -------------- */
+.phenology { display: flex; flex-direction: column; gap: 6px; }
+.phenology-label {
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.phenology-label .lbl {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.phenology-label .val {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--bloom-ink);
+}
+.phenology-strip {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 2px;
+  background: var(--rule-soft);
+  padding: 3px;
+  border-radius: 4px;
+}
+.ph-cell {
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+  padding: 5px 0;
+  font-family: var(--mono);
+  font-feature-settings: "tnum" 1;
+  border-radius: 2px;
+}
+.ph-cell.active { background: var(--bloom); color: #fff8ec; font-weight: 600; }
+:root[data-theme="dark"] .ph-cell.active { color: #1a1408; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ph-cell.active { color: #1a1408; }
+}
+
+/* -------------- Purchase frequency heatmap (GitHub-style, color-only) -------------- */
+.freq { display: flex; flex-direction: column; gap: 6px; }
+.freq-label {
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.freq-label .lbl {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.freq-label .val {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--accent-strong);
+}
+.freq-strip {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 2px;
+  background: var(--rule-soft);
+  padding: 3px;
+  border-radius: 4px;
+}
+.pf-cell {
+  border-radius: 2px;
+  min-height: 20px;
+  transition: transform 0.1s ease-out;
+}
+.pf-cell[data-level="0"] { background: var(--freq-0); }
+.pf-cell[data-level="1"] { background: var(--freq-1); }
+.pf-cell[data-level="2"] { background: var(--freq-2); }
+.pf-cell[data-level="3"] { background: var(--freq-3); }
+.pf-cell[data-level="4"] { background: var(--freq-4); }
+.pf-cell:hover { transform: scale(1.12); z-index: 1; position: relative; }
+
+/* -------------- Bloom colors row -------------- */
+.color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.color-row .lbl {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  font-weight: 600;
+  margin-right: 4px;
+}
+.color-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-2);
+  background: var(--panel-2);
+  padding: 3px 8px 3px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--rule-soft);
+}
+.color-tag .swatch {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.1);
+}
+
+/* -------------- Section labels (Price / Supplier headings) -------------- */
+.section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.section-label .n { font-family: var(--mono); font-size: 10px; letter-spacing: 0; }
+
+/* -------------- Price table -------------- */
+.price-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.price-table th, .price-table td {
+  padding: 7px 0;
+  border-bottom: 1px dotted var(--rule);
+  text-align: left;
+}
+.price-table tr:last-child th, .price-table tr:last-child td { border-bottom: none; }
+.price-table th {
+  font-weight: 500;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.price-table td.unit { color: var(--muted); font-size: 12px; }
+.price-table td.price {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  font-weight: 500;
+}
+.price-table td.price .won {
+  color: var(--muted);
+  font-weight: 400;
+  margin-left: 2px;
+  font-size: 11px;
+}
+
+/* -------------- Supplier list -------------- */
+.supplier-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.supplier-list li {
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border-radius: 4px;
+  border-left: 2px solid var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.supplier-name { font-size: 13px; color: var(--ink); font-weight: 500; }
+.supplier-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.supplier-meta .region { color: var(--ink-2); }
+.supplier-meta .dot {
+  display: inline-block;
+  width: 2px; height: 2px;
+  background: var(--muted);
+  border-radius: 50%;
+}
+
+/* -------------- Notes -------------- */
+.card-notes {
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule-soft);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.card-notes:empty { display: none; }
+
+/* -------------- Empty state -------------- */
+.empty {
+  padding: 80px 20px;
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed var(--rule);
+  border-radius: 6px;
+  background: var(--panel);
+}
+.empty .h {
+  font-family: var(--serif);
+  font-size: 18px;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
