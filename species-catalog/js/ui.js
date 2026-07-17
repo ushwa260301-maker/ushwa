@@ -9,6 +9,7 @@
 
 import { state } from "./state.js";
 import { applyPipeline } from "./filter.js";
+import { enrichAllSpecies } from "./stats.js";
 import {
   createCard,
   buildMonthGrid,
@@ -35,10 +36,22 @@ export function cacheElements() {
 
 /**
  * Render the filtered + sorted card grid.
+ *
+ * Each Species record is first enriched via `enrichAllSpecies()` — that
+ * step overlays derived fields (`prices`, `purchaseCounts`, `stats.*`)
+ * computed from `state.data.invoices` + `state.data.invoiceItems`. The
+ * filter / sort / card-render code below sees the enriched shape and
+ * doesn't need to know these values are computed.
+ *
  * @param {{onEdit:(id:string)=>void, onDelete:(id:string)=>void}} handlers
  */
 export function render(handlers) {
-  const list = applyPipeline(state.data.species, state.filters, state.sort);
+  const enriched = enrichAllSpecies(
+    state.data.species,
+    state.data.invoices,
+    state.data.invoiceItems
+  );
+  const list = applyPipeline(enriched, state.filters, state.sort);
   els.resultCount.textContent = list.length;
   els.cardGrid.innerHTML = "";
 

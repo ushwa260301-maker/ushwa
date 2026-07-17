@@ -77,12 +77,31 @@ export function earliestBloomOf(sp) {
   return sp.bloomMonths?.length ? Math.min(...sp.bloomMonths) : 13;
 }
 
-/** Generate the next unique sp-### id for a new species. */
-export function nextId(species) {
-  const nums = species
-    .map(s => (s.id || "").match(/^sp-(\d+)$/))
+/**
+ * Generate the next unique `{prefix}-###` id given the existing records.
+ *
+ * Usage:
+ *   nextId("sp",   state.data.species)        → "sp-013"
+ *   nextId("inv",  state.data.invoices)       → "inv-050"
+ *   nextId("item", state.data.invoiceItems)   → "item-123"
+ *
+ * Kept generic so id generation is one function across the three collections.
+ * The 2-arg form (prefix, records) is the modern signature; the 1-arg legacy
+ * form (records) implicitly uses the "sp" prefix and is kept so any older
+ * calls still work.
+ */
+export function nextId(prefixOrRecords, maybeRecords) {
+  const prefix = typeof prefixOrRecords === "string" ? prefixOrRecords : "sp";
+  const records = typeof prefixOrRecords === "string" ? maybeRecords : prefixOrRecords;
+  const re = new RegExp("^" + escapeRegex(prefix) + "-(\\d+)$");
+  const nums = (records || [])
+    .map(r => (r.id || "").match(re))
     .filter(Boolean)
     .map(m => parseInt(m[1], 10));
   const n = (nums.length ? Math.max(...nums) : 0) + 1;
-  return "sp-" + String(n).padStart(3, "0");
+  return prefix + "-" + String(n).padStart(3, "0");
+}
+
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

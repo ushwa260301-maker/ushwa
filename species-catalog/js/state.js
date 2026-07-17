@@ -8,12 +8,26 @@
  * migration surface is small.
  */
 
-/** Persistent catalog data (seeded from data/species.json, then user-editable). */
+/**
+ * Persistent catalog data.
+ *
+ * Since the data-model refactor, this holds *three normalized collections*:
+ *   species        — the taxonomy record (id, name, latin, category, …)
+ *   invoices       — one per received 거래명세서 (id, invoiceDate, supplier, …)
+ *   invoiceItems   — one per line inside an invoice, linked back by
+ *                    speciesId + invoiceId.
+ *
+ * Every purchase-derived statistic (avg / min / max price, monthly heatmap,
+ * main supplier, last purchase, …) is computed from these tables via
+ * `stats.js`; nothing is stored twice.
+ */
 export const state = {
   data: {
     categories: [],
     colors: [],
-    species: []
+    species: [],       // Species records — metadata only
+    invoices: [],      // Invoice header records
+    invoiceItems: []   // InvoiceItem line records
   },
   filters: {
     search: "",

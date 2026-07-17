@@ -12,10 +12,10 @@ import { minPriceOf, earliestBloomOf } from "./utils.js";
  * @returns {boolean}
  */
 export function matches(sp, filters) {
-  // Name / scientific name substring
+  // Name / scientific-name (`latin`) substring
   if (filters.search) {
     const q = filters.search.toLowerCase();
-    const hay = `${sp.name} ${sp.scientificName || ""}`.toLowerCase();
+    const hay = `${sp.name} ${sp.latin || sp.scientificName || ""}`.toLowerCase();
     if (!hay.includes(q)) return false;
   }
 

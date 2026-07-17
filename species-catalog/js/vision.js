@@ -95,25 +95,119 @@ export async function analyzeInvoice(file) {
     }
   };
 
-  /*
-    // ------------------------------------------------------------
-    // Real integration sketch (Claude Vision):
-    //
-    // const base64 = await fileToBase64(file);
-    // const res = await fetch("/api/vision/analyze-invoice", {
-    //   method: "POST",
-    //   headers: { "Content-Type": "application/json" },
-    //   body: JSON.stringify({ image: base64, mimeType: file.type })
-    // });
-    // if (!res.ok) throw new Error(`Vision HTTP ${res.status}`);
-    // const json = await res.json();
-    // return { ok: true, supplier: json.supplier, rows: json.rows };
-    //
-    // Backend prompt should return JSON matching the AnalyzeResult
-    // shape: extract 상호 / 사업장 소재지 / 핸드폰 번호 into `supplier`,
-    // and each 품목 / 규격 / 단위 / 단가 line into `rows[]`.
-    // ------------------------------------------------------------
-  */
+  /* eslint-disable no-unreachable */
+  // ==========================================================
+  // 🔌 REAL VISION INTEGRATION — SWAP EITHER PROVIDER IN HERE
+  //
+  // The rest of the app never needs to change: as long as this function
+  // resolves to an `AnalyzeResult` (see the typedef at the bottom of this
+  // file), modal.js will apply the supplier + row extractions to the form.
+  //
+  // Two integration points are pre-marked below; pick one, delete the
+  // other, and remove the `return { ok: false, ... }` block above.
+  // ==========================================================
+
+  // ----------------------------------------------------------
+  // Option A · Claude Vision (Anthropic)
+  // ----------------------------------------------------------
+  // Endpoint (recommended: proxy through your backend so the API key
+  // stays server-side):
+  //
+  //   POST https://api.anthropic.com/v1/messages
+  //   Headers:
+  //     x-api-key:         <ANTHROPIC_API_KEY>
+  //     anthropic-version: 2023-06-01
+  //     content-type:      application/json
+  //
+  //   Body:
+  //     {
+  //       "model": "claude-sonnet-5",
+  //       "max_tokens": 2048,
+  //       "messages": [{
+  //         "role": "user",
+  //         "content": [
+  //           { "type": "image",
+  //             "source": { "type": "base64",
+  //                         "media_type": file.type,
+  //                         "data": <base64> }
+  //           },
+  //           { "type": "text", "text":
+  //             "이 거래명세서에서 상호/사업장 소재지/핸드폰 번호를 추출하고, " +
+  //             "품목/규격/단위/단가/수량/공급가액을 JSON 배열로 반환하세요. " +
+  //             "다음 스키마로 답하세요: { supplier: {name, region, contact}, " +
+  //             "rows: [{name, spec, unit, quantity, unitPrice, amount}] }"
+  //           }
+  //         ]
+  //       }]
+  //     }
+  //
+  //   const claudeRes = await fetch("/api/claude/vision", {
+  //     method: "POST",
+  //     headers: { "Content-Type": "application/json" },
+  //     body: JSON.stringify({ image: await fileToBase64(file), mimeType: file.type })
+  //   });
+  //   const claudeJson = await claudeRes.json();
+  //   return normalizeToAnalyzeResult(claudeJson);
+
+  // ----------------------------------------------------------
+  // Option B · OpenAI Vision (gpt-4o / gpt-5)
+  // ----------------------------------------------------------
+  // Endpoint (again, prefer a backend proxy):
+  //
+  //   POST https://api.openai.com/v1/chat/completions
+  //   Headers:
+  //     Authorization: Bearer <OPENAI_API_KEY>
+  //     content-type:  application/json
+  //
+  //   Body:
+  //     {
+  //       "model": "gpt-4o",
+  //       "response_format": { "type": "json_object" },
+  //       "messages": [{
+  //         "role": "user",
+  //         "content": [
+  //           { "type": "text", "text":
+  //             "Extract 상호/사업장 소재지/핸드폰 번호 and each row's " +
+  //             "품목/규격/단위/단가/수량/공급가액. Answer in JSON: " +
+  //             "{ supplier: {name, region, contact}, rows: [...] }"
+  //           },
+  //           { "type": "image_url",
+  //             "image_url": { "url": `data:${file.type};base64,${base64}` }
+  //           }
+  //         ]
+  //       }]
+  //     }
+  //
+  //   const openaiRes = await fetch("/api/openai/vision", {
+  //     method: "POST",
+  //     headers: { "Content-Type": "application/json" },
+  //     body: JSON.stringify({ image: await fileToBase64(file), mimeType: file.type })
+  //   });
+  //   const openaiJson = await openaiRes.json();
+  //   return normalizeToAnalyzeResult(openaiJson);
+
+  // Shared helpers you'll want alongside either provider:
+  //
+  //   async function fileToBase64(file) {
+  //     return new Promise((resolve, reject) => {
+  //       const r = new FileReader();
+  //       r.onload = () => resolve(r.result.split(",")[1]);
+  //       r.onerror = reject;
+  //       r.readAsDataURL(file);
+  //     });
+  //   }
+  //
+  //   function normalizeToAnalyzeResult(json) {
+  //     return {
+  //       ok: true,
+  //       supplier: json.supplier || { name:"", region:"", contact:"" },
+  //       rows: (json.rows || []).map(r => ({
+  //         name: r.name || "", spec: r.spec || "", unit: r.unit || "",
+  //         price: Number(r.unitPrice ?? r.price ?? 0)
+  //       }))
+  //     };
+  //   }
+  /* eslint-enable no-unreachable */
 }
 
 /**

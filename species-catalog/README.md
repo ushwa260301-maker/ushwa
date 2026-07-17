@@ -17,19 +17,20 @@ species-catalog/
 │   └── modal.css        # 모달 셸·폼 섹션·행 편집기·명세서 첨부
 │
 ├── js/                  # 모두 ES6 모듈 (type="module")
-│   ├── app.js           # 엔트리 포인트: 부트스트랩 + 이벤트 배선
-│   ├── state.js         # 중앙 상태 (state, formState, resetFilters)
-│   ├── ui.js            # 최상위 렌더링·요소 캐시·토스트·테마 토글
-│   ├── filter.js        # 필터·정렬 순수 함수 (matches, sortList)
+│   ├── app.js           # 엔트리 포인트: 부트스트랩 + 이벤트 배선 + Species/Invoice 오케스트레이션
+│   ├── state.js         # 중앙 상태 — 3 컬렉션 (species / invoices / invoiceItems)
+│   ├── ui.js            # 렌더링·요소 캐시·토스트·테마 · enrichSpecies 파이프라인
+│   ├── filter.js        # 필터·정렬 순수 함수
 │   ├── components.js    # DOM 빌더 (createCard, chips, month-grid, row 편집기)
 │   ├── modal.js         # 수종 추가/수정 모달 (파일 첨부 + 텍스트 파싱 포함)
-│   ├── storage.js       # LocalStorage 인터페이스 (교체 가능)
-│   ├── importExport.js  # JSON 내보내기·가져오기, 시드 로드
-│   ├── vision.js        # OCR: analyzeInvoice() Mock + parseInvoiceText() 파서
-│   └── utils.js         # 순수 유틸리티·상수 (COLOR_MAP, MONTHS, colorFor …)
+│   ├── storage.js       # 3 컬렉션 LocalStorage 인터페이스 + v1→v2 자동 마이그레이션
+│   ├── importExport.js  # JSON 내보내기·가져오기, 시드 로드 (신·구 스키마 모두 수용)
+│   ├── vision.js        # OCR: analyzeInvoice() Mock + parseInvoiceText() · Claude/OpenAI 훅
+│   ├── stats.js         # ★ 구매 통계 계산 (avg/min/max/last/main/heatmap 등)
+│   └── utils.js         # 순수 유틸리티·상수 (COLOR_MAP, MONTHS, colorFor, nextId …)
 │
 ├── data/
-│   └── species.json     # 시드 데이터 (첫 방문 시 로드 → localStorage로 이관)
+│   └── species.json     # 시드 데이터 — species + invoices + invoiceItems 3 컬렉션
 │
 ├── assets/
 │   ├── icons/           # 향후 아이콘 자산용 (현재 비어 있음)
@@ -48,133 +49,209 @@ python3 -m http.server 8080
 # → http://localhost:8080
 ```
 
-또는:
-
-- **VS Code**: `Live Server` 확장 설치 후 `index.html` 우클릭 → `Open with Live Server`
-- `npx serve .` · `npx http-server .` 등 정적 서버 무엇이든 무방
+또는 VS Code Live Server 확장, `npx serve .` 등 정적 서버 무엇이든 무방합니다.
 
 ## 배포
 
-빌드 단계가 없어 파일 그대로 정적 호스팅 서비스에 올리면 됩니다:
+빌드 단계가 없어 파일 그대로 정적 호스팅 서비스에 올리면 됩니다.
 
-- **Vercel**: 리포지토리 임포트 → Build 명령 없음, Output 디렉토리 `species-catalog/`
-- **Netlify**: 새 사이트 → Publish directory `species-catalog/`
-- **GitHub Pages**: 저장소 Settings → Pages → Source: `main` 브랜치 / `species-catalog/` 폴더
-- **Cloudflare Pages / S3 / Nginx**: 4개 CSS + JS 모듈 + `data/species.json`만 서빙
+- **GitHub Pages** — `.github/workflows/pages.yml`이 이미 커밋되어 있어 `species-catalog/`를 자동 배포합니다. 저장소 Settings → Pages → Source: **GitHub Actions** 지정 1회면 됩니다.
+- **Vercel / Netlify / Cloudflare Pages** — Root Directory를 `species-catalog`로만 지정하면 됩니다.
 
-## 모듈 아키텍처
+**Live URL**: https://ushwa260301-maker.github.io/ushwa/
 
-**의존 방향** (순환 없음):
+---
+
+# 📐 데이터 모델 (v2 — 3-Collection Normalized)
+
+## 스키마 다이어그램
 
 ```
-utils.js  ←────────┐
-                   │
-state.js ← storage.js
-   ↑              ↑
-   │              │
-   ├── filter.js  │
-   ├── components.js
-   ├── vision.js
-   ├── importExport.js
-   ├── ui.js  ─→  components.js, filter.js, state.js
-   └── modal.js ─→ components.js, vision.js, state.js
-                 
-app.js ─→ 모두 임포트하여 배선
+┌─────────────────────────────────────┐          ┌──────────────────────────────────────┐
+│  Species                            │          │  Invoice                             │
+│─────────────────────────────────────│          │──────────────────────────────────────│
+│  id            (sp-###)             │          │  id                  (inv-###)       │
+│  name                               │          │  invoiceDate         (YYYY-MM-DD)    │
+│  latin                              │          │  supplier                            │
+│  category                           │          │  supplierAddress                     │
+│  bloomMonths   [Number]             │          │  supplierPhone                       │
+│  colors        [String]             │          │  invoiceNumber                       │
+│  suppliers     [{name,region,…}]    │          │  createdAt           (ISO 8601)      │
+│  notes                              │          └──────────────────────────────────────┘
+└─────────────────────────────────────┘                          ▲
+              ▲                                                  │
+              │  speciesId (FK)                                  │  invoiceId (FK)
+              │                                                  │
+              │       ┌──────────────────────────────────────────┘
+              │       │
+              ▼       ▼
+      ┌─────────────────────────────────────────┐
+      │  InvoiceItem                            │
+      │─────────────────────────────────────────│
+      │  id             (item-###)              │
+      │  invoiceId      →  Invoice.id           │
+      │  speciesId      →  Species.id           │
+      │  speciesName    (denormalized display)  │
+      │  spec           (R6, H1.0, 3분 …)       │
+      │  unit           (주, 포트 …)             │
+      │  quantity       (Number)                │
+      │  unitPrice      (Number, 원)            │
+      │  amount         (Number, 원)            │
+      └─────────────────────────────────────────┘
 ```
 
-### 데이터 흐름
+핵심: **Species에는 시세·이력 정보를 저장하지 않습니다.** 모든 통계는 InvoiceItem 기록에서 파생됩니다.
 
-1. **부트**: `storage.load()` → 없으면 `loadSeed()` → `state.data` 채움
-2. **필터 변경**: 사용자 입력 → `state.filters.*` 갱신 → `render()` 호출
-3. **CRUD**: 모달 저장/삭제 → `app.js`의 `saveSpecies/deleteSpecies` → `storage.save` + `render`
-4. **가져오기/내보내기**: `importExport.js` → 검증 후 `state.data` 교체 → 저장 + 리렌더
+## Species → InvoiceItem → 카드로 흐르는 계산 파이프라인
+
+```
+                data/species.json (또는 localStorage v2)
+                              │
+                              ▼
+                    state.data = {
+                      species,       ◄── 메타데이터 only
+                      invoices,      ◄── 명세서 헤더
+                      invoiceItems   ◄── 각 라인
+                    }
+                              │
+                              │  ui.render() 호출 시
+                              ▼
+                    enrichAllSpecies(species, invoices, invoiceItems)
+                              │
+                              │  stats.js:
+                              │   • calculatePriceTable
+                              │   • calculateMonthlyPurchaseHeatmap
+                              │   • calculateAveragePrice
+                              │   • calculateMinPrice / calculateMaxPrice
+                              │   • calculateLastPurchase
+                              │   • calculateMainSupplier
+                              │   • calculatePurchaseFrequency
+                              │   • calculateRecentPrice
+                              ▼
+                    [enriched species with .prices, .purchaseCounts, .stats.*]
+                              │
+                              │  filter.js · applyPipeline
+                              ▼
+                    createCard() ──► DOM
+```
+
+## `stats.js` API 요약
+
+| 함수 | 반환 | 설명 |
+|---|---|---|
+| `calculateAveragePrice(items)` | `number \| null` | 단가 평균 |
+| `calculateMinPrice(items)` | `number \| null` | 최저 단가 |
+| `calculateMaxPrice(items)` | `number \| null` | 최고 단가 |
+| `calculatePurchaseFrequency(items)` | `number` | 총 구매 수량 |
+| `calculateLastPurchase(items, invoices)` | `YYYY-MM-DD \| null` | 최근 구매일 |
+| `calculateMainSupplier(items, invoices)` | `string \| null` | 최다 거래 수급처 |
+| `calculateMonthlyPurchaseHeatmap(items, invoices)` | `number[12]` | 월별 구매 히트맵 |
+| `calculatePriceTable(items, invoices)` | `[{spec,unit,price}]` | 규격별 최근 단가 |
+| `calculateRecentPrice(items, invoices)` | `number \| null` | 최근 구매 단가 |
+| `enrichSpecies(sp, invoices, items)` | `Species+` | 카드 렌더용 합성 객체 |
+| `enrichAllSpecies(species, invoices, items)` | `Species+[]` | 일괄 enrichment |
+
+`items`는 항상 `invoiceItems.filter(i => i.speciesId === sp.id)` 결과입니다 (`itemsForSpecies()` 헬퍼 제공).
+
+## LocalStorage 컬렉션 키
+
+| 키 | 값 |
+|---|---|
+| `species-catalog:v2:species` | `Species[]` |
+| `species-catalog:v2:invoices` | `Invoice[]` |
+| `species-catalog:v2:invoiceItems` | `InvoiceItem[]` |
+| `species-catalog:v2:meta` | `{categories, colors}` |
+| `species-catalog:v1` (레거시) | 자동 감지·마이그레이션 후 삭제 |
+
+v1 blob이 있을 경우 `storage.load()`가 자동으로 → v2 4 개 키로 마이그레이션하고 원본을 삭제합니다.
+
+## 모달 저장 흐름 (Species / Invoice 분리)
+
+```
+사용자가 모달에서 저장 클릭
+              │
+              ▼
+        collectForm()  ──►  { name, latin, category, bloomMonths, colors,
+                              suppliers, notes,  ⚠ prices, purchaseCounts }
+              │
+              ▼   app.js · saveSpecies(payload, id)
+              │
+              ├─── 1. extractSpeciesMeta(payload)  ──► Species 필드만 취해서 upsert
+              │
+              ├─── 2. purgeInvoiceRecordsFor(speciesId)  ──► 이 수종의 items 전부 제거
+              │                                           고아 invoice도 함께 제거
+              │
+              └─── 3. synthesizeInvoicesForSpecies(...)  ──► form의 prices + purchaseCounts에서
+                                                            Invoice + InvoiceItem 재합성
+```
+
+이 방식으로:
+
+- **UI/UX 100% 동일** — 사용자는 여전히 단가표와 월별 구매 횟수를 편집
+- **데이터는 정규화** — 실제로는 Invoice + InvoiceItem이 저장됨
+- **미래의 실제 명세서 임포트와 호환** — Vision API가 만들 Invoice 레코드와 같은 스키마
+
+---
+
+## 모듈 아키텍처 (의존 방향)
+
+```
+utils.js  ◄──── (leaf)
+state.js  ◄──── (leaf)
+
+storage.js   ── depends on (none)
+filter.js    ── utils
+stats.js     ── (leaf, pure functions)
+components.js── utils
+vision.js    ── (leaf, self-contained parser)
+importExport ── (leaf)
+
+ui.js     ── state · filter · stats · components
+modal.js  ── state · vision · stats · components
+app.js    ── 위 모두 · orchestrates
+```
+
+순환 의존 없음, 각 모듈이 독립적으로 단위 테스트 가능.
 
 ## 확장 포인트
 
-### 1. `vision.js` — Vision API 연동 (핵심 확장 포인트)
+### 1. `vision.js` — 실 Vision API 연동 (핵심 확장 포인트)
 
-`analyzeInvoice(file)`는 현재 Mock입니다. 실제 Vision API 연동 위치:
+`analyzeInvoice(file)`는 현재 Mock (`ok:false`)을 반환합니다. `vision.js`의 `analyzeInvoice()` 함수 내부에 **두 provider 훅**이 완전한 요청 스켈레톤과 함께 명확하게 표시되어 있습니다:
 
-```js
-export async function analyzeInvoice(file) {
-  // 1. 파일 → base64
-  // 2. 백엔드 API로 POST (Claude Vision / OpenAI Vision)
-  // 3. AnalyzeResult 형식으로 반환
-}
-```
+- **Option A · Claude Vision** (Anthropic): `claude-sonnet-5` 모델 · `/v1/messages` 엔드포인트 · image + text content 조합
+- **Option B · OpenAI Vision** (`gpt-4o` / `gpt-5`): `/v1/chat/completions` · JSON response_format 지정
 
-응답 스키마(JSDoc)는 `vision.js` 파일 끝부분에 정의되어 있으므로, 백엔드는 그 형식만 지키면 UI 코드 변경 없이 바로 동작합니다.
+응답 스키마(`AnalyzeResult`)는 JSDoc으로 정의되어 있어, 백엔드 프록시가 그 형식만 지키면 UI 코드 변경 없이 바로 동작합니다.
 
 ### 2. `storage.js` — DB / 서버 백엔드 연동
 
-`storage.save / load / clear` 3개 메서드만 다른 구현으로 교체하면 됩니다.
-Fetch API로 REST 엔드포인트로 연결하거나 IndexedDB로 확장 가능.
+`save / load / clear` 3 메서드만 다른 구현으로 교체하면 됩니다. Fetch API로 REST 엔드포인트에 연결하거나 IndexedDB로 확장 가능. 컬렉션 단위(species/invoices/invoiceItems)가 이미 분리되어 있어 collection-per-table 매핑이 자연스럽습니다.
 
-```js
-export const storage = {
-  async save(data) { await fetch("/api/catalog", { method:"PUT", body: JSON.stringify(data) }); },
-  async load()     { const res = await fetch("/api/catalog"); return res.json(); },
-  async clear()    { await fetch("/api/catalog", { method:"DELETE" }); }
-};
-```
+### 3. 향후 예정 기능 (모두 위 구조에서 자연 확장)
 
-호출자(`app.js` 등)에서 async 대응 필요.
-
-### 3. `state.js` — 상태 관리 확장
-
-지금은 평범한 mutable 객체입니다. 반응성이 필요해지면(예: 여러 페이지에서 동일 상태 참조) `state.js`만 Zustand-스타일 store로 교체하면 됩니다.
-
-### 4. 향후 예정 기능
-
-- 거래명세서 AI 자동 인식 → `vision.js` 실 구현
-- 자동 수종 등록 → `analyzeInvoice()` 결과 → `saveSpecies()` 직결
-- 구매 이력 관리 → `state.data.species[].purchases[]` 스키마 추가
-- 구매 빈도 자동 계산 → 이력에서 `purchaseCounts` 파생
-- 사용자 로그인 → 인증 헤더 통과하는 `storage.js` 구현
-- 웹 서버 배포 → 위 확장 후 정적 앱 + API 조합
+- **거래명세서 AI 자동 인식** → `vision.js` 실 구현 + `saveInvoice()` 헬퍼 추가
+- **자동 수종 등록** → `analyzeInvoice()` 결과 → 새 Invoice + Items 삽입
+- **구매 이력 관리** — 이미 지원됨 (`state.data.invoiceItems`)
+- **구매 빈도 자동 계산** — 이미 지원됨 (`calculateMonthlyPurchaseHeatmap`)
+- **사용자 로그인** → 인증 헤더 통과하는 `storage.js` 구현
+- **웹 서버 배포** → 위 확장 후 정적 앱 + API 조합
 
 ## 기능 요약 (전부 유지됨)
 
-- **검색**: 수종명/학명 부분일치
+- **검색**: 수종명/학명(`latin`) 부분일치
 - **필터**: 개화월 · 카테고리 · 개화색 · 수급처 · 가격범위
 - **정렬**: 이름순 · 최저가순 · 개화 이른순
 - **다크모드**: OS 설정 자동 감지 + Theme 버튼 수동 전환
-- **CRUD**: + 수종 추가 · 카드 hover ✎ 수정 · ✕ 삭제 (localStorage)
-- **JSON 가져오기/내보내기**: 백업·공유용
+- **CRUD**: + 수종 추가 · 카드 hover ✎ 수정 · ✕ 삭제
+- **JSON 가져오기/내보내기**: 백업·공유용 (v1·v2 스키마 모두 호환)
 - **시드 복원**: `data/species.json` 원본으로 리셋
-- **개화기 블록**: 12칸 브래킷, 개화 월만 활성색
+- **개화기 블록**: 12칸, 개화 월만 활성색
 - **구매 빈도 블록**: 12칸 GitHub Contribution 스타일 5단계 히트맵 (색상 농도만)
 - **단가표**: 규격/단위/단가 행 편집
 - **수급처**: 상호/지역/연락처 행 편집
 - **OCR 화면**: 파일 첨부(이미지 미리보기) + 텍스트 붙여넣기 → 자동 파싱 → 폼 채움
 
-## 데이터 스키마
-
-```jsonc
-{
-  "categories": ["교목", "관목", ...],
-  "colors": ["백색", "황색", ...],
-  "species": [
-    {
-      "id": "sp-001",                        // 자동 부여
-      "name": "왕벚나무",                    // 필수
-      "scientificName": "Prunus × yedoensis",
-      "category": "교목",
-      "bloomMonths": [3, 4],
-      "colors": ["백색", "분홍"],
-      "prices": [
-        { "spec": "R6", "unit": "주", "price": 45000 }
-      ],
-      "suppliers": [
-        { "name": "천리포수목원", "region": "충남 태안", "contact": "041-672-9982" }
-      ],
-      "purchaseCounts": [0, 0, 3, 5, 0, 0, 0, 0, 0, 0, 0, 0],
-      "notes": "가로수·공원용으로 다용."
-    }
-  ]
-}
-```
-
 ## 시드 데이터 안내
 
-`data/species.json`의 시드 12개 수종은 **구조 예시용 목업**입니다. 실제 시세·수급처는 검증되지 않았으므로 실무 발주에는 사용하지 마세요. 실제 데이터는 국립수목원, 조달청 나라장터, 지역 산림조합 등의 자료로 대체하시기 바랍니다.
+`data/species.json`의 시드는 **구조 예시용 목업**입니다. 실제 시세·수급처는 검증되지 않았으므로 실무 발주에는 사용하지 마세요. 실제 데이터는 국립수목원, 조달청 나라장터, 지역 산림조합 등의 자료로 대체하시기 바랍니다.

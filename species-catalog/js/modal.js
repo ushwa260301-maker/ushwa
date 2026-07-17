@@ -9,6 +9,7 @@
 
 import { state, formState } from "./state.js";
 import { analyzeInvoice, parseInvoiceText } from "./vision.js";
+import { enrichSpecies } from "./stats.js";
 import {
   buildMonthGrid,
   makePriceRow,
@@ -107,7 +108,11 @@ function wireEvents() {
  */
 export function openModal(id) {
   state.editingId = id ?? null;
-  const sp = id ? state.data.species.find(s => s.id === id) : null;
+  // Enrich the raw Species record with the computed prices + purchaseCounts
+  // pulled from invoices/invoiceItems, so the modal shows what the card
+  // currently shows.
+  const raw = id ? state.data.species.find(s => s.id === id) : null;
+  const sp = raw ? enrichSpecies(raw, state.data.invoices, state.data.invoiceItems) : null;
 
   els.title.textContent = sp ? "수종 수정" : "수종 추가";
 
@@ -118,7 +123,7 @@ export function openModal(id) {
 
   els.editingId.value = sp?.id || "";
   els.fName.value = sp?.name || "";
-  els.fLatin.value = sp?.scientificName || "";
+  els.fLatin.value = sp?.latin || sp?.scientificName || "";
   populateCategorySelect(sp?.category);
   els.fCategoryNew.value = "";
   els.fNotes.value = sp?.notes || "";
@@ -319,9 +324,13 @@ function collectForm() {
     return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
   });
 
+  // Return a form-payload object. `latin` replaces the old `scientificName`
+  // key; `prices` and `purchaseCounts` are still collected here — app.js
+  // will convert them into Invoice + InvoiceItem records at save time
+  // (this module intentionally stays free of persistence concerns).
   return {
     name,
-    scientificName: els.fLatin.value.trim(),
+    latin: els.fLatin.value.trim(),
     category,
     bloomMonths: months,
     colors,

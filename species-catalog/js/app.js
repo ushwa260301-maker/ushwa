@@ -24,27 +24,200 @@ import { nextId } from "./utils.js";
 // Business-logic mutation helpers
 // ============================================================
 
+/**
+ * Persist a species from the modal.
+ *
+ * The modal's form is (visually) the same as before, but the payload now
+ * splits into two shapes: metadata that lives on the Species record, and
+ * `prices` + `purchaseCounts` that describe purchase history.
+ *
+ * On save we:
+ *   1. Extract Species metadata (name, latin, category, colors, bloom,
+ *      suppliers, notes) and upsert the Species record.
+ *   2. Drop every InvoiceItem tied to this species — plus any invoice
+ *      that then holds no items at all.
+ *   3. Rebuild invoices + items from the form's `prices` + `purchaseCounts`
+ *      via `synthesizeInvoicesForSpecies()`.
+ *
+ * This keeps the modal's UX identical while shifting the storage to the
+ * new normalized model.
+ */
 function saveSpecies(payload, id) {
+  const meta = extractSpeciesMeta(payload);
+  let speciesId = id;
   if (id) {
     const idx = state.data.species.findIndex(s => s.id === id);
     if (idx >= 0) {
-      state.data.species[idx] = { ...state.data.species[idx], ...payload, id };
+      state.data.species[idx] = { ...state.data.species[idx], ...meta, id };
       toast("수정되었습니다");
     }
   } else {
-    state.data.species.push({ id: nextId(state.data.species), ...payload });
+    speciesId = nextId("sp", state.data.species);
+    state.data.species.push({ id: speciesId, ...meta });
     toast("추가되었습니다");
   }
+
+  // Drop old invoice items + orphaned invoices for this species.
+  purgeInvoiceRecordsFor(speciesId);
+
+  // Rebuild from the form's prices + purchaseCounts.
+  const synthesized = synthesizeInvoicesForSpecies(
+    speciesId,
+    meta,
+    payload.prices || [],
+    payload.purchaseCounts || Array(12).fill(0),
+    state.data.invoices,
+    state.data.invoiceItems
+  );
+  state.data.invoices.push(...synthesized.invoices);
+  state.data.invoiceItems.push(...synthesized.items);
+
   persistAndRerender();
 }
 
+/** Delete a species and cascade to its invoices/items. */
 function deleteSpecies(id) {
   const sp = state.data.species.find(s => s.id === id);
   if (!sp) return;
   if (!confirm(`「${sp.name}」을(를) 삭제하시겠습니까?`)) return;
   state.data.species = state.data.species.filter(s => s.id !== id);
+  purgeInvoiceRecordsFor(id);
   toast("삭제되었습니다");
   persistAndRerender();
+}
+
+// ============================================================
+// Species / invoice write helpers
+// ============================================================
+
+/**
+ * Extract just the Species-record fields from a modal payload. Everything
+ * else in the payload (prices, purchaseCounts) is invoice-derived data.
+ */
+function extractSpeciesMeta(payload) {
+  return {
+    name: payload.name,
+    latin: payload.latin || "",
+    category: payload.category,
+    bloomMonths: payload.bloomMonths || [],
+    colors: payload.colors || [],
+    suppliers: payload.suppliers || [],
+    notes: payload.notes || ""
+  };
+}
+
+/**
+ * Remove every InvoiceItem linked to a species, and any Invoice left
+ * with zero items after the purge.
+ */
+function purgeInvoiceRecordsFor(speciesId) {
+  state.data.invoiceItems = state.data.invoiceItems.filter(it => it.speciesId !== speciesId);
+  const stillReferenced = new Set(state.data.invoiceItems.map(it => it.invoiceId));
+  state.data.invoices = state.data.invoices.filter(inv => stillReferenced.has(inv.id));
+}
+
+/**
+ * Build Invoice + InvoiceItem records from a modal's price rows +
+ * purchase-count array.
+ *
+ * If purchases exist:
+ *   - one Invoice per (supplier, month) pair
+ *   - items cycle through the price rows and supplier list
+ *
+ * If purchases are zero but the user typed prices:
+ *   - one "catalog" invoice dated today with one item per price row
+ *
+ * If both are empty: no invoices synthesized.
+ */
+function synthesizeInvoicesForSpecies(speciesId, sp, prices, counts, existingInvoices, existingItems) {
+  const outInvoices = [];
+  const outItems = [];
+  const suppliers = sp.suppliers?.length
+    ? sp.suppliers
+    : [{ name: "미지정", region: "", contact: "" }];
+  const totalPurchases = counts.reduce((a, b) => a + (Number(b) || 0), 0);
+
+  const nextInvId = idAllocator("inv", existingInvoices, outInvoices);
+  const nextItemId = idAllocator("item", existingItems, outItems);
+  const nowIso = new Date().toISOString();
+
+  if (totalPurchases > 0 && prices.length) {
+    // Group items into (supplier, month) invoices.
+    const invByKey = new Map();
+    for (let m = 1; m <= 12; m++) {
+      const cnt = Number(counts[m - 1]) || 0;
+      for (let i = 0; i < cnt; i++) {
+        const supplier = suppliers[i % suppliers.length];
+        const spec = prices[i % prices.length];
+        const key = `${speciesId}|${supplier.name}|${m}`;
+        let inv = invByKey.get(key);
+        if (!inv) {
+          const day = 4 + (i % 24);
+          const dateStr = `2025-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          inv = {
+            id: nextInvId(),
+            invoiceDate: dateStr,
+            supplier: supplier.name,
+            supplierAddress: supplier.region || "",
+            supplierPhone: supplier.contact || "",
+            invoiceNumber: `M-${speciesId}-${m}`,
+            createdAt: nowIso
+          };
+          outInvoices.push(inv);
+          invByKey.set(key, inv);
+        }
+        outItems.push({
+          id: nextItemId(),
+          invoiceId: inv.id,
+          speciesId,
+          speciesName: sp.name,
+          spec: spec.spec,
+          unit: spec.unit || "주",
+          quantity: 1,
+          unitPrice: spec.price,
+          amount: spec.price
+        });
+      }
+    }
+  } else if (prices.length) {
+    // Prices with no purchases → one catalog invoice, one item per row.
+    const supplier = suppliers[0];
+    const today = nowIso.slice(0, 10);
+    const inv = {
+      id: nextInvId(),
+      invoiceDate: today,
+      supplier: supplier.name,
+      supplierAddress: supplier.region || "",
+      supplierPhone: supplier.contact || "",
+      invoiceNumber: `C-${speciesId}`,
+      createdAt: nowIso
+    };
+    outInvoices.push(inv);
+    for (const p of prices) {
+      outItems.push({
+        id: nextItemId(),
+        invoiceId: inv.id,
+        speciesId,
+        speciesName: sp.name,
+        spec: p.spec,
+        unit: p.unit || "주",
+        quantity: 1,
+        unitPrice: p.price,
+        amount: p.price
+      });
+    }
+  }
+
+  return { invoices: outInvoices, items: outItems };
+}
+
+/**
+ * Return a function that yields fresh `{prefix}-###` ids, guaranteed to
+ * be unique across `existing` records plus any ids already emitted into
+ * `pending`.
+ */
+function idAllocator(prefix, existing, pending) {
+  return () => nextId(prefix, [...existing, ...pending]);
 }
 
 /** Save to storage, rebuild filter chips (in case master lists changed), rerender. */

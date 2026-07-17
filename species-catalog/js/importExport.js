@@ -35,8 +35,16 @@ export function exportJson(data, filename) {
 
 /**
  * Read + validate a user-uploaded JSON file.
+ *
+ * Accepts both the new 3-collection shape and (for one-off backups made
+ * before the refactor) the older single-collection shape. In the legacy
+ * case the returned object still carries the old `prices` /
+ * `purchaseCounts` fields on species; the storage layer's v1 migration
+ * takes care of splitting them into invoices when the data lands in
+ * localStorage.
+ *
  * @param {File} file
- * @returns {Promise<{categories:string[], colors:string[], species:object[]}>}
+ * @returns {Promise<object>}
  */
 export function importJson(file) {
   return new Promise((resolve, reject) => {
@@ -50,7 +58,9 @@ export function importJson(file) {
         resolve({
           categories: parsed.categories || [],
           colors: parsed.colors || [],
-          species: parsed.species
+          species: parsed.species,
+          invoices: Array.isArray(parsed.invoices) ? parsed.invoices : [],
+          invoiceItems: Array.isArray(parsed.invoiceItems) ? parsed.invoiceItems : []
         });
       } catch (err) {
         reject(err);

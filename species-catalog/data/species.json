@@ -21,7 +21,7 @@
     {
       "id": "sp-001",
       "name": "왕벚나무",
-      "scientificName": "Prunus × yedoensis",
+      "latin": "Prunus × yedoensis",
       "category": "교목",
       "bloomMonths": [
         3,
@@ -30,28 +30,6 @@
       "colors": [
         "백색",
         "분홍"
-      ],
-      "prices": [
-        {
-          "spec": "R6",
-          "unit": "주",
-          "price": 45000
-        },
-        {
-          "spec": "R8",
-          "unit": "주",
-          "price": 85000
-        },
-        {
-          "spec": "R10",
-          "unit": "주",
-          "price": 150000
-        },
-        {
-          "spec": "R15",
-          "unit": "주",
-          "price": 380000
-        }
       ],
       "suppliers": [
         {
@@ -65,26 +43,12 @@
           "contact": "063-243-1122"
         }
       ],
-      "notes": "가로수·공원용으로 다용. 4월 초 개화.",
-      "purchaseCounts": [
-        0,
-        0,
-        3,
-        5,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ]
+      "notes": "가로수·공원용으로 다용. 4월 초 개화."
     },
     {
       "id": "sp-002",
       "name": "산수유",
-      "scientificName": "Cornus officinalis",
+      "latin": "Cornus officinalis",
       "category": "교목",
       "bloomMonths": [
         3,
@@ -93,23 +57,6 @@
       "colors": [
         "황색"
       ],
-      "prices": [
-        {
-          "spec": "R4",
-          "unit": "주",
-          "price": 22000
-        },
-        {
-          "spec": "R6",
-          "unit": "주",
-          "price": 55000
-        },
-        {
-          "spec": "R8",
-          "unit": "주",
-          "price": 120000
-        }
-      ],
       "suppliers": [
         {
           "name": "구례산수유마을조합",
@@ -117,49 +64,18 @@
           "contact": "061-782-3300"
         }
       ],
-      "notes": "이른 봄 노란 꽃, 가을 붉은 열매.",
-      "purchaseCounts": [
-        0,
-        0,
-        2,
-        3,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ]
+      "notes": "이른 봄 노란 꽃, 가을 붉은 열매."
     },
     {
       "id": "sp-003",
       "name": "이팝나무",
-      "scientificName": "Chionanthus retusus",
+      "latin": "Chionanthus retusus",
       "category": "교목",
       "bloomMonths": [
         5
       ],
       "colors": [
         "백색"
-      ],
-      "prices": [
-        {
-          "spec": "R8",
-          "unit": "주",
-          "price": 130000
-        },
-        {
-          "spec": "R10",
-          "unit": "주",
-          "price": 220000
-        },
-        {
-          "spec": "R12",
-          "unit": "주",
-          "price": 350000
-        }
       ],
       "suppliers": [
         {
@@ -168,26 +84,12 @@
           "contact": "055-336-8010"
         }
       ],
-      "notes": "5월 백색 꽃, 가로수 인기 수종.",
-      "purchaseCounts": [
-        0,
-        0,
-        0,
-        4,
-        7,
-        2,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ]
+      "notes": "5월 백색 꽃, 가로수 인기 수종."
     },
     {
       "id": "sp-004",
       "name": "배롱나무",
-      "scientificName": "Lagerstroemia indica",
+      "latin": "Lagerstroemia indica",
       "category": "교목",
       "bloomMonths": [
         7,
@@ -199,23 +101,6 @@
         "자색",
         "백색"
       ],
-      "prices": [
-        {
-          "spec": "R6",
-          "unit": "주",
-          "price": 40000
-        },
-        {
-          "spec": "R8",
-          "unit": "주",
-          "price": 90000
-        },
-        {
-          "spec": "R10",
-          "unit": "주",
-          "price": 180000
-        }
-      ],
       "suppliers": [
         {
           "name": "담양원예",
@@ -223,26 +108,12 @@
           "contact": "061-381-4455"
         }
       ],
-      "notes": "여름 100일간 개화, 남부 지방 적합.",
-      "purchaseCounts": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        1,
-        2,
-        4,
-        3,
-        0,
-        0,
-        0
-      ]
+      "notes": "여름 100일간 개화, 남부 지방 적합."
     },
     {
       "id": "sp-005",
       "name": "철쭉",
-      "scientificName": "Rhododendron schlippenbachii",
+      "latin": "Rhododendron schlippenbachii",
       "category": "관목",
       "bloomMonths": [
         4,
@@ -252,23 +123,6 @@
         "분홍",
         "적색",
         "백색"
-      ],
-      "prices": [
-        {
-          "spec": "H0.3",
-          "unit": "주",
-          "price": 3500
-        },
-        {
-          "spec": "H0.5",
-          "unit": "주",
-          "price": 6500
-        },
-        {
-          "spec": "H0.8",
-          "unit": "주",
-          "price": 15000
-        }
       ],
       "suppliers": [
         {
@@ -282,26 +136,12 @@
           "contact": "033-441-2020"
         }
       ],
-      "notes": "군식·경계용으로 다용.",
-      "purchaseCounts": [
-        0,
-        0,
-        3,
-        6,
-        2,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ]
+      "notes": "군식·경계용으로 다용."
     },
     {
       "id": "sp-006",
       "name": "수국",
-      "scientificName": "Hydrangea macrophylla",
+      "latin": "Hydrangea macrophylla",
       "category": "관목",
       "bloomMonths": [
         6,
@@ -314,23 +154,6 @@
         "백색",
         "자색"
       ],
-      "prices": [
-        {
-          "spec": "3분",
-          "unit": "포트",
-          "price": 4500
-        },
-        {
-          "spec": "5분",
-          "unit": "포트",
-          "price": 9000
-        },
-        {
-          "spec": "8분",
-          "unit": "포트",
-          "price": 18000
-        }
-      ],
       "suppliers": [
         {
           "name": "제주수국농원",
@@ -338,26 +161,12 @@
           "contact": "064-732-1155"
         }
       ],
-      "notes": "토양 pH에 따라 색상 변화.",
-      "purchaseCounts": [
-        0,
-        0,
-        0,
-        0,
-        2,
-        5,
-        4,
-        3,
-        0,
-        0,
-        0,
-        0
-      ]
+      "notes": "토양 pH에 따라 색상 변화."
     },
     {
       "id": "sp-007",
       "name": "무궁화",
-      "scientificName": "Hibiscus syriacus",
+      "latin": "Hibiscus syriacus",
       "category": "관목",
       "bloomMonths": [
         7,
@@ -371,23 +180,6 @@
         "백색",
         "혼색"
       ],
-      "prices": [
-        {
-          "spec": "H1.0",
-          "unit": "주",
-          "price": 8000
-        },
-        {
-          "spec": "H1.5",
-          "unit": "주",
-          "price": 18000
-        },
-        {
-          "spec": "H2.0",
-          "unit": "주",
-          "price": 35000
-        }
-      ],
       "suppliers": [
         {
           "name": "완주농원",
@@ -395,26 +187,12 @@
           "contact": "063-243-1122"
         }
       ],
-      "notes": "국화(國花), 100일 연속 개화.",
-      "purchaseCounts": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        1,
-        2,
-        3,
-        4,
-        2,
-        0,
-        0
-      ]
+      "notes": "국화(國花), 100일 연속 개화."
     },
     {
       "id": "sp-008",
       "name": "라벤더",
-      "scientificName": "Lavandula angustifolia",
+      "latin": "Lavandula angustifolia",
       "category": "초본",
       "bloomMonths": [
         6,
@@ -422,18 +200,6 @@
       ],
       "colors": [
         "자색"
-      ],
-      "prices": [
-        {
-          "spec": "3분",
-          "unit": "포트",
-          "price": 3000
-        },
-        {
-          "spec": "5분",
-          "unit": "포트",
-          "price": 6500
-        }
       ],
       "suppliers": [
         {
@@ -447,26 +213,12 @@
           "contact": "064-799-8181"
         }
       ],
-      "notes": "허브식물, 배수 좋은 토양 필수.",
-      "purchaseCounts": [
-        0,
-        0,
-        0,
-        0,
-        3,
-        4,
-        2,
-        0,
-        0,
-        0,
-        0,
-        0
-      ]
+      "notes": "허브식물, 배수 좋은 토양 필수."
     },
     {
       "id": "sp-009",
       "name": "구절초",
-      "scientificName": "Dendranthema zawadskii",
+      "latin": "Dendranthema zawadskii",
       "category": "야생화",
       "bloomMonths": [
         9,
@@ -477,18 +229,6 @@
         "백색",
         "분홍"
       ],
-      "prices": [
-        {
-          "spec": "3분",
-          "unit": "포트",
-          "price": 2200
-        },
-        {
-          "spec": "5분",
-          "unit": "포트",
-          "price": 4500
-        }
-      ],
       "suppliers": [
         {
           "name": "정읍구절초축제조합",
@@ -496,26 +236,12 @@
           "contact": "063-535-4321"
         }
       ],
-      "notes": "가을 대표 야생화, 다년생.",
-      "purchaseCounts": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        1,
-        3,
-        5,
-        2,
-        0
-      ]
+      "notes": "가을 대표 야생화, 다년생."
     },
     {
       "id": "sp-010",
       "name": "맥문동",
-      "scientificName": "Liriope platyphylla",
+      "latin": "Liriope platyphylla",
       "category": "지피식물",
       "bloomMonths": [
         7,
@@ -524,18 +250,6 @@
       "colors": [
         "자색"
       ],
-      "prices": [
-        {
-          "spec": "2~3본",
-          "unit": "포트",
-          "price": 900
-        },
-        {
-          "spec": "5~7본",
-          "unit": "포트",
-          "price": 1800
-        }
-      ],
       "suppliers": [
         {
           "name": "부여맥문동농장",
@@ -543,26 +257,12 @@
           "contact": "041-833-7788"
         }
       ],
-      "notes": "그늘·반그늘에 강함, 가로변 지피용.",
-      "purchaseCounts": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        1,
-        2,
-        3,
-        1,
-        0,
-        0,
-        0
-      ]
+      "notes": "그늘·반그늘에 강함, 가로변 지피용."
     },
     {
       "id": "sp-011",
       "name": "능소화",
-      "scientificName": "Campsis grandiflora",
+      "latin": "Campsis grandiflora",
       "category": "덩굴식물",
       "bloomMonths": [
         7,
@@ -573,18 +273,6 @@
         "주황",
         "적색"
       ],
-      "prices": [
-        {
-          "spec": "H1.5",
-          "unit": "주",
-          "price": 12000
-        },
-        {
-          "spec": "H2.0",
-          "unit": "주",
-          "price": 25000
-        }
-      ],
       "suppliers": [
         {
           "name": "김해조경농장",
@@ -592,26 +280,12 @@
           "contact": "055-336-8010"
         }
       ],
-      "notes": "덩굴성, 벽면·아치 조경용.",
-      "purchaseCounts": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        1,
-        3,
-        4,
-        2,
-        0,
-        0,
-        0
-      ]
+      "notes": "덩굴성, 벽면·아치 조경용."
     },
     {
       "id": "sp-012",
       "name": "목련",
-      "scientificName": "Magnolia kobus",
+      "latin": "Magnolia kobus",
       "category": "교목",
       "bloomMonths": [
         3,
@@ -621,23 +295,6 @@
         "백색",
         "분홍"
       ],
-      "prices": [
-        {
-          "spec": "R6",
-          "unit": "주",
-          "price": 55000
-        },
-        {
-          "spec": "R8",
-          "unit": "주",
-          "price": 110000
-        },
-        {
-          "spec": "R10",
-          "unit": "주",
-          "price": 210000
-        }
-      ],
       "suppliers": [
         {
           "name": "천리포수목원",
@@ -645,21 +302,1794 @@
           "contact": "041-672-9982"
         }
       ],
-      "notes": "이른 봄 잎보다 꽃이 먼저 개화.",
-      "purchaseCounts": [
-        0,
-        0,
-        4,
-        7,
-        1,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ]
+      "notes": "이른 봄 잎보다 꽃이 먼저 개화."
+    }
+  ],
+  "invoices": [
+    {
+      "id": "inv-001",
+      "invoiceDate": "2025-03-04",
+      "supplier": "천리포수목원",
+      "supplierAddress": "충남 태안",
+      "supplierPhone": "041-672-9982",
+      "invoiceNumber": "S25-0001",
+      "createdAt": "2025-03-04T09:00:00Z"
+    },
+    {
+      "id": "inv-002",
+      "invoiceDate": "2025-03-05",
+      "supplier": "완주농원",
+      "supplierAddress": "전북 완주",
+      "supplierPhone": "063-243-1122",
+      "invoiceNumber": "S25-0002",
+      "createdAt": "2025-03-05T09:00:00Z"
+    },
+    {
+      "id": "inv-003",
+      "invoiceDate": "2025-04-04",
+      "supplier": "천리포수목원",
+      "supplierAddress": "충남 태안",
+      "supplierPhone": "041-672-9982",
+      "invoiceNumber": "S25-0003",
+      "createdAt": "2025-04-04T09:00:00Z"
+    },
+    {
+      "id": "inv-004",
+      "invoiceDate": "2025-04-05",
+      "supplier": "완주농원",
+      "supplierAddress": "전북 완주",
+      "supplierPhone": "063-243-1122",
+      "invoiceNumber": "S25-0004",
+      "createdAt": "2025-04-05T09:00:00Z"
+    },
+    {
+      "id": "inv-005",
+      "invoiceDate": "2025-03-04",
+      "supplier": "구례산수유마을조합",
+      "supplierAddress": "전남 구례",
+      "supplierPhone": "061-782-3300",
+      "invoiceNumber": "S25-0005",
+      "createdAt": "2025-03-04T09:00:00Z"
+    },
+    {
+      "id": "inv-006",
+      "invoiceDate": "2025-04-04",
+      "supplier": "구례산수유마을조합",
+      "supplierAddress": "전남 구례",
+      "supplierPhone": "061-782-3300",
+      "invoiceNumber": "S25-0006",
+      "createdAt": "2025-04-04T09:00:00Z"
+    },
+    {
+      "id": "inv-007",
+      "invoiceDate": "2025-04-04",
+      "supplier": "김해조경농장",
+      "supplierAddress": "경남 김해",
+      "supplierPhone": "055-336-8010",
+      "invoiceNumber": "S25-0007",
+      "createdAt": "2025-04-04T09:00:00Z"
+    },
+    {
+      "id": "inv-008",
+      "invoiceDate": "2025-05-04",
+      "supplier": "김해조경농장",
+      "supplierAddress": "경남 김해",
+      "supplierPhone": "055-336-8010",
+      "invoiceNumber": "S25-0008",
+      "createdAt": "2025-05-04T09:00:00Z"
+    },
+    {
+      "id": "inv-009",
+      "invoiceDate": "2025-06-04",
+      "supplier": "김해조경농장",
+      "supplierAddress": "경남 김해",
+      "supplierPhone": "055-336-8010",
+      "invoiceNumber": "S25-0009",
+      "createdAt": "2025-06-04T09:00:00Z"
+    },
+    {
+      "id": "inv-010",
+      "invoiceDate": "2025-06-04",
+      "supplier": "담양원예",
+      "supplierAddress": "전남 담양",
+      "supplierPhone": "061-381-4455",
+      "invoiceNumber": "S25-0010",
+      "createdAt": "2025-06-04T09:00:00Z"
+    },
+    {
+      "id": "inv-011",
+      "invoiceDate": "2025-07-04",
+      "supplier": "담양원예",
+      "supplierAddress": "전남 담양",
+      "supplierPhone": "061-381-4455",
+      "invoiceNumber": "S25-0011",
+      "createdAt": "2025-07-04T09:00:00Z"
+    },
+    {
+      "id": "inv-012",
+      "invoiceDate": "2025-08-04",
+      "supplier": "담양원예",
+      "supplierAddress": "전남 담양",
+      "supplierPhone": "061-381-4455",
+      "invoiceNumber": "S25-0012",
+      "createdAt": "2025-08-04T09:00:00Z"
+    },
+    {
+      "id": "inv-013",
+      "invoiceDate": "2025-09-04",
+      "supplier": "담양원예",
+      "supplierAddress": "전남 담양",
+      "supplierPhone": "061-381-4455",
+      "invoiceNumber": "S25-0013",
+      "createdAt": "2025-09-04T09:00:00Z"
+    },
+    {
+      "id": "inv-014",
+      "invoiceDate": "2025-03-04",
+      "supplier": "덕유산농원",
+      "supplierAddress": "전북 무주",
+      "supplierPhone": "063-322-9010",
+      "invoiceNumber": "S25-0014",
+      "createdAt": "2025-03-04T09:00:00Z"
+    },
+    {
+      "id": "inv-015",
+      "invoiceDate": "2025-03-05",
+      "supplier": "화천철쭉원",
+      "supplierAddress": "강원 화천",
+      "supplierPhone": "033-441-2020",
+      "invoiceNumber": "S25-0015",
+      "createdAt": "2025-03-05T09:00:00Z"
+    },
+    {
+      "id": "inv-016",
+      "invoiceDate": "2025-04-04",
+      "supplier": "덕유산농원",
+      "supplierAddress": "전북 무주",
+      "supplierPhone": "063-322-9010",
+      "invoiceNumber": "S25-0016",
+      "createdAt": "2025-04-04T09:00:00Z"
+    },
+    {
+      "id": "inv-017",
+      "invoiceDate": "2025-04-05",
+      "supplier": "화천철쭉원",
+      "supplierAddress": "강원 화천",
+      "supplierPhone": "033-441-2020",
+      "invoiceNumber": "S25-0017",
+      "createdAt": "2025-04-05T09:00:00Z"
+    },
+    {
+      "id": "inv-018",
+      "invoiceDate": "2025-05-04",
+      "supplier": "덕유산농원",
+      "supplierAddress": "전북 무주",
+      "supplierPhone": "063-322-9010",
+      "invoiceNumber": "S25-0018",
+      "createdAt": "2025-05-04T09:00:00Z"
+    },
+    {
+      "id": "inv-019",
+      "invoiceDate": "2025-05-05",
+      "supplier": "화천철쭉원",
+      "supplierAddress": "강원 화천",
+      "supplierPhone": "033-441-2020",
+      "invoiceNumber": "S25-0019",
+      "createdAt": "2025-05-05T09:00:00Z"
+    },
+    {
+      "id": "inv-020",
+      "invoiceDate": "2025-05-04",
+      "supplier": "제주수국농원",
+      "supplierAddress": "제주 서귀포",
+      "supplierPhone": "064-732-1155",
+      "invoiceNumber": "S25-0020",
+      "createdAt": "2025-05-04T09:00:00Z"
+    },
+    {
+      "id": "inv-021",
+      "invoiceDate": "2025-06-04",
+      "supplier": "제주수국농원",
+      "supplierAddress": "제주 서귀포",
+      "supplierPhone": "064-732-1155",
+      "invoiceNumber": "S25-0021",
+      "createdAt": "2025-06-04T09:00:00Z"
+    },
+    {
+      "id": "inv-022",
+      "invoiceDate": "2025-07-04",
+      "supplier": "제주수국농원",
+      "supplierAddress": "제주 서귀포",
+      "supplierPhone": "064-732-1155",
+      "invoiceNumber": "S25-0022",
+      "createdAt": "2025-07-04T09:00:00Z"
+    },
+    {
+      "id": "inv-023",
+      "invoiceDate": "2025-08-04",
+      "supplier": "제주수국농원",
+      "supplierAddress": "제주 서귀포",
+      "supplierPhone": "064-732-1155",
+      "invoiceNumber": "S25-0023",
+      "createdAt": "2025-08-04T09:00:00Z"
+    },
+    {
+      "id": "inv-024",
+      "invoiceDate": "2025-06-04",
+      "supplier": "완주농원",
+      "supplierAddress": "전북 완주",
+      "supplierPhone": "063-243-1122",
+      "invoiceNumber": "S25-0024",
+      "createdAt": "2025-06-04T09:00:00Z"
+    },
+    {
+      "id": "inv-025",
+      "invoiceDate": "2025-07-04",
+      "supplier": "완주농원",
+      "supplierAddress": "전북 완주",
+      "supplierPhone": "063-243-1122",
+      "invoiceNumber": "S25-0025",
+      "createdAt": "2025-07-04T09:00:00Z"
+    },
+    {
+      "id": "inv-026",
+      "invoiceDate": "2025-08-04",
+      "supplier": "완주농원",
+      "supplierAddress": "전북 완주",
+      "supplierPhone": "063-243-1122",
+      "invoiceNumber": "S25-0026",
+      "createdAt": "2025-08-04T09:00:00Z"
+    },
+    {
+      "id": "inv-027",
+      "invoiceDate": "2025-09-04",
+      "supplier": "완주농원",
+      "supplierAddress": "전북 완주",
+      "supplierPhone": "063-243-1122",
+      "invoiceNumber": "S25-0027",
+      "createdAt": "2025-09-04T09:00:00Z"
+    },
+    {
+      "id": "inv-028",
+      "invoiceDate": "2025-10-04",
+      "supplier": "완주농원",
+      "supplierAddress": "전북 완주",
+      "supplierPhone": "063-243-1122",
+      "invoiceNumber": "S25-0028",
+      "createdAt": "2025-10-04T09:00:00Z"
+    },
+    {
+      "id": "inv-029",
+      "invoiceDate": "2025-05-04",
+      "supplier": "허브아일랜드",
+      "supplierAddress": "경기 포천",
+      "supplierPhone": "031-535-6494",
+      "invoiceNumber": "S25-0029",
+      "createdAt": "2025-05-04T09:00:00Z"
+    },
+    {
+      "id": "inv-030",
+      "invoiceDate": "2025-05-05",
+      "supplier": "제주라벤더팜",
+      "supplierAddress": "제주",
+      "supplierPhone": "064-799-8181",
+      "invoiceNumber": "S25-0030",
+      "createdAt": "2025-05-05T09:00:00Z"
+    },
+    {
+      "id": "inv-031",
+      "invoiceDate": "2025-06-04",
+      "supplier": "허브아일랜드",
+      "supplierAddress": "경기 포천",
+      "supplierPhone": "031-535-6494",
+      "invoiceNumber": "S25-0031",
+      "createdAt": "2025-06-04T09:00:00Z"
+    },
+    {
+      "id": "inv-032",
+      "invoiceDate": "2025-06-05",
+      "supplier": "제주라벤더팜",
+      "supplierAddress": "제주",
+      "supplierPhone": "064-799-8181",
+      "invoiceNumber": "S25-0032",
+      "createdAt": "2025-06-05T09:00:00Z"
+    },
+    {
+      "id": "inv-033",
+      "invoiceDate": "2025-07-04",
+      "supplier": "허브아일랜드",
+      "supplierAddress": "경기 포천",
+      "supplierPhone": "031-535-6494",
+      "invoiceNumber": "S25-0033",
+      "createdAt": "2025-07-04T09:00:00Z"
+    },
+    {
+      "id": "inv-034",
+      "invoiceDate": "2025-07-05",
+      "supplier": "제주라벤더팜",
+      "supplierAddress": "제주",
+      "supplierPhone": "064-799-8181",
+      "invoiceNumber": "S25-0034",
+      "createdAt": "2025-07-05T09:00:00Z"
+    },
+    {
+      "id": "inv-035",
+      "invoiceDate": "2025-08-04",
+      "supplier": "정읍구절초축제조합",
+      "supplierAddress": "전북 정읍",
+      "supplierPhone": "063-535-4321",
+      "invoiceNumber": "S25-0035",
+      "createdAt": "2025-08-04T09:00:00Z"
+    },
+    {
+      "id": "inv-036",
+      "invoiceDate": "2025-09-04",
+      "supplier": "정읍구절초축제조합",
+      "supplierAddress": "전북 정읍",
+      "supplierPhone": "063-535-4321",
+      "invoiceNumber": "S25-0036",
+      "createdAt": "2025-09-04T09:00:00Z"
+    },
+    {
+      "id": "inv-037",
+      "invoiceDate": "2025-10-04",
+      "supplier": "정읍구절초축제조합",
+      "supplierAddress": "전북 정읍",
+      "supplierPhone": "063-535-4321",
+      "invoiceNumber": "S25-0037",
+      "createdAt": "2025-10-04T09:00:00Z"
+    },
+    {
+      "id": "inv-038",
+      "invoiceDate": "2025-11-04",
+      "supplier": "정읍구절초축제조합",
+      "supplierAddress": "전북 정읍",
+      "supplierPhone": "063-535-4321",
+      "invoiceNumber": "S25-0038",
+      "createdAt": "2025-11-04T09:00:00Z"
+    },
+    {
+      "id": "inv-039",
+      "invoiceDate": "2025-06-04",
+      "supplier": "부여맥문동농장",
+      "supplierAddress": "충남 부여",
+      "supplierPhone": "041-833-7788",
+      "invoiceNumber": "S25-0039",
+      "createdAt": "2025-06-04T09:00:00Z"
+    },
+    {
+      "id": "inv-040",
+      "invoiceDate": "2025-07-04",
+      "supplier": "부여맥문동농장",
+      "supplierAddress": "충남 부여",
+      "supplierPhone": "041-833-7788",
+      "invoiceNumber": "S25-0040",
+      "createdAt": "2025-07-04T09:00:00Z"
+    },
+    {
+      "id": "inv-041",
+      "invoiceDate": "2025-08-04",
+      "supplier": "부여맥문동농장",
+      "supplierAddress": "충남 부여",
+      "supplierPhone": "041-833-7788",
+      "invoiceNumber": "S25-0041",
+      "createdAt": "2025-08-04T09:00:00Z"
+    },
+    {
+      "id": "inv-042",
+      "invoiceDate": "2025-09-04",
+      "supplier": "부여맥문동농장",
+      "supplierAddress": "충남 부여",
+      "supplierPhone": "041-833-7788",
+      "invoiceNumber": "S25-0042",
+      "createdAt": "2025-09-04T09:00:00Z"
+    },
+    {
+      "id": "inv-043",
+      "invoiceDate": "2025-06-04",
+      "supplier": "김해조경농장",
+      "supplierAddress": "경남 김해",
+      "supplierPhone": "055-336-8010",
+      "invoiceNumber": "S25-0043",
+      "createdAt": "2025-06-04T09:00:00Z"
+    },
+    {
+      "id": "inv-044",
+      "invoiceDate": "2025-07-04",
+      "supplier": "김해조경농장",
+      "supplierAddress": "경남 김해",
+      "supplierPhone": "055-336-8010",
+      "invoiceNumber": "S25-0044",
+      "createdAt": "2025-07-04T09:00:00Z"
+    },
+    {
+      "id": "inv-045",
+      "invoiceDate": "2025-08-04",
+      "supplier": "김해조경농장",
+      "supplierAddress": "경남 김해",
+      "supplierPhone": "055-336-8010",
+      "invoiceNumber": "S25-0045",
+      "createdAt": "2025-08-04T09:00:00Z"
+    },
+    {
+      "id": "inv-046",
+      "invoiceDate": "2025-09-04",
+      "supplier": "김해조경농장",
+      "supplierAddress": "경남 김해",
+      "supplierPhone": "055-336-8010",
+      "invoiceNumber": "S25-0046",
+      "createdAt": "2025-09-04T09:00:00Z"
+    },
+    {
+      "id": "inv-047",
+      "invoiceDate": "2025-03-04",
+      "supplier": "천리포수목원",
+      "supplierAddress": "충남 태안",
+      "supplierPhone": "041-672-9982",
+      "invoiceNumber": "S25-0047",
+      "createdAt": "2025-03-04T09:00:00Z"
+    },
+    {
+      "id": "inv-048",
+      "invoiceDate": "2025-04-04",
+      "supplier": "천리포수목원",
+      "supplierAddress": "충남 태안",
+      "supplierPhone": "041-672-9982",
+      "invoiceNumber": "S25-0048",
+      "createdAt": "2025-04-04T09:00:00Z"
+    },
+    {
+      "id": "inv-049",
+      "invoiceDate": "2025-05-04",
+      "supplier": "천리포수목원",
+      "supplierAddress": "충남 태안",
+      "supplierPhone": "041-672-9982",
+      "invoiceNumber": "S25-0049",
+      "createdAt": "2025-05-04T09:00:00Z"
+    }
+  ],
+  "invoiceItems": [
+    {
+      "id": "item-001",
+      "invoiceId": "inv-001",
+      "speciesId": "sp-001",
+      "speciesName": "왕벚나무",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 45000,
+      "amount": 45000
+    },
+    {
+      "id": "item-002",
+      "invoiceId": "inv-002",
+      "speciesId": "sp-001",
+      "speciesName": "왕벚나무",
+      "spec": "R8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 85000,
+      "amount": 85000
+    },
+    {
+      "id": "item-003",
+      "invoiceId": "inv-001",
+      "speciesId": "sp-001",
+      "speciesName": "왕벚나무",
+      "spec": "R10",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 150000,
+      "amount": 150000
+    },
+    {
+      "id": "item-004",
+      "invoiceId": "inv-003",
+      "speciesId": "sp-001",
+      "speciesName": "왕벚나무",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 45000,
+      "amount": 45000
+    },
+    {
+      "id": "item-005",
+      "invoiceId": "inv-004",
+      "speciesId": "sp-001",
+      "speciesName": "왕벚나무",
+      "spec": "R8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 85000,
+      "amount": 85000
+    },
+    {
+      "id": "item-006",
+      "invoiceId": "inv-003",
+      "speciesId": "sp-001",
+      "speciesName": "왕벚나무",
+      "spec": "R10",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 150000,
+      "amount": 150000
+    },
+    {
+      "id": "item-007",
+      "invoiceId": "inv-004",
+      "speciesId": "sp-001",
+      "speciesName": "왕벚나무",
+      "spec": "R15",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 380000,
+      "amount": 380000
+    },
+    {
+      "id": "item-008",
+      "invoiceId": "inv-003",
+      "speciesId": "sp-001",
+      "speciesName": "왕벚나무",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 45000,
+      "amount": 45000
+    },
+    {
+      "id": "item-009",
+      "invoiceId": "inv-005",
+      "speciesId": "sp-002",
+      "speciesName": "산수유",
+      "spec": "R4",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 22000,
+      "amount": 22000
+    },
+    {
+      "id": "item-010",
+      "invoiceId": "inv-005",
+      "speciesId": "sp-002",
+      "speciesName": "산수유",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 55000,
+      "amount": 55000
+    },
+    {
+      "id": "item-011",
+      "invoiceId": "inv-006",
+      "speciesId": "sp-002",
+      "speciesName": "산수유",
+      "spec": "R4",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 22000,
+      "amount": 22000
+    },
+    {
+      "id": "item-012",
+      "invoiceId": "inv-006",
+      "speciesId": "sp-002",
+      "speciesName": "산수유",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 55000,
+      "amount": 55000
+    },
+    {
+      "id": "item-013",
+      "invoiceId": "inv-006",
+      "speciesId": "sp-002",
+      "speciesName": "산수유",
+      "spec": "R8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 120000,
+      "amount": 120000
+    },
+    {
+      "id": "item-014",
+      "invoiceId": "inv-007",
+      "speciesId": "sp-003",
+      "speciesName": "이팝나무",
+      "spec": "R8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 130000,
+      "amount": 130000
+    },
+    {
+      "id": "item-015",
+      "invoiceId": "inv-007",
+      "speciesId": "sp-003",
+      "speciesName": "이팝나무",
+      "spec": "R10",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 220000,
+      "amount": 220000
+    },
+    {
+      "id": "item-016",
+      "invoiceId": "inv-007",
+      "speciesId": "sp-003",
+      "speciesName": "이팝나무",
+      "spec": "R12",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 350000,
+      "amount": 350000
+    },
+    {
+      "id": "item-017",
+      "invoiceId": "inv-007",
+      "speciesId": "sp-003",
+      "speciesName": "이팝나무",
+      "spec": "R8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 130000,
+      "amount": 130000
+    },
+    {
+      "id": "item-018",
+      "invoiceId": "inv-008",
+      "speciesId": "sp-003",
+      "speciesName": "이팝나무",
+      "spec": "R8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 130000,
+      "amount": 130000
+    },
+    {
+      "id": "item-019",
+      "invoiceId": "inv-008",
+      "speciesId": "sp-003",
+      "speciesName": "이팝나무",
+      "spec": "R10",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 220000,
+      "amount": 220000
+    },
+    {
+      "id": "item-020",
+      "invoiceId": "inv-008",
+      "speciesId": "sp-003",
+      "speciesName": "이팝나무",
+      "spec": "R12",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 350000,
+      "amount": 350000
+    },
+    {
+      "id": "item-021",
+      "invoiceId": "inv-008",
+      "speciesId": "sp-003",
+      "speciesName": "이팝나무",
+      "spec": "R8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 130000,
+      "amount": 130000
+    },
+    {
+      "id": "item-022",
+      "invoiceId": "inv-008",
+      "speciesId": "sp-003",
+      "speciesName": "이팝나무",
+      "spec": "R10",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 220000,
+      "amount": 220000
+    },
+    {
+      "id": "item-023",
+      "invoiceId": "inv-008",
+      "speciesId": "sp-003",
+      "speciesName": "이팝나무",
+      "spec": "R12",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 350000,
+      "amount": 350000
+    },
+    {
+      "id": "item-024",
+      "invoiceId": "inv-008",
+      "speciesId": "sp-003",
+      "speciesName": "이팝나무",
+      "spec": "R8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 130000,
+      "amount": 130000
+    },
+    {
+      "id": "item-025",
+      "invoiceId": "inv-009",
+      "speciesId": "sp-003",
+      "speciesName": "이팝나무",
+      "spec": "R8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 130000,
+      "amount": 130000
+    },
+    {
+      "id": "item-026",
+      "invoiceId": "inv-009",
+      "speciesId": "sp-003",
+      "speciesName": "이팝나무",
+      "spec": "R10",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 220000,
+      "amount": 220000
+    },
+    {
+      "id": "item-027",
+      "invoiceId": "inv-010",
+      "speciesId": "sp-004",
+      "speciesName": "배롱나무",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 40000,
+      "amount": 40000
+    },
+    {
+      "id": "item-028",
+      "invoiceId": "inv-011",
+      "speciesId": "sp-004",
+      "speciesName": "배롱나무",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 40000,
+      "amount": 40000
+    },
+    {
+      "id": "item-029",
+      "invoiceId": "inv-011",
+      "speciesId": "sp-004",
+      "speciesName": "배롱나무",
+      "spec": "R8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 90000,
+      "amount": 90000
+    },
+    {
+      "id": "item-030",
+      "invoiceId": "inv-012",
+      "speciesId": "sp-004",
+      "speciesName": "배롱나무",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 40000,
+      "amount": 40000
+    },
+    {
+      "id": "item-031",
+      "invoiceId": "inv-012",
+      "speciesId": "sp-004",
+      "speciesName": "배롱나무",
+      "spec": "R8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 90000,
+      "amount": 90000
+    },
+    {
+      "id": "item-032",
+      "invoiceId": "inv-012",
+      "speciesId": "sp-004",
+      "speciesName": "배롱나무",
+      "spec": "R10",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 180000,
+      "amount": 180000
+    },
+    {
+      "id": "item-033",
+      "invoiceId": "inv-012",
+      "speciesId": "sp-004",
+      "speciesName": "배롱나무",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 40000,
+      "amount": 40000
+    },
+    {
+      "id": "item-034",
+      "invoiceId": "inv-013",
+      "speciesId": "sp-004",
+      "speciesName": "배롱나무",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 40000,
+      "amount": 40000
+    },
+    {
+      "id": "item-035",
+      "invoiceId": "inv-013",
+      "speciesId": "sp-004",
+      "speciesName": "배롱나무",
+      "spec": "R8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 90000,
+      "amount": 90000
+    },
+    {
+      "id": "item-036",
+      "invoiceId": "inv-013",
+      "speciesId": "sp-004",
+      "speciesName": "배롱나무",
+      "spec": "R10",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 180000,
+      "amount": 180000
+    },
+    {
+      "id": "item-037",
+      "invoiceId": "inv-014",
+      "speciesId": "sp-005",
+      "speciesName": "철쭉",
+      "spec": "H0.3",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 3500,
+      "amount": 3500
+    },
+    {
+      "id": "item-038",
+      "invoiceId": "inv-015",
+      "speciesId": "sp-005",
+      "speciesName": "철쭉",
+      "spec": "H0.5",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 6500,
+      "amount": 6500
+    },
+    {
+      "id": "item-039",
+      "invoiceId": "inv-014",
+      "speciesId": "sp-005",
+      "speciesName": "철쭉",
+      "spec": "H0.8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 15000,
+      "amount": 15000
+    },
+    {
+      "id": "item-040",
+      "invoiceId": "inv-016",
+      "speciesId": "sp-005",
+      "speciesName": "철쭉",
+      "spec": "H0.3",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 3500,
+      "amount": 3500
+    },
+    {
+      "id": "item-041",
+      "invoiceId": "inv-017",
+      "speciesId": "sp-005",
+      "speciesName": "철쭉",
+      "spec": "H0.5",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 6500,
+      "amount": 6500
+    },
+    {
+      "id": "item-042",
+      "invoiceId": "inv-016",
+      "speciesId": "sp-005",
+      "speciesName": "철쭉",
+      "spec": "H0.8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 15000,
+      "amount": 15000
+    },
+    {
+      "id": "item-043",
+      "invoiceId": "inv-017",
+      "speciesId": "sp-005",
+      "speciesName": "철쭉",
+      "spec": "H0.3",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 3500,
+      "amount": 3500
+    },
+    {
+      "id": "item-044",
+      "invoiceId": "inv-016",
+      "speciesId": "sp-005",
+      "speciesName": "철쭉",
+      "spec": "H0.5",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 6500,
+      "amount": 6500
+    },
+    {
+      "id": "item-045",
+      "invoiceId": "inv-017",
+      "speciesId": "sp-005",
+      "speciesName": "철쭉",
+      "spec": "H0.8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 15000,
+      "amount": 15000
+    },
+    {
+      "id": "item-046",
+      "invoiceId": "inv-018",
+      "speciesId": "sp-005",
+      "speciesName": "철쭉",
+      "spec": "H0.3",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 3500,
+      "amount": 3500
+    },
+    {
+      "id": "item-047",
+      "invoiceId": "inv-019",
+      "speciesId": "sp-005",
+      "speciesName": "철쭉",
+      "spec": "H0.5",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 6500,
+      "amount": 6500
+    },
+    {
+      "id": "item-048",
+      "invoiceId": "inv-020",
+      "speciesId": "sp-006",
+      "speciesName": "수국",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 4500,
+      "amount": 4500
+    },
+    {
+      "id": "item-049",
+      "invoiceId": "inv-020",
+      "speciesId": "sp-006",
+      "speciesName": "수국",
+      "spec": "5분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 9000,
+      "amount": 9000
+    },
+    {
+      "id": "item-050",
+      "invoiceId": "inv-021",
+      "speciesId": "sp-006",
+      "speciesName": "수국",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 4500,
+      "amount": 4500
+    },
+    {
+      "id": "item-051",
+      "invoiceId": "inv-021",
+      "speciesId": "sp-006",
+      "speciesName": "수국",
+      "spec": "5분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 9000,
+      "amount": 9000
+    },
+    {
+      "id": "item-052",
+      "invoiceId": "inv-021",
+      "speciesId": "sp-006",
+      "speciesName": "수국",
+      "spec": "8분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 18000,
+      "amount": 18000
+    },
+    {
+      "id": "item-053",
+      "invoiceId": "inv-021",
+      "speciesId": "sp-006",
+      "speciesName": "수국",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 4500,
+      "amount": 4500
+    },
+    {
+      "id": "item-054",
+      "invoiceId": "inv-021",
+      "speciesId": "sp-006",
+      "speciesName": "수국",
+      "spec": "5분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 9000,
+      "amount": 9000
+    },
+    {
+      "id": "item-055",
+      "invoiceId": "inv-022",
+      "speciesId": "sp-006",
+      "speciesName": "수국",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 4500,
+      "amount": 4500
+    },
+    {
+      "id": "item-056",
+      "invoiceId": "inv-022",
+      "speciesId": "sp-006",
+      "speciesName": "수국",
+      "spec": "5분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 9000,
+      "amount": 9000
+    },
+    {
+      "id": "item-057",
+      "invoiceId": "inv-022",
+      "speciesId": "sp-006",
+      "speciesName": "수국",
+      "spec": "8분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 18000,
+      "amount": 18000
+    },
+    {
+      "id": "item-058",
+      "invoiceId": "inv-022",
+      "speciesId": "sp-006",
+      "speciesName": "수국",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 4500,
+      "amount": 4500
+    },
+    {
+      "id": "item-059",
+      "invoiceId": "inv-023",
+      "speciesId": "sp-006",
+      "speciesName": "수국",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 4500,
+      "amount": 4500
+    },
+    {
+      "id": "item-060",
+      "invoiceId": "inv-023",
+      "speciesId": "sp-006",
+      "speciesName": "수국",
+      "spec": "5분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 9000,
+      "amount": 9000
+    },
+    {
+      "id": "item-061",
+      "invoiceId": "inv-023",
+      "speciesId": "sp-006",
+      "speciesName": "수국",
+      "spec": "8분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 18000,
+      "amount": 18000
+    },
+    {
+      "id": "item-062",
+      "invoiceId": "inv-024",
+      "speciesId": "sp-007",
+      "speciesName": "무궁화",
+      "spec": "H1.0",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 8000,
+      "amount": 8000
+    },
+    {
+      "id": "item-063",
+      "invoiceId": "inv-025",
+      "speciesId": "sp-007",
+      "speciesName": "무궁화",
+      "spec": "H1.0",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 8000,
+      "amount": 8000
+    },
+    {
+      "id": "item-064",
+      "invoiceId": "inv-025",
+      "speciesId": "sp-007",
+      "speciesName": "무궁화",
+      "spec": "H1.5",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 18000,
+      "amount": 18000
+    },
+    {
+      "id": "item-065",
+      "invoiceId": "inv-026",
+      "speciesId": "sp-007",
+      "speciesName": "무궁화",
+      "spec": "H1.0",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 8000,
+      "amount": 8000
+    },
+    {
+      "id": "item-066",
+      "invoiceId": "inv-026",
+      "speciesId": "sp-007",
+      "speciesName": "무궁화",
+      "spec": "H1.5",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 18000,
+      "amount": 18000
+    },
+    {
+      "id": "item-067",
+      "invoiceId": "inv-026",
+      "speciesId": "sp-007",
+      "speciesName": "무궁화",
+      "spec": "H2.0",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 35000,
+      "amount": 35000
+    },
+    {
+      "id": "item-068",
+      "invoiceId": "inv-027",
+      "speciesId": "sp-007",
+      "speciesName": "무궁화",
+      "spec": "H1.0",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 8000,
+      "amount": 8000
+    },
+    {
+      "id": "item-069",
+      "invoiceId": "inv-027",
+      "speciesId": "sp-007",
+      "speciesName": "무궁화",
+      "spec": "H1.5",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 18000,
+      "amount": 18000
+    },
+    {
+      "id": "item-070",
+      "invoiceId": "inv-027",
+      "speciesId": "sp-007",
+      "speciesName": "무궁화",
+      "spec": "H2.0",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 35000,
+      "amount": 35000
+    },
+    {
+      "id": "item-071",
+      "invoiceId": "inv-027",
+      "speciesId": "sp-007",
+      "speciesName": "무궁화",
+      "spec": "H1.0",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 8000,
+      "amount": 8000
+    },
+    {
+      "id": "item-072",
+      "invoiceId": "inv-028",
+      "speciesId": "sp-007",
+      "speciesName": "무궁화",
+      "spec": "H1.0",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 8000,
+      "amount": 8000
+    },
+    {
+      "id": "item-073",
+      "invoiceId": "inv-028",
+      "speciesId": "sp-007",
+      "speciesName": "무궁화",
+      "spec": "H1.5",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 18000,
+      "amount": 18000
+    },
+    {
+      "id": "item-074",
+      "invoiceId": "inv-029",
+      "speciesId": "sp-008",
+      "speciesName": "라벤더",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 3000,
+      "amount": 3000
+    },
+    {
+      "id": "item-075",
+      "invoiceId": "inv-030",
+      "speciesId": "sp-008",
+      "speciesName": "라벤더",
+      "spec": "5분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 6500,
+      "amount": 6500
+    },
+    {
+      "id": "item-076",
+      "invoiceId": "inv-029",
+      "speciesId": "sp-008",
+      "speciesName": "라벤더",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 3000,
+      "amount": 3000
+    },
+    {
+      "id": "item-077",
+      "invoiceId": "inv-031",
+      "speciesId": "sp-008",
+      "speciesName": "라벤더",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 3000,
+      "amount": 3000
+    },
+    {
+      "id": "item-078",
+      "invoiceId": "inv-032",
+      "speciesId": "sp-008",
+      "speciesName": "라벤더",
+      "spec": "5분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 6500,
+      "amount": 6500
+    },
+    {
+      "id": "item-079",
+      "invoiceId": "inv-031",
+      "speciesId": "sp-008",
+      "speciesName": "라벤더",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 3000,
+      "amount": 3000
+    },
+    {
+      "id": "item-080",
+      "invoiceId": "inv-032",
+      "speciesId": "sp-008",
+      "speciesName": "라벤더",
+      "spec": "5분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 6500,
+      "amount": 6500
+    },
+    {
+      "id": "item-081",
+      "invoiceId": "inv-033",
+      "speciesId": "sp-008",
+      "speciesName": "라벤더",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 3000,
+      "amount": 3000
+    },
+    {
+      "id": "item-082",
+      "invoiceId": "inv-034",
+      "speciesId": "sp-008",
+      "speciesName": "라벤더",
+      "spec": "5분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 6500,
+      "amount": 6500
+    },
+    {
+      "id": "item-083",
+      "invoiceId": "inv-035",
+      "speciesId": "sp-009",
+      "speciesName": "구절초",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 2200,
+      "amount": 2200
+    },
+    {
+      "id": "item-084",
+      "invoiceId": "inv-036",
+      "speciesId": "sp-009",
+      "speciesName": "구절초",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 2200,
+      "amount": 2200
+    },
+    {
+      "id": "item-085",
+      "invoiceId": "inv-036",
+      "speciesId": "sp-009",
+      "speciesName": "구절초",
+      "spec": "5분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 4500,
+      "amount": 4500
+    },
+    {
+      "id": "item-086",
+      "invoiceId": "inv-036",
+      "speciesId": "sp-009",
+      "speciesName": "구절초",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 2200,
+      "amount": 2200
+    },
+    {
+      "id": "item-087",
+      "invoiceId": "inv-037",
+      "speciesId": "sp-009",
+      "speciesName": "구절초",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 2200,
+      "amount": 2200
+    },
+    {
+      "id": "item-088",
+      "invoiceId": "inv-037",
+      "speciesId": "sp-009",
+      "speciesName": "구절초",
+      "spec": "5분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 4500,
+      "amount": 4500
+    },
+    {
+      "id": "item-089",
+      "invoiceId": "inv-037",
+      "speciesId": "sp-009",
+      "speciesName": "구절초",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 2200,
+      "amount": 2200
+    },
+    {
+      "id": "item-090",
+      "invoiceId": "inv-037",
+      "speciesId": "sp-009",
+      "speciesName": "구절초",
+      "spec": "5분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 4500,
+      "amount": 4500
+    },
+    {
+      "id": "item-091",
+      "invoiceId": "inv-037",
+      "speciesId": "sp-009",
+      "speciesName": "구절초",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 2200,
+      "amount": 2200
+    },
+    {
+      "id": "item-092",
+      "invoiceId": "inv-038",
+      "speciesId": "sp-009",
+      "speciesName": "구절초",
+      "spec": "3분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 2200,
+      "amount": 2200
+    },
+    {
+      "id": "item-093",
+      "invoiceId": "inv-038",
+      "speciesId": "sp-009",
+      "speciesName": "구절초",
+      "spec": "5분",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 4500,
+      "amount": 4500
+    },
+    {
+      "id": "item-094",
+      "invoiceId": "inv-039",
+      "speciesId": "sp-010",
+      "speciesName": "맥문동",
+      "spec": "2~3본",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 900,
+      "amount": 900
+    },
+    {
+      "id": "item-095",
+      "invoiceId": "inv-040",
+      "speciesId": "sp-010",
+      "speciesName": "맥문동",
+      "spec": "2~3본",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 900,
+      "amount": 900
+    },
+    {
+      "id": "item-096",
+      "invoiceId": "inv-040",
+      "speciesId": "sp-010",
+      "speciesName": "맥문동",
+      "spec": "5~7본",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 1800,
+      "amount": 1800
+    },
+    {
+      "id": "item-097",
+      "invoiceId": "inv-041",
+      "speciesId": "sp-010",
+      "speciesName": "맥문동",
+      "spec": "2~3본",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 900,
+      "amount": 900
+    },
+    {
+      "id": "item-098",
+      "invoiceId": "inv-041",
+      "speciesId": "sp-010",
+      "speciesName": "맥문동",
+      "spec": "5~7본",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 1800,
+      "amount": 1800
+    },
+    {
+      "id": "item-099",
+      "invoiceId": "inv-041",
+      "speciesId": "sp-010",
+      "speciesName": "맥문동",
+      "spec": "2~3본",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 900,
+      "amount": 900
+    },
+    {
+      "id": "item-100",
+      "invoiceId": "inv-042",
+      "speciesId": "sp-010",
+      "speciesName": "맥문동",
+      "spec": "2~3본",
+      "unit": "포트",
+      "quantity": 1,
+      "unitPrice": 900,
+      "amount": 900
+    },
+    {
+      "id": "item-101",
+      "invoiceId": "inv-043",
+      "speciesId": "sp-011",
+      "speciesName": "능소화",
+      "spec": "H1.5",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 12000,
+      "amount": 12000
+    },
+    {
+      "id": "item-102",
+      "invoiceId": "inv-044",
+      "speciesId": "sp-011",
+      "speciesName": "능소화",
+      "spec": "H1.5",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 12000,
+      "amount": 12000
+    },
+    {
+      "id": "item-103",
+      "invoiceId": "inv-044",
+      "speciesId": "sp-011",
+      "speciesName": "능소화",
+      "spec": "H2.0",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 25000,
+      "amount": 25000
+    },
+    {
+      "id": "item-104",
+      "invoiceId": "inv-044",
+      "speciesId": "sp-011",
+      "speciesName": "능소화",
+      "spec": "H1.5",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 12000,
+      "amount": 12000
+    },
+    {
+      "id": "item-105",
+      "invoiceId": "inv-045",
+      "speciesId": "sp-011",
+      "speciesName": "능소화",
+      "spec": "H1.5",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 12000,
+      "amount": 12000
+    },
+    {
+      "id": "item-106",
+      "invoiceId": "inv-045",
+      "speciesId": "sp-011",
+      "speciesName": "능소화",
+      "spec": "H2.0",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 25000,
+      "amount": 25000
+    },
+    {
+      "id": "item-107",
+      "invoiceId": "inv-045",
+      "speciesId": "sp-011",
+      "speciesName": "능소화",
+      "spec": "H1.5",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 12000,
+      "amount": 12000
+    },
+    {
+      "id": "item-108",
+      "invoiceId": "inv-045",
+      "speciesId": "sp-011",
+      "speciesName": "능소화",
+      "spec": "H2.0",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 25000,
+      "amount": 25000
+    },
+    {
+      "id": "item-109",
+      "invoiceId": "inv-046",
+      "speciesId": "sp-011",
+      "speciesName": "능소화",
+      "spec": "H1.5",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 12000,
+      "amount": 12000
+    },
+    {
+      "id": "item-110",
+      "invoiceId": "inv-046",
+      "speciesId": "sp-011",
+      "speciesName": "능소화",
+      "spec": "H2.0",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 25000,
+      "amount": 25000
+    },
+    {
+      "id": "item-111",
+      "invoiceId": "inv-047",
+      "speciesId": "sp-012",
+      "speciesName": "목련",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 55000,
+      "amount": 55000
+    },
+    {
+      "id": "item-112",
+      "invoiceId": "inv-047",
+      "speciesId": "sp-012",
+      "speciesName": "목련",
+      "spec": "R8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 110000,
+      "amount": 110000
+    },
+    {
+      "id": "item-113",
+      "invoiceId": "inv-047",
+      "speciesId": "sp-012",
+      "speciesName": "목련",
+      "spec": "R10",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 210000,
+      "amount": 210000
+    },
+    {
+      "id": "item-114",
+      "invoiceId": "inv-047",
+      "speciesId": "sp-012",
+      "speciesName": "목련",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 55000,
+      "amount": 55000
+    },
+    {
+      "id": "item-115",
+      "invoiceId": "inv-048",
+      "speciesId": "sp-012",
+      "speciesName": "목련",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 55000,
+      "amount": 55000
+    },
+    {
+      "id": "item-116",
+      "invoiceId": "inv-048",
+      "speciesId": "sp-012",
+      "speciesName": "목련",
+      "spec": "R8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 110000,
+      "amount": 110000
+    },
+    {
+      "id": "item-117",
+      "invoiceId": "inv-048",
+      "speciesId": "sp-012",
+      "speciesName": "목련",
+      "spec": "R10",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 210000,
+      "amount": 210000
+    },
+    {
+      "id": "item-118",
+      "invoiceId": "inv-048",
+      "speciesId": "sp-012",
+      "speciesName": "목련",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 55000,
+      "amount": 55000
+    },
+    {
+      "id": "item-119",
+      "invoiceId": "inv-048",
+      "speciesId": "sp-012",
+      "speciesName": "목련",
+      "spec": "R8",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 110000,
+      "amount": 110000
+    },
+    {
+      "id": "item-120",
+      "invoiceId": "inv-048",
+      "speciesId": "sp-012",
+      "speciesName": "목련",
+      "spec": "R10",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 210000,
+      "amount": 210000
+    },
+    {
+      "id": "item-121",
+      "invoiceId": "inv-048",
+      "speciesId": "sp-012",
+      "speciesName": "목련",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 55000,
+      "amount": 55000
+    },
+    {
+      "id": "item-122",
+      "invoiceId": "inv-049",
+      "speciesId": "sp-012",
+      "speciesName": "목련",
+      "spec": "R6",
+      "unit": "주",
+      "quantity": 1,
+      "unitPrice": 55000,
+      "amount": 55000
     }
   ]
 }
