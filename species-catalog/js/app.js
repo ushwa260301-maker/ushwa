@@ -121,6 +121,24 @@
     return [...months].sort((a,b) => a - b).map(m => `${m}월`).join(" · ");
   }
 
+  function normalizeCounts(arr) {
+    const out = Array(12).fill(0);
+    if (Array.isArray(arr)) {
+      for (let i = 0; i < 12; i++) {
+        const v = Number(arr[i]);
+        out[i] = Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+      }
+    }
+    return out;
+  }
+  function freqLevel(n) {
+    if (n <= 0) return 0;
+    if (n === 1) return 1;
+    if (n <= 3) return 2;
+    if (n <= 6) return 3;
+    return 4;
+  }
+
   function renderCard(sp) {
     const node = els.cardTpl.content.firstElementChild.cloneNode(true);
     node.dataset.id = sp.id;
@@ -140,6 +158,21 @@
       cell.textContent = m;
       cell.title = `${m}월 ${bloomSet.has(m) ? "(개화)" : ""}`;
       strip.appendChild(cell);
+    }
+
+    // Purchase frequency heatmap
+    const counts = normalizeCounts(sp.purchaseCounts);
+    const total = counts.reduce((a, b) => a + b, 0);
+    const freqVal = node.querySelector(".freq-label .val");
+    freqVal.textContent = total > 0 ? `총 ${total}회` : "구매 이력 없음";
+    const freqStrip = node.querySelector(".freq-strip");
+    for (let m = 1; m <= 12; m++) {
+      const cell = document.createElement("div");
+      cell.className = "pf-cell";
+      const c = counts[m - 1];
+      cell.dataset.level = String(freqLevel(c));
+      cell.title = `${m}월 · 구매 ${c}회`;
+      freqStrip.appendChild(cell);
     }
 
     const colorRow = node.querySelector(".color-row");
@@ -327,10 +360,34 @@
 
     renderPriceRows(sp?.prices || []);
     renderSupplierRows(sp?.suppliers || []);
+    renderFreqEditor(sp?.purchaseCounts);
 
     els.modal.hidden = false;
     els.modal.setAttribute("aria-hidden", "false");
     setTimeout(() => q("fName").focus(), 20);
+  }
+
+  function renderFreqEditor(counts) {
+    const wrap = q("fFreqEditor");
+    if (!wrap) return;
+    const values = normalizeCounts(counts);
+    wrap.innerHTML = "";
+    for (let m = 1; m <= 12; m++) {
+      const cell = document.createElement("label");
+      cell.className = "freq-edit-cell";
+      const spanText = document.createElement("span");
+      spanText.textContent = `${m}월`;
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = "0";
+      input.step = "1";
+      input.value = String(values[m - 1]);
+      input.dataset.month = String(m);
+      input.inputMode = "numeric";
+      cell.appendChild(spanText);
+      cell.appendChild(input);
+      wrap.appendChild(cell);
+    }
   }
 
   function closeModal() {
@@ -439,6 +496,12 @@
       }))
       .filter(s => s.name);
 
+    const purchaseCounts = Array.from({ length: 12 }, (_, i) => {
+      const inp = q("fFreqEditor")?.querySelector(`input[data-month="${i + 1}"]`);
+      const v = Number(inp?.value);
+      return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+    });
+
     return {
       name,
       scientificName: q("fLatin").value.trim(),
@@ -447,6 +510,7 @@
       colors,
       prices,
       suppliers,
+      purchaseCounts,
       notes: q("fNotes").value.trim()
     };
   }

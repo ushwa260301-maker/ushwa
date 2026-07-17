@@ -133,7 +133,8 @@
 
   // ==== Parsing ====
   const SPEC_RE = /(?:R\s?\d+(?:\.\d+)?|H\s?\d+(?:\.\d+)?|B\s?\d+(?:\.\d+)?|W\s?\d+(?:\.\d+)?|\d+\s?(?:분|포트|주|본|치|㎝|cm|㎜|mm|m))/gi;
-  const PRICE_RE = /(?:\d{1,3}(?:,\d{3})+|\d{4,})(?:\s?원)?/g;
+  // 가격 형태: 45,000 · 12000 · 45,000원 · 50원 · 100.- · 500.-  (거래명세서 관례)
+  const PRICE_RE = /\d{1,3}(?:,\d{3})+(?:\s?원)?|\d{4,}(?:\s?원)?|\d{1,4}\s*원|\d{1,4}\s*\.\s*[-–]/g;
   const PHONE_RE_G = /0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}/g;
   const PHONE_TEST_RE = /0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}/;
   const MOBILE_PREFIX_RE = /^01[016789]/;
@@ -142,11 +143,12 @@
   const ADDRESS_LINE_RE = new RegExp(`(?:${PROVINCE_RE.source})[가-힣 \\d\\-()·]*?(?:시|군|구)[가-힣 \\d\\-()·]*?(?:동|면|리|로|길)[가-힣 \\d\\-()·]*`, "g");
   const REGION_HINT_RE = new RegExp(`${PROVINCE_RE.source}[가-힣 \\d]*?[시군구]`);
   const UNIT_HINT_RE = /(?:^|\s)(주|포트|본|그루|치|개|EA)(?:\s|$)/;
-  const BIZ_SUFFIX_KEYWORDS = ["농원", "수목원", "원예", "농장", "조합", "산업", "㈜", "주식회사", "회사", "상사", "화훼"];
-  const BIZ_KEYWORD_RE = /(?:상호|업체명|공급자|공급업체|사업자명)\s*[:.\-–]?\s*([가-힣A-Za-z0-9()\s㈜]{2,40})/;
-  const ADDRESS_KEYWORD_RE = /(?:주소|소재지|사업장\s*소재지|address)\s*[:.\-–]?\s*([^\n]+)/i;
-  const MOBILE_KEYWORD_RE = /(?:핸드폰|휴대(?:폰|전화)|모바일|H\.?P|Mobile)\s*[:.\-–]?\s*(01[0-9][-.\s]?\d{3,4}[-.\s]?\d{4})/i;
-  const HEADER_LINE_RE = /^(?:상호|업체명|공급자|공급업체|사업자|사업자번호|주소|소재지|사업장|핸드폰|휴대|전화|TEL|Tel|FAX|Fax|팩스|대표자|담당자|발행일|일자|번호|합계|총계|부가세|VAT|세금)/i;
+  const BIZ_SUFFIX_KEYWORDS = ["농원", "수목원", "원예", "농장", "조합", "산업", "㈜", "주식회사", "회사", "상사", "화훼", "너서리", "널서리", "팜"];
+  // 공백이 낀 라벨("상 호", "사 업 장 소 재 지")까지 잡음
+  const BIZ_KEYWORD_RE = /(?:상\s*호|업체명|공급자|공급업체|사업자명)\s*[:.\-–]?\s*([가-힣A-Za-z0-9()\s㈜]{2,40})/;
+  const ADDRESS_KEYWORD_RE = /(?:주\s*소|소\s*재\s*지|사\s*업\s*장\s*소\s*재\s*지|address)\s*[:.\-–]?\s*([^\n]+)/i;
+  const MOBILE_KEYWORD_RE = /(?:핸\s*드\s*폰|휴\s*대(?:\s*폰|\s*전\s*화)|모\s*바\s*일|H\.?P|Mobile|M\.)\s*[:.\-–]?\s*(01[0-9][-.\s]?\d{3,4}[-.\s]?\d{4})/i;
+  const HEADER_LINE_RE = /^(?:상\s*호|업체명|공급자|공급업체|사업자|사업자번호|주\s*소|소\s*재\s*지|사\s*업\s*장|핸\s*드\s*폰|휴\s*대|전\s*화|TEL|Tel|FAX|Fax|팩스|대표자|담당자|발행일|일자|번호|합계|총계|부가세|VAT|세금|성\s*명|업\s*태|종\s*목|공|급)/i;
 
   function parseText(text) {
     const supplier = detectSupplier(text);
@@ -171,8 +173,8 @@
     const bizKey = headText.match(BIZ_KEYWORD_RE);
     if (bizKey) {
       name = bizKey[1].replace(/\s+/g, " ").trim();
-      const suf = name.match(BIZ_SUFFIX_RE);
-      if (suf) name = suf[0];
+      // 라벨 우측 값은 다른 필드(성명·대표자·전화 등)까지 이어질 수 있어 자름
+      name = name.split(/(?:성\s*명|대표자|사업자|주\s*소|소\s*재\s*지|사\s*업\s*장|전\s*화|TEL|FAX|팩스|핸\s*드\s*폰|휴\s*대(?:\s*폰|\s*전\s*화)|M\.\s*0)/i)[0].trim();
     }
     if (!name) {
       for (const l of head) {
@@ -214,9 +216,10 @@
       const short = text.match(REGION_HINT_RE);
       if (short) region = short[0].trim();
     }
-    // 주소 정리: 뒤쪽에 다른 정보가 붙어있으면 자르기
+    // 주소 정리: 뒤쪽에 다른 필드(전화·성명·M. 등) 붙어있으면 자르기 + 전화번호 자체 제거
     region = region
-      .split(/(?:상호|대표자|사업자|전화|TEL|FAX|팩스|핸드폰|휴대전화)/i)[0]
+      .replace(PHONE_RE_G, "")
+      .split(/(?:상\s*호|성\s*명|대표자|사업자|전\s*화|TEL|FAX|팩스|핸\s*드\s*폰|휴\s*대(?:\s*폰|\s*전\s*화)|M\.\s*)/i)[0]
       .replace(/[·]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
@@ -225,27 +228,54 @@
   }
 
   const COLUMN_HEADER_WORDS = new Set([
-    "품명", "품목", "규격", "수종", "단위", "단가", "수량", "금액", "번호", "합계", "총계", "적요", "비고"
+    "품명", "품목", "규격", "수종", "단위", "단가", "수량", "금액", "번호",
+    "합계", "총계", "적요", "비고", "공급가액", "월일", "성명", "업태", "종목"
   ]);
+  // 명세서 관용어·인사말·화폐단위 — 이름 후보에서 제외
+  const NOISE_NAMES = new Set([
+    "귀하", "귀중", "원정", "일금", "이하", "이상", "위와", "아래", "계산",
+    "발행", "청구", "송장", "인수자", "잔금", "전잔금", "입금", "본사"
+  ]);
+  // 날짜성 라인 감지
+  const DATE_LINE_RE = /(?:\d{2,4}\s*년|\d{1,2}\s*월|\d{1,2}\s*일)/;
+  // 금액 요약 라인
+  const META_LINE_RE = /^(?:금\s*액|아\s*래|위\s*와|계\s*산|일\s*금|합\s*계|총\s*계|공\s*급\s*자|공\s*급\s*받)/;
+
+  // 원·.- 컨텍스트가 있으면 저액도 통과, 없으면 100 이상만 통과
+  function extractLinePrices(line) {
+    const out = [];
+    for (const m of line.matchAll(PRICE_RE)) {
+      const raw = m[0];
+      const val = normalizePrice(raw);
+      if (val == null) continue;
+      const hasContext = /원|\.\s*[-–]/.test(raw);
+      if (hasContext || val >= 100) out.push(val);
+    }
+    return out;
+  }
 
   function extractCandidateRows(text) {
     const rows = [];
     const lines = text.split(/\r?\n/).map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean);
     for (const line of lines) {
-      // 헤더/수급처 메타 라인은 후보로 넣지 않음
+      // 헤더/수급처/금액요약/날짜 라인은 후보로 넣지 않음
       if (HEADER_LINE_RE.test(line)) continue;
       if (PHONE_TEST_RE.test(line)) continue;
+      if (META_LINE_RE.test(line)) continue;
+      if (DATE_LINE_RE.test(line)) continue;
       if (!/[가-힣]{2,}/.test(line)) continue;
 
-      // 토큰화 후 순수 한글 토큰 중 컬럼헤더가 아닌 첫 토큰을 품목명으로
+      // 토큰화 후 순수 한글 토큰 중 컬럼헤더·관용어가 아닌 첫 토큰을 품목명으로
       const tokens = line.split(/\s+/);
-      const nameTok = tokens.find(t => /^[가-힣]{2,15}$/.test(t) && !COLUMN_HEADER_WORDS.has(t));
+      const nameTok = tokens.find(t =>
+        /^[가-힣]{2,15}$/.test(t) &&
+        !COLUMN_HEADER_WORDS.has(t) &&
+        !NOISE_NAMES.has(t)
+      );
       if (!nameTok) continue;
 
       const specs = [...line.matchAll(SPEC_RE)].map(m => m[0].trim().replace(/\s+/g, ""));
-      const prices = [...line.matchAll(PRICE_RE)]
-        .map(m => normalizePrice(m[0]))
-        .filter(p => p != null && p >= 100);
+      const prices = extractLinePrices(line);
       if (!specs.length && !prices.length) continue;
 
       const spec = specs[0] || "";

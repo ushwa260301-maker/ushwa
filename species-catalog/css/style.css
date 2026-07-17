@@ -10,6 +10,11 @@
   --accent: #2d5a3a;
   --accent-soft: #dae8dd;
   --accent-strong: #1c3d25;
+  --freq-0: #eaeee4;
+  --freq-1: #c4dcc9;
+  --freq-2: #7ab188;
+  --freq-3: #4a7f57;
+  --freq-4: #2d5a3a;
   --bloom: #a86d29;
   --bloom-soft: #f0e2c9;
   --bloom-ink: #7b4d15;
@@ -37,6 +42,11 @@
     --accent: #8ab894;
     --accent-soft: #212d24;
     --accent-strong: #b0d4b8;
+    --freq-0: #20241d;
+    --freq-1: #34483a;
+    --freq-2: #4e7857;
+    --freq-3: #6ea079;
+    --freq-4: #8ab894;
     --bloom: #d69b58;
     --bloom-soft: #2d2418;
     --bloom-ink: #e8b581;
@@ -60,6 +70,11 @@
   --accent: #2d5a3a;
   --accent-soft: #dae8dd;
   --accent-strong: #1c3d25;
+  --freq-0: #eaeee4;
+  --freq-1: #c4dcc9;
+  --freq-2: #7ab188;
+  --freq-3: #4a7f57;
+  --freq-4: #2d5a3a;
   --bloom: #a86d29;
   --bloom-soft: #f0e2c9;
   --bloom-ink: #7b4d15;
@@ -82,6 +97,11 @@
   --accent: #8ab894;
   --accent-soft: #212d24;
   --accent-strong: #b0d4b8;
+  --freq-0: #20241d;
+  --freq-1: #34483a;
+  --freq-2: #4e7857;
+  --freq-3: #6ea079;
+  --freq-4: #8ab894;
   --bloom: #d69b58;
   --bloom-soft: #2d2418;
   --bloom-ink: #e8b581;
@@ -530,6 +550,80 @@ label.btn-secondary { cursor: pointer; }
   background: var(--bloom);
   color: #fff8ec;
   font-weight: 600;
+}
+
+/* ===== Purchase frequency heatmap (GitHub Contribution style) ===== */
+.freq { display: flex; flex-direction: column; gap: 6px; }
+.freq-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.freq-label .lbl {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.freq-label .val {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--accent-strong);
+}
+.freq-strip {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 2px;
+  background: var(--rule-soft);
+  padding: 3px;
+  border-radius: 4px;
+}
+.pf-cell {
+  border-radius: 2px;
+  min-height: 20px;
+  transition: transform 0.1s ease-out;
+}
+.pf-cell[data-level="0"] { background: var(--freq-0); }
+.pf-cell[data-level="1"] { background: var(--freq-1); }
+.pf-cell[data-level="2"] { background: var(--freq-2); }
+.pf-cell[data-level="3"] { background: var(--freq-3); }
+.pf-cell[data-level="4"] { background: var(--freq-4); }
+.pf-cell:hover { transform: scale(1.12); z-index: 1; position: relative; }
+
+/* Editor grid inside the species modal */
+.freq-editor {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.freq-edit-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.freq-edit-cell input {
+  width: 100%;
+  padding: 5px 4px;
+  font-size: 13px;
+  text-align: center;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.freq-edit-cell input:focus {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 0;
+  border-color: var(--accent);
 }
 :root[data-theme="dark"] .ph-cell.active { color: #1a1408; }
 @media (prefers-color-scheme: dark) {
