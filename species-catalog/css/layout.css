@@ -1,0 +1,154 @@
+/* ============================================================
+   layout.css — Page structure: masthead, page grid, filter rail,
+   stage, toolbar, responsive breakpoints.
+   ============================================================ */
+
+/* -------------- Masthead -------------- */
+.masthead {
+  border-bottom: 1px solid var(--rule);
+  background: var(--panel);
+}
+.masthead-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 20px 32px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.brand h1 {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 26px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.brand h1 em { font-style: italic; color: var(--accent); font-weight: 500; }
+.brand .kicker {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.masthead-meta {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.masthead-meta .count {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.masthead-meta .count strong {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  font-feature-settings: "tnum" 1;
+}
+.sort { display: flex; align-items: center; gap: 8px; }
+.sort label {
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* -------------- Page grid (rail + stage) -------------- */
+.page {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 28px 32px 80px;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 40px;
+}
+
+/* -------------- Filter rail (left column) -------------- */
+.rail {
+  position: sticky;
+  top: 20px;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.rail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule);
+}
+.rail-head h2 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.field { display: flex; flex-direction: column; gap: 8px; }
+.field-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.field input[type="text"],
+.field input[type="number"],
+.field select { width: 100%; }
+
+.price-range {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 6px;
+  align-items: center;
+}
+.price-range span { color: var(--muted); font-size: 12px; text-align: center; }
+.hint { font-size: 11px; color: var(--muted); margin-top: -2px; display: block; }
+
+/* -------------- Stage (right column) -------------- */
+.stage { display: flex; flex-direction: column; gap: 20px; }
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.toolbar-left, .toolbar-right {
+  display: flex; gap: 8px; align-items: center;
+}
+label.btn-secondary { cursor: pointer; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 20px;
+}
+
+/* -------------- Responsive -------------- */
+@media (max-width: 880px) {
+  .page {
+    grid-template-columns: 1fr;
+    padding: 20px 20px 60px;
+    gap: 24px;
+  }
+  .rail { position: static; }
+  .masthead-inner { padding: 18px 20px; }
+  .grid { grid-template-columns: 1fr; }
+}

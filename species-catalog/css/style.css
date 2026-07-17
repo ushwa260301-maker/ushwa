@@ -1,0 +1,296 @@
+/* ============================================================
+   style.css — Design tokens, reset, typography, shared controls
+   (buttons, inputs, chips, month-cells, toast).
+   Component-specific styles live in layout.css / card.css / modal.css.
+   ============================================================ */
+
+/* -------------- Design tokens (light default) -------------- */
+:root {
+  --ground: #f0f2ec;
+  --panel: #ffffff;
+  --panel-2: #f8f9f4;
+  --ink: #17201a;
+  --ink-2: #3d453f;
+  --muted: #6c766e;
+  --rule: #dae0d3;
+  --rule-soft: #eaeee4;
+  --accent: #2d5a3a;
+  --accent-soft: #dae8dd;
+  --accent-strong: #1c3d25;
+  --bloom: #a86d29;
+  --bloom-soft: #f0e2c9;
+  --bloom-ink: #7b4d15;
+  --danger: #b1493b;
+  --danger-soft: #f4dcd8;
+  --focus: #2d5a3a;
+
+  /* Purchase-frequency heatmap (GitHub-Contribution style) */
+  --freq-0: #eaeee4;
+  --freq-1: #c4dcc9;
+  --freq-2: #7ab188;
+  --freq-3: #4a7f57;
+  --freq-4: #2d5a3a;
+
+  --shadow-card: 0 1px 2px rgba(20, 30, 20, 0.05), 0 12px 32px rgba(20, 30, 20, 0.05);
+  --shadow-modal: 0 20px 60px rgba(20, 30, 20, 0.25), 0 4px 12px rgba(20, 30, 20, 0.08);
+
+  --serif: "Iowan Old Style", "PT Serif", "Palatino Linotype", Palatino, Georgia, "AppleMyungjo", serif;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, "JetBrains Mono", Consolas, monospace;
+}
+
+/* -------------- Dark theme via OS preference -------------- */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #0e1210; --panel: #171b16; --panel-2: #1c201a;
+    --ink: #e5e9df; --ink-2: #c1c8ba; --muted: #838a7f;
+    --rule: #272c24; --rule-soft: #20241d;
+    --accent: #8ab894; --accent-soft: #212d24; --accent-strong: #b0d4b8;
+    --bloom: #d69b58; --bloom-soft: #2d2418; --bloom-ink: #e8b581;
+    --danger: #d47869; --danger-soft: #2d1c18; --focus: #8ab894;
+    --freq-0: #20241d; --freq-1: #34483a; --freq-2: #4e7857; --freq-3: #6ea079; --freq-4: #8ab894;
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.4), 0 12px 32px rgba(0,0,0,0.3);
+    --shadow-modal: 0 20px 60px rgba(0,0,0,0.7), 0 4px 12px rgba(0,0,0,0.4);
+  }
+}
+
+/* -------------- Manual overrides via [data-theme] -------------- */
+:root[data-theme="light"] {
+  --ground: #f0f2ec; --panel: #ffffff; --panel-2: #f8f9f4;
+  --ink: #17201a; --ink-2: #3d453f; --muted: #6c766e;
+  --rule: #dae0d3; --rule-soft: #eaeee4;
+  --accent: #2d5a3a; --accent-soft: #dae8dd; --accent-strong: #1c3d25;
+  --bloom: #a86d29; --bloom-soft: #f0e2c9; --bloom-ink: #7b4d15;
+  --danger: #b1493b; --danger-soft: #f4dcd8; --focus: #2d5a3a;
+  --freq-0: #eaeee4; --freq-1: #c4dcc9; --freq-2: #7ab188; --freq-3: #4a7f57; --freq-4: #2d5a3a;
+  --shadow-card: 0 1px 2px rgba(20, 30, 20, 0.05), 0 12px 32px rgba(20, 30, 20, 0.05);
+  --shadow-modal: 0 20px 60px rgba(20, 30, 20, 0.25), 0 4px 12px rgba(20, 30, 20, 0.08);
+}
+:root[data-theme="dark"] {
+  --ground: #0e1210; --panel: #171b16; --panel-2: #1c201a;
+  --ink: #e5e9df; --ink-2: #c1c8ba; --muted: #838a7f;
+  --rule: #272c24; --rule-soft: #20241d;
+  --accent: #8ab894; --accent-soft: #212d24; --accent-strong: #b0d4b8;
+  --bloom: #d69b58; --bloom-soft: #2d2418; --bloom-ink: #e8b581;
+  --danger: #d47869; --danger-soft: #2d1c18; --focus: #8ab894;
+  --freq-0: #20241d; --freq-1: #34483a; --freq-2: #4e7857; --freq-3: #6ea079; --freq-4: #8ab894;
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.4), 0 12px 32px rgba(0,0,0,0.3);
+  --shadow-modal: 0 20px 60px rgba(0,0,0,0.7), 0 4px 12px rgba(0,0,0,0.4);
+}
+
+/* -------------- Reset & base typography -------------- */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection { background: var(--accent-soft); color: var(--accent-strong); }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+button { font-family: inherit; }
+input, select, textarea { font-family: inherit; }
+
+/* -------------- Form primitives -------------- */
+select,
+input[type="text"],
+input[type="number"],
+textarea {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 6px 10px;
+  line-height: 1.3;
+}
+textarea { resize: vertical; }
+select { padding-right: 24px; cursor: pointer; }
+select:hover, input:hover { border-color: var(--accent); }
+
+/* -------------- Buttons -------------- */
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  padding: 7px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+
+/* Dark theme has a very light accent, so the primary text should be dark for contrast. */
+:root[data-theme="dark"] .btn-primary { color: #101410; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .btn-primary { color: #101410; }
+}
+
+.btn-secondary {
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  padding: 7px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+  display: inline-block;
+}
+.btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+.btn-ghost-sm {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  padding: 6px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 3px;
+}
+.btn-ghost-sm:hover { color: var(--danger); text-decoration-color: var(--danger); }
+
+.btn-mini {
+  background: var(--panel);
+  color: var(--ink-2);
+  border: 1px dashed var(--rule);
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn-mini:hover { border-color: var(--accent); color: var(--accent); border-style: solid; }
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: 13px;
+  line-height: 1;
+}
+.icon-btn:hover { background: var(--rule-soft); color: var(--ink); }
+
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--rule);
+  color: var(--muted);
+  padding: 5px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+
+.btn-reset {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+  padding: 4px 0;
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 3px;
+}
+.btn-reset:hover { color: var(--accent); text-decoration-color: var(--accent); }
+
+/* -------------- Chips & month cells (shared by filter rail + modal) -------------- */
+.chip-row { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.chip {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  color: var(--ink-2);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 1.3;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.chip:hover { border-color: var(--accent); }
+.chip[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  border-color: var(--accent);
+}
+.chip .swatch {
+  display: inline-block;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.08);
+}
+
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+.month-cell {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  color: var(--ink-2);
+  padding: 6px 0;
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-feature-settings: "tnum" 1;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.month-cell:hover { border-color: var(--bloom); color: var(--bloom-ink); }
+.month-cell[aria-pressed="true"] {
+  background: var(--bloom-soft);
+  color: var(--bloom-ink);
+  border-color: var(--bloom);
+}
+
+/* -------------- Toast -------------- */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--ground);
+  padding: 10px 18px;
+  border-radius: 4px;
+  font-size: 13px;
+  box-shadow: var(--shadow-modal);
+  z-index: 200;
+  animation: toast-in 0.18s ease-out;
+}
+.toast[hidden] { display: none; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
