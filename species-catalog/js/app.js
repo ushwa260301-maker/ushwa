@@ -533,6 +533,24 @@ function updateInvoice(invoiceId, header, items) {
 }
 
 /**
+ * Read the LocalStorage-persisted Invoice + linked InvoiceItems + linked
+ * Species records for a given invoice id. Used by the Debug Panel's
+ * "📥 저장 Invoice 다운로드" button and by the E2E test to prove
+ * `LocalStorage snapshot === Debug ④ To Be Saved projection`.
+ *
+ * Returns `null` if the invoice isn't present in state.
+ * @param {string} invoiceId
+ */
+function getSavedInvoiceSnapshot(invoiceId) {
+  const inv = state.data.invoices.find(i => i.id === invoiceId);
+  if (!inv) return null;
+  const items         = state.data.invoiceItems.filter(it => it.invoiceId === invoiceId);
+  const linkedIds     = [...new Set(items.map(it => it.speciesId))];
+  const linkedSpecies = state.data.species.filter(s => linkedIds.includes(s.id));
+  return { invoice: inv, items, linkedSpecies };
+}
+
+/**
  * Delete an Invoice and cascade to its items. Any Species is left alone —
  * it may still have items from other invoices; if it becomes empty its
  * stats simply go to zero (the card still renders).
@@ -692,8 +710,9 @@ async function init() {
 
   initDebugPanel({
     toast,
-    onReanalyze: reanalyzeCurrent,
-    onProject:   projectInvoiceSave
+    onReanalyze:       reanalyzeCurrent,
+    onProject:         projectInvoiceSave,
+    onGetSavedInvoice: getSavedInvoiceSnapshot
   });
 
   // IndexedDB store (attachments) — pre-open; failures are non-fatal.

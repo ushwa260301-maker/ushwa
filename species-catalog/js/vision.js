@@ -97,6 +97,8 @@ export async function analyzeInvoice(file, opts = {}) {
   if (!file) throw new Error("파일이 선택되지 않았습니다.");
   const timeoutMs = Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : 60000;
   const endpoint  = opts.endpoint || "/api/analyze-invoice";
+  const requestedAt = new Date().toISOString();
+  const t0 = Date.now();
 
   const dataBase64 = await fileToBase64(file);
 
@@ -116,30 +118,65 @@ export async function analyzeInvoice(file, opts = {}) {
       signal: controller.signal
     });
   } catch (err) {
-    if (controller.signal.aborted) {
-      throw new Error(`분석 요청 시간이 초과되었습니다 (${Math.round(timeoutMs / 1000)}초).`);
-    }
-    // TypeError from fetch usually means the proxy is not reachable.
-    throw new Error(
-      `Vision 프록시(${endpoint})에 연결할 수 없습니다. ` +
-      "'node species-catalog/server/proxy.mjs' 로 프록시를 실행 중인지 확인하세요."
-    );
+    const latencyMs = Date.now() - t0;
+    const msg = controller.signal.aborted
+      ? `분석 요청 시간이 초과되었습니다 (${Math.round(timeoutMs / 1000)}초).`
+      : `Vision 프록시(${endpoint})에 연결할 수 없습니다. `
+        + "'node species-catalog/server/proxy.mjs' 로 프록시를 실행 중인지 확인하세요.";
+    const errOut = new Error(msg);
+    errOut._debug = {
+      provider:     "unknown",
+      model:        null,
+      requestedAt,
+      latencyMs,
+      confidence:   null,
+      errorMessage: msg,
+      httpStatus:   null,
+      raw:          null
+    };
+    throw errOut;
   } finally {
     clearTimeout(timer);
   }
 
   let data = null;
   try { data = await res.json(); } catch { /* body was not JSON */ }
+  const latencyMs = Date.now() - t0;
 
   if (!res.ok) {
     const msg = data?.message || data?.error || `HTTP ${res.status}`;
     const err = new Error(msg);
     err.status = res.status;
+    err._debug = {
+      provider:     data?._debug?.provider     || "openai",
+      model:        data?._debug?.model        || null,
+      requestedAt:  data?._debug?.requestedAt  || requestedAt,
+      latencyMs:    data?._debug?.latencyMs    ?? latencyMs,
+      confidence:   null,
+      errorMessage: msg,
+      httpStatus:   res.status,
+      raw:          data?._debug?.raw          || data
+    };
     throw err;
   }
   if (!data || data.ok === false) {
-    throw new Error(data?.message || data?.error || "알 수 없는 오류입니다.");
+    const msg = data?.message || data?.error || "알 수 없는 오류입니다.";
+    const err = new Error(msg);
+    err._debug = {
+      provider:     data?._debug?.provider    || "openai",
+      model:        data?._debug?.model       || null,
+      requestedAt:  data?._debug?.requestedAt || requestedAt,
+      latencyMs:    data?._debug?.latencyMs   ?? latencyMs,
+      confidence:   null,
+      errorMessage: msg,
+      httpStatus:   res.status,
+      raw:          data?._debug?.raw         || data
+    };
+    throw err;
   }
+
+  // Success — attach client-side HTTP status so Debug meta has it.
+  if (data._debug) data._debug.httpStatus = res.status;
   return data;
 }
 
@@ -230,6 +267,7 @@ export async function analyzeInvoiceMock(file) {
       latencyMs,
       confidence:  null,
       errorMessage: null,
+      httpStatus:  200,
       raw: {
         note: "This is a deterministic Mock. No provider call was made.",
         invoiceDate: today,
@@ -267,6 +305,7 @@ export async function analyzeInvoiceMock(file) {
  * @property {number}      latencyMs       provider round-trip in ms
  * @property {number|null} confidence      0..1 overall confidence, if provided
  * @property {string|null} errorMessage    non-null on OCR failure paths
+ * @property {number|null} httpStatus      proxy HTTP response code (null on network error)
  * @property {any}         raw             untouched provider response body
  */
 

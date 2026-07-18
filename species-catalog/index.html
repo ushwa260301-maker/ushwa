@@ -412,12 +412,20 @@
                 <button type="button" class="btn-mini" id="dbgDownloadBtn">↓ OCR 결과 다운로드</button>
                 <button type="button" class="btn-mini" id="dbgReanalyzeBtn">↻ OCR 재실행</button>
                 <button type="button" class="btn-mini" id="dbgSaveVisionBtn">💾 Vision 응답 저장</button>
+                <button type="button" class="btn-mini" id="dbgDownloadSavedBtn">📥 저장 Invoice 다운로드</button>
               </div>
             </header>
+
+            <!-- Auto-recognition success rate -->
+            <div class="dbg-rate" aria-label="자동 인식 성공률">
+              <div class="dbg-rate-value" id="dbgRateValue">—</div>
+              <div class="dbg-rate-detail" id="dbgRateDetail">필드 인식률이 여기에 표시됩니다</div>
+            </div>
 
             <dl class="debug-meta" aria-label="Vision 메타데이터">
               <div><dt>Provider</dt>   <dd id="dbgProvider">—</dd></div>
               <div><dt>모델</dt>       <dd id="dbgModel">—</dd></div>
+              <div><dt>HTTP</dt>       <dd id="dbgHttpStatus">—</dd></div>
               <div><dt>응답시간</dt>   <dd id="dbgLatency">—</dd></div>
               <div><dt>OCR 성공</dt>   <dd id="dbgOk">—</dd></div>
               <div><dt>Confidence</dt> <dd id="dbgConfidence">—</dd></div>
@@ -440,12 +448,35 @@
             <div class="dbg-diff-wrap" data-dbg-panel="diff" hidden>
               <table class="dbg-diff-table">
                 <thead>
-                  <tr><th>필드</th><th>OCR</th><th>저장</th><th class="col-status">상태</th></tr>
+                  <tr>
+                    <th>필드</th>
+                    <th>OCR 원본</th>
+                    <th>사용자 수정</th>
+                    <th>최종 저장</th>
+                    <th class="col-status">상태</th>
+                  </tr>
                 </thead>
                 <tbody id="dbgDiffBody"></tbody>
               </table>
-              <p class="dbg-diff-empty" id="dbgDiffEmpty" hidden>변경사항이 없습니다.</p>
+              <p class="dbg-diff-empty" id="dbgDiffEmpty" hidden>필드 비교 데이터가 없습니다.</p>
             </div>
+
+            <!-- 실제 거래명세서 테스트 체크리스트 -->
+            <section class="dbg-checklist-wrap">
+              <h4>✅ 실제 거래명세서 테스트 체크리스트</h4>
+              <ul class="dbg-checklist" id="dbgChecklist">
+                <li data-dbg-check="jpg"                data-state="pending"><span class="ck-icon">☐</span> JPG 업로드</li>
+                <li data-dbg-check="png"                data-state="pending"><span class="ck-icon">☐</span> PNG 업로드</li>
+                <li data-dbg-check="pdf"                data-state="pending"><span class="ck-icon">☐</span> PDF 업로드</li>
+                <li data-dbg-check="ocrOk"              data-state="pending"><span class="ck-icon">☐</span> OCR 성공</li>
+                <li data-dbg-check="ocrError"           data-state="pending"><span class="ck-icon">☐</span> OCR 실패 처리 준비</li>
+                <li data-dbg-check="edited"             data-state="pending"><span class="ck-icon">☐</span> OCR 결과 수정</li>
+                <li data-dbg-check="saved"              data-state="pending"><span class="ck-icon">☐</span> LocalStorage 저장</li>
+                <li data-dbg-check="cardReflected"      data-state="pending"><span class="ck-icon">☐</span> 카드 반영</li>
+                <li data-dbg-check="historyReflected"   data-state="pending"><span class="ck-icon">☐</span> 구매이력 반영</li>
+                <li data-dbg-check="statsRecomputed"    data-state="pending"><span class="ck-icon">☐</span> 통계 자동 계산</li>
+              </ul>
+            </section>
           </section>
 
           <div class="step-actions">

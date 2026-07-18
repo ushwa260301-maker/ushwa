@@ -688,21 +688,95 @@ Debug Panel 은 **읽기 전용 관찰자**입니다. [저장] 버튼은 기존 
 ④ 탭은 순수 함수 `projectInvoiceSave()` 로 미리보기만 계산하며 **state 를
 전혀 건드리지 않습니다**.
 
+## 자동 인식 성공률
+
+Debug Panel 최상단에 큰 숫자로 표시됩니다.
+
+```
+96%     22 / 23 필드 자동 인식 · 1 수정
+─────
+```
+
+- **총 필드 수**  = 헤더 5 (거래일·거래번호·거래처·연락처·주소) + 품목 × 6 (수종명·규격·단위·수량·단가·금액)
+- **자동 인식**   = OCR 이 값을 반환했고 사용자가 그대로 유지한 필드
+- **수정**       = OCR 이 값을 반환했지만 사용자가 고친 필드
+- **미인식**     = OCR 이 빈 값을 반환한 필드 (아래 색상 강조)
+
+값 색상: `≥90%` = 초록, `≥60%` = 노랑, `<60%` = 빨강.
+
+## 필드 색상 3-tier (Diff 탭)
+
+| 상태 | 색상 | 조건 |
+|---|---|---|
+| **초록** (recognized) | 🟢 | OCR 이 값을 반환했고 사용자가 그대로 저장 |
+| **주황** (modified) | 🟠 | OCR 값이 있었지만 사용자가 고침 |
+| **빨강** (missing) | 🔴 | OCR 이 값을 반환하지 못함 |
+
+각 행은 `data-dbg-field-state` 속성으로 상태를 실어서 E2E 로도 검증 가능합니다.
+
+## HTTP status + 실패 처리
+
+Vision API 실패 시에도 Debug Panel 은 계속 동작하며 다음 정보를 노출합니다:
+
+| 필드 | 소스 |
+|---|---|
+| **HTTP**  | `err._debug.httpStatus` (예: `502`) — 2xx 초록, 4xx/5xx 빨강 |
+| **응답시간** | 클라이언트가 측정한 실제 round-trip (`ms`) |
+| **요청 시각** | ISO-8601 (`_debug.requestedAt`) |
+| **오류 메시지** | `_debug.errorMessage` — 프로바이더 원문 유지 |
+| **Vision Raw** | 실패 응답 body 도 그대로 담아줌 (진단 자료) |
+
+네트워크 오류 · 타임아웃 · 프록시 미실행에서도 vision.js 가 최소 `_debug`
+envelope 을 채워 놓기 때문에 Debug Panel 이 "빈 화면" 이 되지 않습니다.
+
 ## 사용 시나리오
 
 ```
 1. 페이지를 ?debug=1 로 열기
-2. 툴바의 [+ 거래명세서 등록] → 실제 거래명세서 JPG 업로드
+2. 툴바의 [+ 거래명세서 등록] → 실제 거래명세서 JPG / PNG / PDF 업로드
 3. Step 2 에서 OpenAI Vision 분석 대기 (실 응답시간이 응답시간 필드에 표시됨)
 4. Step 3 진입 시 Debug Panel 자동 노출
    - ① Vision Raw 를 확인해 프로바이더가 실제로 무엇을 반환했는지 검증
    - ② Normalized ↔ 헤더/품목 그리드가 일치하는지 확인
-   - ⑤ Diff 탭에서 어떤 필드를 사용자가 고쳤는지 색상으로 확인
+   - 상단 성공률에서 몇 %가 인식됐는지 즉시 확인
+   - ⑤ Diff 탭에서 필드별 색상 (초록/주황/빨강) 으로 어느 필드가 문제인지 확인
 5. OCR 오탐 (예: 왕벗나무) 을 필드에서 직접 수정 (예: 왕벚나무)
    - ③ User Edit / ④ To Be Saved / ⑤ Diff 가 실시간 갱신
+   - matcher.js 가 왕벗나무를 왕벚나무 species 로 해결하는 것도 ④ 탭에서 확인
 6. [↓ OCR 결과 다운로드] 로 스냅샷 파일 저장 (수십/수백 장 축적용)
 7. [저장 →] 로 실제 저장 → 기존 대로 stats.js 재계산 · Species 카드 갱신
+8. Step 4 에서 [📥 저장 Invoice 다운로드] 로 LocalStorage 에 저장된 실제
+   레코드를 JSON 으로 내려받아 ④ To Be Saved 와 byte-equivalent 인지 확인
+9. 카드 그리드 → 구매 이력 → 거래 상세 로 이어지는 실제 사용자 흐름이
+   방금 저장한 거래명세서를 정확히 반영하는지 검증
 ```
+
+## 실제 거래명세서 테스트 체크리스트
+
+Debug Panel 하단에 자동 갱신되는 체크리스트가 표시됩니다. 각 항목은
+현재 세션 상태에서 자동으로 ✓ / ☐ 로 표시되며, 저장 후 항목은 실제
+LocalStorage 조회 결과를 기반으로 판정됩니다.
+
+- ☐ **JPG 업로드** — 첨부 파일 MIME 이 `image/jpeg` 인 경우
+- ☐ **PNG 업로드** — MIME 이 `image/png`
+- ☐ **PDF 업로드** — MIME 이 `application/pdf`
+- ☐ **OCR 성공** — `analysis.ok !== false`
+- ☐ **OCR 실패 처리 준비** — 실패 시 `_debug.errorMessage` 노출 여부
+- ☐ **OCR 결과 수정** — Diff 에서 `field-modified` 행이 하나라도 있으면
+- ☐ **LocalStorage 저장** — 저장 후 `state.data.invoices` 에 새 id 존재
+- ☐ **카드 반영** — 저장 후 연결된 Species 카드가 존재
+- ☐ **구매이력 반영** — 저장 후 이 Invoice 의 InvoiceItem 이 존재
+- ☐ **통계 자동 계산** — 카드 + 이력 이 함께 있으면 (`enrichAllSpecies` 파이프라인이 실행됨)
+
+이 체크리스트는 실제 거래명세서를 수십~수백 장 반복 테스트할 때
+"이번 파일은 어디서 실패했나?" 를 즉시 알 수 있게 해 줍니다.
+
+## 저장 데이터 다운로드 2종
+
+| 버튼 | 대상 |
+|---|---|
+| **💾 Vision 응답 저장** | `_debug.raw` — 프로바이더 원본 응답 |
+| **📥 저장 Invoice 다운로드** | LocalStorage 에 실제 저장된 `{invoice, items, linkedSpecies}` 스냅샷 (저장 후에만 활성) |
 
 ---
 
@@ -1090,7 +1164,7 @@ server/proxy.mjs  ── Node HTTP · reads .env · calls api.openai.com/v1/resp
 - **구매 이력 조회**: 카드 본문 클릭 → 수종별 통계 · 필터(거래처/규격/기간) · 정렬 이력 테이블
 - **거래 상세 · 편집 · 삭제**: 이력 행 클릭 → view/edit 모드 전환 · 헤더/품목 편집 · 저장 시 stats 자동 재계산
 - **원본 첨부 뷰어**: 상세 모달의 [🖼 원본 이미지] → zoom · rotate · 다운로드 · 새 창 · 원본/AI/최종 저장값 3-way 비교 탭 (IndexedDB 저장)
-- **Debug Mode** (`?debug=1`): 개발자 전용 OCR 검증 화면 · Vision 원본 JSON · 정규화 · 사용자 편집 · 실제 저장 · Diff 5-way 뷰 · 클립보드/JSON 다운로드/OCR 재실행
+- **Debug Mode** (`?debug=1`): 개발자 전용 OCR 검증 화면 · Vision 원본 JSON · 정규화 · 사용자 편집 · 실제 저장 · **3-way Diff (OCR/사용자/최종)** · **자동 인식 성공률 %** · **필드 색상 3-tier (초록·주황·빨강)** · **HTTP status + 응답시간** · **10개 테스트 체크리스트** · 저장 Invoice/Vision 응답 다운로드
 - **JSON 가져오기/내보내기**: 백업·공유용 (v1·v2 스키마 모두 호환)
 - **시드 복원**: `data/species.json` 원본으로 리셋
 - **개화기 블록**: 12칸, 개화 월만 활성색

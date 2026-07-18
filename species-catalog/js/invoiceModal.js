@@ -23,7 +23,7 @@
 import { state } from "./state.js";
 import { analyzeInvoice } from "./vision.js";
 import { matchSpecies } from "./matcher.js";
-import { setSession as setDebugSession, refresh as refreshDebug, clearDebugPanel } from "./debugPanel.js";
+import { setSession as setDebugSession, refresh as refreshDebug, clearDebugPanel, notifySaved as notifyDebugSaved } from "./debugPanel.js";
 
 // ============================================================
 // Module-local element cache + wiring context
@@ -339,7 +339,8 @@ function syncDebugPanel() {
   setDebugSession({
     analysis: session.analysis || null,
     header:   session.header   || null,
-    items:    session.items    || []
+    items:    session.items    || [],
+    file:     session.file     || null
   });
 }
 
@@ -645,6 +646,9 @@ async function onSaveClicked() {
       analysis: session.analysis || null
     });
     showSuccess(result, validItems.length);
+    // Notify the Debug Panel so post-save checklist items flip green and
+    // the "저장 Invoice 다운로드" button can look up the persisted record.
+    if (result?.invoiceId) notifyDebugSaved(result.invoiceId);
     goTo(4);
   } finally {
     els.saveBtn.disabled = false;
