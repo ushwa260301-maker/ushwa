@@ -224,6 +224,65 @@ export function parseInvoiceText(text) {
   };
 }
 
+/**
+ * Mock invoice analysis for the demo 거래명세서 등록 flow.
+ *
+ * Unlike `analyzeInvoice()` (which returns `ok:false` to signal that no
+ * real Vision API is wired up), this function returns `ok:true` with a
+ * populated result so the UI can walk through the full 4-step wizard
+ * with realistic data. The returned payload carries a `mock: true`
+ * marker so the wizard can label the analysis as demo content.
+ *
+ * The row set mixes existing seed species (왕벚나무, 산수유) with a
+ * fictional one (신품종개나리) so both auto-link and auto-create
+ * paths are exercised during walkthrough.
+ *
+ * @param {File} file
+ * @returns {Promise<AnalyzeInvoiceMockResult>}
+ */
+export async function analyzeInvoiceMock(file) {
+  // Simulated latency — the wizard shows a "분석 중..." spinner during it.
+  await new Promise(res => setTimeout(res, 600));
+
+  const today = new Date().toISOString().slice(0, 10);
+  const monthNumber = today.slice(0, 7).replace("-", "");
+
+  return {
+    ok: true,
+    mock: true,
+    reason: "Vision API 미연결 — Mock 데이터를 반환했습니다.",
+    invoiceDate: today,
+    invoiceNumber: `M-${monthNumber}-001`,
+    supplier: {
+      name: "천리포수목원",
+      region: "충남 태안군 소원면 천리포1길 187",
+      contact: "041-672-9982"
+    },
+    rows: [
+      { name: "왕벚나무",      spec: "R6",   unit: "주", quantity: 2, unitPrice: 45000, amount: 90000 },
+      { name: "산수유",        spec: "R4",   unit: "주", quantity: 1, unitPrice: 22000, amount: 22000 },
+      { name: "신품종개나리",  spec: "H1.0", unit: "주", quantity: 3, unitPrice: 15000, amount: 45000 }
+    ],
+    meta: {
+      filename: file?.name || "",
+      size: file?.size || 0,
+      type: file?.type || ""
+    }
+  };
+}
+
+/**
+ * @typedef {Object} AnalyzeInvoiceMockResult
+ * @property {boolean} ok
+ * @property {boolean} mock                  — true = "이 데이터는 Mock" 표시용
+ * @property {string} reason
+ * @property {string} invoiceDate            YYYY-MM-DD
+ * @property {string} invoiceNumber
+ * @property {Supplier} supplier
+ * @property {Array<{name:string, spec:string, unit:string, quantity:number, unitPrice:number, amount:number}>} rows
+ * @property {Object} meta
+ */
+
 // ============================================================
 // Internal helpers
 // ============================================================

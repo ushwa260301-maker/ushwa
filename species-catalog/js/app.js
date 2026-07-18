@@ -18,6 +18,7 @@ import { storage } from "./storage.js";
 import { loadSeed, exportJson, importJson } from "./importExport.js";
 import { cacheElements, els, render, refreshFilterUi, toast, toggleTheme } from "./ui.js";
 import { initModal, openModal } from "./modal.js";
+import { initInvoiceModal, openInvoiceModal } from "./invoiceModal.js";
 import { nextId } from "./utils.js";
 
 // ============================================================
@@ -220,6 +221,94 @@ function idAllocator(prefix, existing, pending) {
   return () => nextId(prefix, [...existing, ...pending]);
 }
 
+// ============================================================
+// Invoice registration (from 거래명세서 등록 wizard)
+// ============================================================
+
+/**
+ * Persist an invoice + its items produced by the wizard.
+ *
+ * For every item we resolve `speciesId`:
+ *   - if a Species with the same (trimmed, case-insensitive) name
+ *     already exists → link to it,
+ *   - otherwise auto-create a minimal Species record with default
+ *     fields; the user can flesh it out later via the 수종 modal.
+ *
+ * @param {{invoiceDate,invoiceNumber,supplier,supplierPhone,supplierAddress}} header
+ * @param {Array<{name,spec,unit,quantity,unitPrice,amount}>} items
+ * @returns {{invoiceId:string, newSpecies:object[], reusedSpecies:object[]}}
+ */
+function saveInvoice(header, items) {
+  // 1. Resolve each row to a species (create if missing).
+  const newSpecies = [];
+  const reusedSpecies = [];
+  const nextSp = idAllocator("sp", state.data.species, newSpecies);
+  const resolved = items.map(it => {
+    const trimmed = (it.name || "").trim();
+    const match = state.data.species.find(s =>
+      (s.name || "").trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (match) {
+      if (!reusedSpecies.some(s => s.id === match.id)) reusedSpecies.push(match);
+      return { ...it, speciesId: match.id, speciesName: match.name };
+    }
+    // Create a new Species with default metadata; user can edit later.
+    const created = {
+      id: nextSp(),
+      name: trimmed,
+      latin: "",
+      category: state.data.categories[0] || "교목",
+      bloomMonths: [],
+      colors: [],
+      suppliers: header.supplier
+        ? [{ name: header.supplier, region: header.supplierAddress, contact: header.supplierPhone }]
+        : [],
+      notes: `${new Date().toISOString().slice(0, 10)} 거래명세서 등록으로 자동 생성`
+    };
+    newSpecies.push(created);
+    state.data.species.push(created);
+    return { ...it, speciesId: created.id, speciesName: created.name };
+  });
+
+  // 2. Create the Invoice header.
+  const invoice = {
+    id: nextId("inv", state.data.invoices),
+    invoiceDate: header.invoiceDate,
+    supplier: header.supplier,
+    supplierAddress: header.supplierAddress || "",
+    supplierPhone: header.supplierPhone || "",
+    invoiceNumber: header.invoiceNumber || "",
+    createdAt: new Date().toISOString()
+  };
+  state.data.invoices.push(invoice);
+
+  // 3. Create InvoiceItem rows.
+  const nextItem = idAllocator("item", state.data.invoiceItems, []);
+  for (const r of resolved) {
+    const quantity = Number(r.quantity) || 1;
+    const unitPrice = Number(r.unitPrice) || 0;
+    const explicitAmount = Number(r.amount);
+    const amount = Number.isFinite(explicitAmount) && explicitAmount > 0
+      ? explicitAmount
+      : quantity * unitPrice;
+    state.data.invoiceItems.push({
+      id: nextItem(),
+      invoiceId: invoice.id,
+      speciesId: r.speciesId,
+      speciesName: r.speciesName,
+      spec: r.spec || "",
+      unit: r.unit || "주",
+      quantity,
+      unitPrice,
+      amount
+    });
+  }
+
+  persistAndRerender();
+  toast(`거래명세서 ${invoice.id} 저장 완료 (품목 ${resolved.length}건)`);
+  return { invoiceId: invoice.id, newSpecies, reusedSpecies };
+}
+
 /** Save to storage, rebuild filter chips (in case master lists changed), rerender. */
 function persistAndRerender() {
   storage.save(state.data);
@@ -242,6 +331,7 @@ function rerender() {
 
 function wireToolbar() {
   els.addBtn.addEventListener("click", () => openModal(null));
+  els.addInvoiceBtn?.addEventListener("click", () => openInvoiceModal());
 
   els.exportBtn.addEventListener("click", () => {
     exportJson(state.data);
@@ -335,6 +425,11 @@ async function init() {
   initModal({
     onSave: saveSpecies,
     onDelete: deleteSpecies,
+    toast
+  });
+
+  initInvoiceModal({
+    onSave: saveInvoice,
     toast
   });
 

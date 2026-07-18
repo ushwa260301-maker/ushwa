@@ -88,6 +88,7 @@
       <div class="toolbar">
         <div class="toolbar-left">
           <button id="addBtn" class="btn-primary" type="button">+ 수종 추가</button>
+          <button id="addInvoiceBtn" class="btn-primary" type="button">+ 거래명세서 등록</button>
         </div>
         <div class="toolbar-right">
           <button id="exportBtn" class="btn-secondary" type="button">내보내기</button>
@@ -278,6 +279,151 @@
       <input type="text" class="rf-region" placeholder="지역" maxlength="30" />
       <input type="text" class="rf-contact" placeholder="연락처" maxlength="30" />
       <button type="button" class="icon-btn row-remove" aria-label="행 제거">&#x2715;</button>
+    </div>
+  </template>
+
+  <!-- ============================================================
+       거래명세서 등록 wizard (4 steps)
+       ============================================================ -->
+  <div id="invoiceModal" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="invoiceModalTitle">
+    <div class="modal-backdrop" data-close-invoice></div>
+    <div class="modal-panel invoice-panel">
+      <header class="modal-head">
+        <h2 id="invoiceModalTitle">거래명세서 등록</h2>
+        <button class="icon-btn" type="button" aria-label="닫기" data-close-invoice>&#x2715;</button>
+      </header>
+
+      <ol class="wizard-nav" id="wizardNav">
+        <li class="wiz-step active" data-step="1"><span class="n">1</span>업로드</li>
+        <li class="wiz-step" data-step="2"><span class="n">2</span>AI 분석</li>
+        <li class="wiz-step" data-step="3"><span class="n">3</span>검토</li>
+        <li class="wiz-step" data-step="4"><span class="n">4</span>완료</li>
+      </ol>
+
+      <div class="modal-body">
+
+        <!-- Step 1 · Upload -->
+        <section class="wiz-panel" data-wiz-panel="1">
+          <label class="dropzone" for="invFile">
+            <span class="dz-title">📎 거래명세서 파일 첨부</span>
+            <span class="dz-hint">
+              JPG · PNG · PDF 지원 · Mock 시연용 (실제 OCR은 향후 Vision API 연결 시 활성화)
+            </span>
+            <input type="file" id="invFile" accept="image/*,application/pdf,.pdf" hidden />
+          </label>
+          <div id="invPreview" class="attach-preview" hidden>
+            <img id="invPreviewImg" alt="첨부 파일 미리보기" />
+          </div>
+          <p id="invPickedName" class="hint" hidden></p>
+          <div class="step-actions">
+            <span></span>
+            <button type="button" class="btn-primary" id="invUploadNext" disabled>다음: AI 분석 →</button>
+          </div>
+        </section>
+
+        <!-- Step 2 · AI Analysis -->
+        <section class="wiz-panel" data-wiz-panel="2" hidden>
+          <div id="invAnalyzing" class="analyze-progress">
+            <div class="spinner" aria-hidden="true"></div>
+            <p>AI가 명세서를 분석 중입니다…</p>
+          </div>
+          <div id="invAnalysisResult" class="analysis-summary" hidden>
+            <div class="analysis-note">⚠ Mock 데이터입니다. 실제 OCR은 Vision API 연결 후 활성화됩니다.</div>
+            <dl class="analysis-fields">
+              <div><dt>거래처</dt><dd id="asSupplier">—</dd></div>
+              <div><dt>전화번호</dt><dd id="asPhone">—</dd></div>
+              <div><dt>주소</dt><dd id="asAddress">—</dd></div>
+              <div><dt>거래일</dt><dd id="asDate">—</dd></div>
+              <div><dt>명세서 번호</dt><dd id="asInvoiceNumber">—</dd></div>
+              <div><dt>인식된 품목</dt><dd id="asItemCount">—</dd></div>
+            </dl>
+          </div>
+          <div class="step-actions">
+            <button type="button" class="btn-secondary" data-wiz-back="1">← 다시 업로드</button>
+            <button type="button" class="btn-primary" id="invGoReview">다음: 검토 →</button>
+          </div>
+        </section>
+
+        <!-- Step 3 · Review + Edit -->
+        <section class="wiz-panel" data-wiz-panel="3" hidden>
+          <fieldset class="form-section">
+            <legend>거래 정보</legend>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="invDate">거래일 <span class="req">*</span></label>
+                <input type="date" id="invDate" required />
+              </div>
+              <div class="form-field">
+                <label for="invNumber">명세서 번호</label>
+                <input type="text" id="invNumber" maxlength="30" />
+              </div>
+              <div class="form-field">
+                <label for="invSupplier">거래처 <span class="req">*</span></label>
+                <input type="text" id="invSupplier" required maxlength="40" />
+              </div>
+              <div class="form-field">
+                <label for="invPhone">전화번호</label>
+                <input type="text" id="invPhone" maxlength="30" inputmode="tel" />
+              </div>
+              <div class="form-field span-2">
+                <label for="invAddress">주소</label>
+                <input type="text" id="invAddress" maxlength="120" />
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="form-section">
+            <legend>품목 목록 <small>(<span id="invItemCount">0</span>건 · 규격/수량/단가/금액 편집 가능)</small></legend>
+            <div class="invoice-item-grid">
+              <div class="ii-header">
+                <span>품목명</span>
+                <span>규격</span>
+                <span>단위</span>
+                <span>수량</span>
+                <span>단가</span>
+                <span>금액</span>
+                <span>수종</span>
+                <span></span>
+              </div>
+              <div id="invItemRows"></div>
+            </div>
+            <button type="button" id="invAddItem" class="btn-mini">+ 품목 추가</button>
+          </fieldset>
+
+          <div class="step-actions">
+            <button type="button" class="btn-secondary" data-wiz-back="2">← 다시 분석</button>
+            <button type="button" class="btn-primary" id="invSaveBtn">저장 →</button>
+          </div>
+        </section>
+
+        <!-- Step 4 · Success -->
+        <section class="wiz-panel" data-wiz-panel="4" hidden>
+          <div class="success-panel">
+            <div class="success-icon">✓</div>
+            <h3>저장 완료</h3>
+            <div id="invSuccessSummary" class="success-summary"></div>
+            <div class="step-actions">
+              <span></span>
+              <button type="button" class="btn-primary" id="invDoneBtn">닫기</button>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Invoice item row (cloned per row in Step 3) -->
+  <template id="invoiceItemRowTemplate">
+    <div class="ii-row">
+      <input type="text" class="ii-name" placeholder="품목명" />
+      <input type="text" class="ii-spec" placeholder="R6" maxlength="20" />
+      <input type="text" class="ii-unit" placeholder="주" maxlength="10" />
+      <input type="number" class="ii-qty" min="1" step="1" value="1" />
+      <input type="number" class="ii-price" min="0" step="1" placeholder="단가" />
+      <input type="number" class="ii-amount" min="0" step="1" placeholder="금액" />
+      <span class="ii-species-badge" data-status="unknown">?</span>
+      <button type="button" class="icon-btn ii-remove" aria-label="행 제거">&#x2715;</button>
     </div>
   </template>
 
