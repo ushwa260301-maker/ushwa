@@ -29,7 +29,7 @@ import {
 // ============================================================
 
 const els = {};
-let ctx = { toast: null };
+let ctx = { toast: null, onOpenTransaction: null };
 
 const session = {
   speciesId: null,
@@ -141,6 +141,17 @@ export function openHistoryModal(speciesId) {
 function close() {
   els.modal.hidden = true;
   els.modal.setAttribute("aria-hidden", "true");
+}
+
+/**
+ * Re-read state.data.invoices / invoiceItems and re-render stats + table
+ * for the species this modal is currently open on.  Called by app.js after
+ * an invoice edit or delete so the open history stays in sync.
+ * No-op if the modal is currently hidden.
+ */
+export function refreshHistoryModal() {
+  if (!session.speciesId || els.modal.hidden) return;
+  openHistoryModal(session.speciesId);
 }
 
 // ============================================================
@@ -268,6 +279,10 @@ function renderTable() {
     const amount = Number(r.amount) || 0;
     sumQty += qty;
     sumAmount += amount;
+    tr.dataset.invoiceId = r.invoiceId;
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    tr.setAttribute("aria-label", `${r.invoiceDate || ""} · ${r.supplier} 거래 상세 열기`);
     tr.innerHTML =
       `<td class="col-date">${esc(r.invoiceDate || "—")}</td>` +
       `<td class="col-supplier" title="${esc(r.supplier)}">${esc(r.supplier)}</td>` +
@@ -275,6 +290,13 @@ function renderTable() {
       `<td class="col-num">${qty.toLocaleString("ko-KR")}</td>` +
       `<td class="col-num">${fmtWon(price)}</td>` +
       `<td class="col-num">${fmtWon(amount)}</td>`;
+    tr.addEventListener("click", () => ctx.onOpenTransaction && ctx.onOpenTransaction(r.invoiceId));
+    tr.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        ctx.onOpenTransaction && ctx.onOpenTransaction(r.invoiceId);
+      }
+    });
     frag.appendChild(tr);
   }
   els.rows.appendChild(frag);

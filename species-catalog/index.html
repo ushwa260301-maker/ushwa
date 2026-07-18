@@ -533,6 +533,97 @@
     </div>
   </div>
 
+  <!-- ============================================================
+       Transaction Detail modal — view + edit + delete one Invoice
+       ============================================================ -->
+  <div id="transactionDetailModal" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+    <div class="modal-backdrop" data-close-detail></div>
+    <div class="modal-panel detail-panel mode-view">
+      <header class="modal-head detail-head">
+        <div class="detail-title-wrap">
+          <h2 id="detailTitle">거래 상세</h2>
+          <small class="detail-invoice-id" id="detailInvoiceId"></small>
+        </div>
+        <div class="detail-head-actions">
+          <button type="button" class="btn-secondary mode-view-only" id="detailImageBtn" title="원본 이미지 (다음 버전)">🖼 원본 이미지</button>
+          <button type="button" class="btn-secondary mode-view-only" id="detailEditBtn">✎ 수정</button>
+          <button type="button" class="btn-ghost-sm mode-view-only" id="detailDeleteBtn">삭제</button>
+          <button class="icon-btn" type="button" aria-label="닫기" data-close-detail>&#x2715;</button>
+        </div>
+      </header>
+
+      <div class="modal-body">
+
+        <fieldset class="form-section">
+          <legend>거래 정보</legend>
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="detailDate">거래일 <span class="req">*</span></label>
+              <input type="date" id="detailDate" required readonly />
+            </div>
+            <div class="form-field">
+              <label for="detailNumber">거래번호</label>
+              <input type="text" id="detailNumber" maxlength="30" readonly />
+            </div>
+            <div class="form-field">
+              <label for="detailSupplier">거래처 <span class="req">*</span></label>
+              <input type="text" id="detailSupplier" required maxlength="40" readonly />
+            </div>
+            <div class="form-field">
+              <label for="detailPhone">연락처</label>
+              <input type="text" id="detailPhone" maxlength="30" inputmode="tel" readonly />
+            </div>
+            <div class="form-field span-2">
+              <label for="detailAddress">주소</label>
+              <input type="text" id="detailAddress" maxlength="120" readonly />
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend>품목 목록 <small>(<span id="detailItemCount">0</span>건)</small></legend>
+          <div class="detail-item-grid">
+            <div class="di-header">
+              <span>수종명</span>
+              <span>규격</span>
+              <span>단위</span>
+              <span>수량</span>
+              <span>단가</span>
+              <span>금액</span>
+              <span></span>
+            </div>
+            <div id="detailItemRows"></div>
+          </div>
+          <button type="button" id="detailAddItem" class="btn-mini mode-edit-only">+ 품목 추가</button>
+        </fieldset>
+
+        <div class="detail-totals" aria-label="합계">
+          <div><span class="lbl">총 구매수량</span> <strong id="detailTotalQty">0</strong></div>
+          <div><span class="lbl">총 구매금액</span> <strong id="detailTotalAmount">0원</strong></div>
+        </div>
+
+        <footer class="modal-foot">
+          <button type="button" class="btn-secondary mode-view-only" data-close-detail>닫기</button>
+          <button type="button" class="btn-secondary mode-edit-only" id="detailCancelBtn">취소</button>
+          <button type="button" class="btn-primary mode-edit-only" id="detailSaveBtn" disabled>저장</button>
+        </footer>
+      </div>
+    </div>
+  </div>
+
+  <!-- Transaction detail item row (cloned per row) -->
+  <template id="detailItemRowTemplate">
+    <div class="di-row">
+      <input type="text"   class="di-name"   placeholder="수종명" readonly />
+      <input type="text"   class="di-spec"   placeholder="R6"    maxlength="20" readonly />
+      <input type="text"   class="di-unit"   placeholder="주"    maxlength="10" readonly />
+      <input type="number" class="di-qty"    min="0" step="1"    readonly />
+      <input type="number" class="di-price"  min="0" step="1"    readonly />
+      <input type="number" class="di-amount" min="0" step="1"    readonly />
+      <button type="button" class="icon-btn di-remove mode-edit-only" aria-label="행 제거">&#x2715;</button>
+    </div>
+  </template>
+
   <div id="toast" class="toast" hidden></div>
 
   <!-- ES modules — served as /js/app.js on any static host -->

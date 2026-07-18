@@ -19,7 +19,8 @@ import { loadSeed, exportJson, importJson } from "./importExport.js";
 import { cacheElements, els, render, refreshFilterUi, toast, toggleTheme } from "./ui.js";
 import { initModal, openModal } from "./modal.js";
 import { initInvoiceModal, openInvoiceModal } from "./invoiceModal.js";
-import { initHistoryModal, openHistoryModal } from "./historyModal.js";
+import { initHistoryModal, openHistoryModal, refreshHistoryModal } from "./historyModal.js";
+import { initTransactionDetailModal, openTransactionDetailModal } from "./transactionDetailModal.js";
 import { matchSpecies } from "./matcher.js";
 import { nextId } from "./utils.js";
 
@@ -328,6 +329,110 @@ function saveInvoice(header, items) {
   return { invoiceId: invoice.id, newSpecies, reusedSpecies };
 }
 
+// ============================================================
+// Transaction detail — update / delete existing Invoice
+// ============================================================
+
+/**
+ * Overwrite an existing Invoice + its items from the detail modal.
+ *
+ *   1. Patch the Invoice header in place (keeps its `id` and `createdAt`).
+ *   2. Purge every InvoiceItem tied to this invoice.
+ *   3. Recreate items from the supplied list, honoring pre-resolved
+ *      `speciesId` when present or falling back to `matchSpecies()` /
+ *      auto-create for names that don't yet exist.
+ *
+ * The rerender that follows recomputes every Species card's stats through
+ * `enrichAllSpecies()` (ui.js), so cards + charts are always up to date.
+ *
+ * @param {string} invoiceId
+ * @param {{invoiceDate,invoiceNumber,supplier,supplierPhone,supplierAddress}} header
+ * @param {Array<{id?:string, speciesId?:string, speciesName:string, spec:string, unit:string, quantity:number, unitPrice:number, amount:number}>} items
+ */
+function updateInvoice(invoiceId, header, items) {
+  const inv = state.data.invoices.find(i => i.id === invoiceId);
+  if (!inv) { toast("거래를 찾을 수 없습니다"); return; }
+
+  // 1. Patch header
+  inv.invoiceDate     = header.invoiceDate;
+  inv.invoiceNumber   = header.invoiceNumber   || "";
+  inv.supplier        = header.supplier;
+  inv.supplierPhone   = header.supplierPhone   || "";
+  inv.supplierAddress = header.supplierAddress || "";
+
+  // 2. Purge items belonging to this invoice
+  state.data.invoiceItems = state.data.invoiceItems.filter(it => it.invoiceId !== invoiceId);
+
+  // 3. Recreate items, resolving speciesId where needed
+  const nextSp   = idAllocator("sp",   state.data.species,      []);
+  const nextItem = idAllocator("item", state.data.invoiceItems, []);
+  for (const raw of items) {
+    let speciesId   = raw.speciesId || null;
+    let speciesName = (raw.speciesName || "").trim();
+
+    if (speciesId) {
+      const sp = state.data.species.find(s => s.id === speciesId);
+      if (!sp) speciesId = null;   // stale id → re-resolve
+      else speciesName = sp.name;
+    }
+    if (!speciesId) {
+      const verdict = matchSpecies(speciesName, state.data.species);
+      if (verdict.status === "match" && verdict.species) {
+        speciesId   = verdict.species.id;
+        speciesName = verdict.species.name;
+      } else {
+        // Auto-create a minimal Species record for a wholly-new name.
+        const created = {
+          id: nextSp(),
+          name: speciesName,
+          latin: "",
+          category: state.data.categories[0] || "교목",
+          bloomMonths: [],
+          colors: [],
+          suppliers: header.supplier
+            ? [{ name: header.supplier, region: header.supplierAddress, contact: header.supplierPhone }]
+            : [],
+          notes: `${new Date().toISOString().slice(0, 10)} 거래 편집으로 자동 생성`
+        };
+        state.data.species.push(created);
+        speciesId = created.id;
+      }
+    }
+
+    const quantity  = Math.max(0, Number(raw.quantity)  || 0);
+    const unitPrice = Math.max(0, Number(raw.unitPrice) || 0);
+    const declared  = Number(raw.amount);
+    const amount    = Number.isFinite(declared) && declared > 0 ? declared : quantity * unitPrice;
+
+    state.data.invoiceItems.push({
+      id:        nextItem(),
+      invoiceId,
+      speciesId,
+      speciesName,
+      spec:      raw.spec || "",
+      unit:      raw.unit || "주",
+      quantity,
+      unitPrice,
+      amount
+    });
+  }
+
+  persistAndRerender();
+  refreshHistoryModal();
+}
+
+/**
+ * Delete an Invoice and cascade to its items. Any Species is left alone —
+ * it may still have items from other invoices; if it becomes empty its
+ * stats simply go to zero (the card still renders).
+ */
+function deleteInvoice(invoiceId) {
+  state.data.invoices     = state.data.invoices.filter(i => i.id !== invoiceId);
+  state.data.invoiceItems = state.data.invoiceItems.filter(it => it.invoiceId !== invoiceId);
+  persistAndRerender();
+  refreshHistoryModal();
+}
+
 /** Save to storage, rebuild filter chips (in case master lists changed), rerender. */
 function persistAndRerender() {
   storage.save(state.data);
@@ -453,7 +558,16 @@ async function init() {
     toast
   });
 
-  initHistoryModal({ toast });
+  initHistoryModal({
+    toast,
+    onOpenTransaction: id => openTransactionDetailModal(id)
+  });
+
+  initTransactionDetailModal({
+    onSave:   (invoiceId, header, items) => updateInvoice(invoiceId, header, items),
+    onDelete: id => deleteInvoice(id),
+    toast
+  });
 
   wireToolbar();
   wireFilterRail();
