@@ -189,10 +189,24 @@ export function parseInvoiceText(text) {
  */
 export async function analyzeInvoiceMock(file) {
   // Simulated latency — the wizard shows a "분석 중..." spinner during it.
+  const requestedAt = new Date().toISOString();
+  const t0 = Date.now();
   await new Promise(res => setTimeout(res, 600));
+  const latencyMs = Date.now() - t0;
 
   const today = new Date().toISOString().slice(0, 10);
   const monthNumber = today.slice(0, 7).replace("-", "");
+
+  const supplier = {
+    name: "천리포수목원",
+    region: "충남 태안군 소원면 천리포1길 187",
+    contact: "041-672-9982"
+  };
+  const rows = [
+    { name: "왕벚나무",     spec: "R6",   unit: "주", quantity: 2, unitPrice: 45000, amount: 90000 },
+    { name: "산수유",       spec: "R4",   unit: "주", quantity: 1, unitPrice: 22000, amount: 22000 },
+    { name: "신품종개나리", spec: "H1.0", unit: "주", quantity: 3, unitPrice: 15000, amount: 45000 }
+  ];
 
   return {
     ok: true,
@@ -200,20 +214,29 @@ export async function analyzeInvoiceMock(file) {
     reason: "Vision API 미연결 — Mock 데이터를 반환했습니다.",
     invoiceDate: today,
     invoiceNumber: `M-${monthNumber}-001`,
-    supplier: {
-      name: "천리포수목원",
-      region: "충남 태안군 소원면 천리포1길 187",
-      contact: "041-672-9982"
-    },
-    rows: [
-      { name: "왕벚나무",      spec: "R6",   unit: "주", quantity: 2, unitPrice: 45000, amount: 90000 },
-      { name: "산수유",        spec: "R4",   unit: "주", quantity: 1, unitPrice: 22000, amount: 22000 },
-      { name: "신품종개나리",  spec: "H1.0", unit: "주", quantity: 3, unitPrice: 15000, amount: 45000 }
-    ],
+    supplier,
+    rows,
     meta: {
       filename: file?.name || "",
-      size: file?.size || 0,
-      type: file?.type || ""
+      size:     file?.size || 0,
+      type:     file?.type || "",
+      model:    "mock"
+    },
+    // Provider-neutral debug envelope (see JSDoc typedef below).
+    _debug: {
+      provider:    "mock",
+      model:       "mock",
+      requestedAt,
+      latencyMs,
+      confidence:  null,
+      errorMessage: null,
+      raw: {
+        note: "This is a deterministic Mock. No provider call was made.",
+        invoiceDate: today,
+        invoiceNumber: `M-${monthNumber}-001`,
+        supplier,
+        rows
+      }
     }
   };
 }
@@ -222,12 +245,29 @@ export async function analyzeInvoiceMock(file) {
  * @typedef {Object} AnalyzeInvoiceMockResult
  * @property {boolean} ok
  * @property {boolean} mock                  — true = "이 데이터는 Mock" 표시용
- * @property {string} reason
- * @property {string} invoiceDate            YYYY-MM-DD
- * @property {string} invoiceNumber
+ * @property {string}  reason
+ * @property {string}  invoiceDate            YYYY-MM-DD
+ * @property {string}  invoiceNumber
  * @property {Supplier} supplier
  * @property {Array<{name:string, spec:string, unit:string, quantity:number, unitPrice:number, amount:number}>} rows
- * @property {Object} meta
+ * @property {Object}  meta
+ * @property {DebugEnvelope} [_debug]        — 개발자 검증 화면용 (Debug Panel)
+ */
+
+/**
+ * Provider-neutral debug envelope. Every real analyzer (OpenAI / Claude /
+ * Gemini …) MUST attach one of these so `debugPanel.js` renders the same
+ * information regardless of provider. Any of the fields may be null when
+ * a provider doesn't return that particular signal.
+ *
+ * @typedef {Object} DebugEnvelope
+ * @property {string}      provider        "openai" | "anthropic" | "gemini" | "mock"
+ * @property {string}      model           e.g. "gpt-4o", "claude-sonnet-5"
+ * @property {string}      requestedAt     ISO-8601 request start
+ * @property {number}      latencyMs       provider round-trip in ms
+ * @property {number|null} confidence      0..1 overall confidence, if provided
+ * @property {string|null} errorMessage    non-null on OCR failure paths
+ * @property {any}         raw             untouched provider response body
  */
 
 // ============================================================

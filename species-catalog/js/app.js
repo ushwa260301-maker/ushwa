@@ -18,12 +18,14 @@ import { storage } from "./storage.js";
 import { loadSeed, exportJson, importJson } from "./importExport.js";
 import { cacheElements, els, render, refreshFilterUi, toast, toggleTheme } from "./ui.js";
 import { initModal, openModal } from "./modal.js";
-import { initInvoiceModal, openInvoiceModal } from "./invoiceModal.js";
+import { initInvoiceModal, openInvoiceModal, reanalyzeCurrent } from "./invoiceModal.js";
 import { initHistoryModal, openHistoryModal, refreshHistoryModal } from "./historyModal.js";
 import { initTransactionDetailModal, openTransactionDetailModal } from "./transactionDetailModal.js";
 import { initAttachmentViewer, openAttachmentViewer } from "./attachmentViewer.js";
 import { initAttachmentStore, putAttachment, deleteAttachmentsForInvoice } from "./attachmentStore.js";
 import { matchSpecies } from "./matcher.js";
+import { initDebugFlag } from "./debugFlag.js";
+import { initDebugPanel } from "./debugPanel.js";
 import { nextId } from "./utils.js";
 
 // ============================================================
@@ -229,6 +231,92 @@ function idAllocator(prefix, existing, pending) {
 // ============================================================
 // Invoice registration (from 거래명세서 등록 wizard)
 // ============================================================
+
+/**
+ * PURE preview of `saveInvoice()`. Runs the exact same species-resolution
+ * and id-allocation logic against a snapshot of `state.data` but returns
+ * a projected payload **without mutating anything**.
+ *
+ * Fuels the Debug Panel's "실제 저장될 Invoice / InvoiceItem" tab so a
+ * developer can preview the actual DB writes before hitting [저장].
+ *
+ * @param {{invoiceDate,invoiceNumber,supplier,supplierPhone,supplierAddress}} header
+ * @param {Array<object>} items      Wizard-shape items (same input as saveInvoice)
+ * @returns {{invoice:object, items:object[], newSpecies:object[], reusedSpecies:object[]}}
+ */
+function projectInvoiceSave(header, items) {
+  const shadowSpecies = state.data.species.slice();
+  const newSpecies    = [];
+  const reusedSpecies = [];
+  const nextSpId  = () => nextId("sp", shadowSpecies);
+  const nextInvId = () => nextId("inv", state.data.invoices);
+  const pendingItems = [];
+  const nextItemId = () => nextId("item", [...state.data.invoiceItems, ...pendingItems]);
+
+  const resolved = items.map(it => {
+    const trimmed = (it.name || it.speciesName || "").trim();
+    if (it.speciesId) {
+      const sp = shadowSpecies.find(s => s.id === it.speciesId);
+      if (sp) {
+        if (!reusedSpecies.some(s => s.id === sp.id)) reusedSpecies.push(sp);
+        return { ...it, speciesId: sp.id, speciesName: sp.name };
+      }
+    }
+    const verdict = matchSpecies(trimmed, shadowSpecies);
+    if (verdict.status === "match" && verdict.species) {
+      const sp = verdict.species;
+      if (!reusedSpecies.some(s => s.id === sp.id)) reusedSpecies.push(sp);
+      return { ...it, speciesId: sp.id, speciesName: sp.name };
+    }
+    const created = {
+      id: nextSpId(),
+      name: trimmed,
+      latin: "",
+      category: state.data.categories[0] || "교목",
+      bloomMonths: [],
+      colors: [],
+      suppliers: header.supplier
+        ? [{ name: header.supplier, region: header.supplierAddress, contact: header.supplierPhone }]
+        : [],
+      notes: `${new Date().toISOString().slice(0, 10)} 거래명세서 등록으로 자동 생성`
+    };
+    newSpecies.push(created);
+    shadowSpecies.push(created);
+    return { ...it, speciesId: created.id, speciesName: created.name };
+  });
+
+  const invoice = {
+    id:              nextInvId(),
+    invoiceDate:     header.invoiceDate,
+    supplier:        header.supplier,
+    supplierAddress: header.supplierAddress || "",
+    supplierPhone:   header.supplierPhone   || "",
+    invoiceNumber:   header.invoiceNumber   || "",
+    createdAt:       new Date().toISOString()
+  };
+
+  const projectedItems = resolved.map(r => {
+    const quantity  = Number(r.quantity)  || 1;
+    const unitPrice = Number(r.unitPrice) || 0;
+    const declared  = Number(r.amount);
+    const amount    = Number.isFinite(declared) && declared > 0 ? declared : quantity * unitPrice;
+    const item = {
+      id:          nextItemId(),
+      invoiceId:   invoice.id,
+      speciesId:   r.speciesId,
+      speciesName: r.speciesName,
+      spec:        r.spec || "",
+      unit:        r.unit || "주",
+      quantity,
+      unitPrice,
+      amount
+    };
+    pendingItems.push(item);
+    return item;
+  });
+
+  return { invoice, items: projectedItems, newSpecies, reusedSpecies };
+}
 
 /**
  * Persist an invoice + its items produced by the wizard.
@@ -557,6 +645,10 @@ function wireFilterRail() {
 // ============================================================
 
 async function init() {
+  // Debug flag first so <html class="debug-mode"> is set before any DOM
+  // element with .debug-only decides its visibility.
+  initDebugFlag();
+
   cacheElements();
 
   // Load persisted data; fall back to fetched seed on first visit.
@@ -597,6 +689,12 @@ async function init() {
   });
 
   initAttachmentViewer({ toast });
+
+  initDebugPanel({
+    toast,
+    onReanalyze: reanalyzeCurrent,
+    onProject:   projectInvoiceSave
+  });
 
   // IndexedDB store (attachments) — pre-open; failures are non-fatal.
   initAttachmentStore();

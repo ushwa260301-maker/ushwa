@@ -402,6 +402,52 @@
             <button type="button" id="invAddItem" class="btn-mini">+ 품목 추가</button>
           </fieldset>
 
+          <!-- Debug Panel (개발자 전용, feature-flag: html.debug-mode) -->
+          <section class="debug-panel debug-only" id="debugPanel" aria-label="OCR 검증 화면">
+            <header class="debug-head">
+              <h3>🛠 Debug Panel <small>(개발 모드)</small></h3>
+              <div class="debug-actions">
+                <button type="button" class="btn-mini" id="dbgCopyOcrBtn">📋 OCR JSON 복사</button>
+                <button type="button" class="btn-mini" id="dbgCopySaveBtn">📋 저장 JSON 복사</button>
+                <button type="button" class="btn-mini" id="dbgDownloadBtn">↓ OCR 결과 다운로드</button>
+                <button type="button" class="btn-mini" id="dbgReanalyzeBtn">↻ OCR 재실행</button>
+                <button type="button" class="btn-mini" id="dbgSaveVisionBtn">💾 Vision 응답 저장</button>
+              </div>
+            </header>
+
+            <dl class="debug-meta" aria-label="Vision 메타데이터">
+              <div><dt>Provider</dt>   <dd id="dbgProvider">—</dd></div>
+              <div><dt>모델</dt>       <dd id="dbgModel">—</dd></div>
+              <div><dt>응답시간</dt>   <dd id="dbgLatency">—</dd></div>
+              <div><dt>OCR 성공</dt>   <dd id="dbgOk">—</dd></div>
+              <div><dt>Confidence</dt> <dd id="dbgConfidence">—</dd></div>
+              <div><dt>요청 시각</dt>  <dd id="dbgRequestedAt">—</dd></div>
+              <div class="span-full"><dt>오류 메시지</dt> <dd id="dbgError">—</dd></div>
+            </dl>
+
+            <nav class="debug-tabs" role="tablist" aria-label="Debug JSON 탭">
+              <button type="button" class="debug-tab active" role="tab" data-dbg-tab="raw"        aria-selected="true">① Vision Raw</button>
+              <button type="button" class="debug-tab"        role="tab" data-dbg-tab="normalized" aria-selected="false">② Normalized</button>
+              <button type="button" class="debug-tab"        role="tab" data-dbg-tab="userEdit"   aria-selected="false">③ User Edit</button>
+              <button type="button" class="debug-tab"        role="tab" data-dbg-tab="toSave"     aria-selected="false">④ To Be Saved</button>
+              <button type="button" class="debug-tab"        role="tab" data-dbg-tab="diff"       aria-selected="false">⑤ Diff</button>
+            </nav>
+
+            <pre class="dbg-json" data-dbg-panel="raw"        id="dbgRawPanel">—</pre>
+            <pre class="dbg-json" data-dbg-panel="normalized" id="dbgNormalizedPanel" hidden>—</pre>
+            <pre class="dbg-json" data-dbg-panel="userEdit"   id="dbgUserEditPanel"   hidden>—</pre>
+            <pre class="dbg-json" data-dbg-panel="toSave"     id="dbgToSavePanel"     hidden>—</pre>
+            <div class="dbg-diff-wrap" data-dbg-panel="diff" hidden>
+              <table class="dbg-diff-table">
+                <thead>
+                  <tr><th>필드</th><th>OCR</th><th>저장</th><th class="col-status">상태</th></tr>
+                </thead>
+                <tbody id="dbgDiffBody"></tbody>
+              </table>
+              <p class="dbg-diff-empty" id="dbgDiffEmpty" hidden>변경사항이 없습니다.</p>
+            </div>
+          </section>
+
           <div class="step-actions">
             <button type="button" class="btn-secondary" data-wiz-back="2">← 다시 분석</button>
             <button type="button" class="btn-primary" id="invSaveBtn">저장 →</button>

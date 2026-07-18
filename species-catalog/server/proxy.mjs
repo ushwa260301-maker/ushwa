@@ -203,6 +203,8 @@ function serveStatic(req, res) {
 // ============================================================
 
 async function callOpenAI({ dataBase64, mimeType }) {
+  const requestedAt = new Date().toISOString();
+  const t0 = Date.now();
   const isPdf = (mimeType || "").toLowerCase() === "application/pdf";
   const dataUrl = `data:${mimeType || (isPdf ? "application/pdf" : "image/png")};base64,${dataBase64}`;
 
@@ -255,11 +257,32 @@ async function callOpenAI({ dataBase64, mimeType }) {
     clearTimeout(timer);
   }
 
+  const latencyMs = Date.now() - t0;
   if (!response.ok) {
-    throw new Error(`OpenAI ${response.status}: ${textOut.slice(0, 600)}`);
+    const err = new Error(`OpenAI ${response.status}: ${textOut.slice(0, 600)}`);
+    err._debug = { provider: "openai", model: MODEL, requestedAt, latencyMs,
+                   confidence: null, errorMessage: err.message, raw: safeJson(textOut) };
+    throw err;
   }
   const data = JSON.parse(textOut);
-  return extractStructured(data);
+  const parsed = extractStructured(data);
+  return {
+    parsed,
+    debug: {
+      provider:     "openai",
+      model:        MODEL,
+      requestedAt,
+      latencyMs,
+      confidence:   null,           // Responses API 는 아직 confidence 를 반환하지 않음
+      errorMessage: null,
+      raw:          data
+    }
+  };
+}
+
+/** Best-effort JSON parse — falls back to a `{text}` wrapper. */
+function safeJson(text) {
+  try { return JSON.parse(text); } catch { return { text }; }
 }
 
 /**
@@ -352,7 +375,7 @@ async function handleAnalyzeInvoice(req, res) {
   }
 
   try {
-    const parsed = await callOpenAI({ dataBase64, mimeType });
+    const { parsed, debug } = await callOpenAI({ dataBase64, mimeType });
     const rows = Array.isArray(parsed.rows) ? parsed.rows : [];
     json(res, 200, {
       ok:            true,
@@ -382,13 +405,17 @@ async function handleAnalyzeInvoice(req, res) {
         filename: String(filename || ""),
         mimeType: String(mimeType || ""),
         model:    MODEL
-      }
+      },
+      // Provider-neutral envelope consumed by the debug panel. See
+      // `js/vision.js` DebugEnvelope typedef.
+      _debug: debug
     });
   } catch (err) {
     json(res, 502, {
       ok:      false,
       error:   "openai_error",
-      message: err?.message || String(err)
+      message: err?.message || String(err),
+      _debug:  err?._debug || null
     });
   }
 }

@@ -23,6 +23,7 @@
 import { state } from "./state.js";
 import { analyzeInvoice } from "./vision.js";
 import { matchSpecies } from "./matcher.js";
+import { setSession as setDebugSession, refresh as refreshDebug, clearDebugPanel } from "./debugPanel.js";
 
 // ============================================================
 // Module-local element cache + wiring context
@@ -124,16 +125,33 @@ function wireEvents() {
   els.uploadNext.addEventListener("click", () => startAnalysis());
   els.retryBtn.addEventListener("click", () => startAnalysis());
   els.goReview.addEventListener("click", () => enterReview());
-  els.addItem.addEventListener("click", () => appendItemRow({}));
+  els.addItem.addEventListener("click", () => { appendItemRow({}); syncDebugPanel(); });
   els.saveBtn.addEventListener("click", () => { onSaveClicked().catch(err => {
     ctx.toast && ctx.toast("저장 실패: " + (err?.message || err));
   }); });
   els.doneBtn.addEventListener("click", close);
+
+  // Header field edits — keep session.header live and refresh debug panel.
+  const bindHeader = (input, key) => input.addEventListener("input", () => {
+    if (session.header) session.header[key] = input.value;
+    syncDebugPanel();
+  });
+  bindHeader(els.invDate,     "invoiceDate");
+  bindHeader(els.invNumber,   "invoiceNumber");
+  bindHeader(els.invSupplier, "supplier");
+  bindHeader(els.invPhone,    "supplierPhone");
+  bindHeader(els.invAddress,  "supplierAddress");
 }
 
 // ============================================================
 // Open / close
 // ============================================================
+
+/** Re-run the OCR analysis on the currently-selected file (used by Debug Panel [↻ OCR 재실행]). */
+export function reanalyzeCurrent() {
+  if (!session.file) { ctx.toast && ctx.toast("파일이 선택되지 않았습니다"); return; }
+  startAnalysis();
+}
 
 /** Open the wizard at Step 1 with a fresh session. */
 export function openInvoiceModal() {
@@ -148,6 +166,7 @@ function close() {
   els.modal.setAttribute("aria-hidden", "true");
   clearAttachedPreview();
   closePicker();
+  clearDebugPanel();
 }
 
 function resetSession() {
@@ -251,6 +270,14 @@ async function startAnalysis() {
     els.asErrorMessage.textContent = err?.message || "알 수 없는 오류가 발생했습니다.";
     els.retryBtn.hidden = false;
     els.goReview.hidden = true;
+    // Surface the failure envelope in the debug panel too — a developer
+    // still wants to see model/latency/error even when the OCR failed.
+    setDebugSession({
+      analysis: { ok: false, reason: err?.message || String(err),
+                  _debug: err?._debug || null },
+      header:   null,
+      items:    []
+    });
     return;
   }
 
@@ -299,6 +326,21 @@ function enterReview() {
   updateItemCount();
 
   goTo(3);
+  syncDebugPanel();
+}
+
+/**
+ * Push the current wizard slice into the debug panel. Called by
+ * `enterReview()` and by every input handler that could change the outcome
+ * of `saveInvoice()` (name/spec/qty/price/amount edits, header changes,
+ * row add/remove, species-picker selection).
+ */
+function syncDebugPanel() {
+  setDebugSession({
+    analysis: session.analysis || null,
+    header:   session.header   || null,
+    items:    session.items    || []
+  });
 }
 
 function appendItemRow(source) {
@@ -333,31 +375,36 @@ function appendItemRow(source) {
   };
   session.items.push(item);
 
-  // Live-sync input → item
+  // Live-sync input → item (+ debug panel refresh)
   nameInp.addEventListener("input", () => {
     item.name = nameInp.value;
     updateBadgeForRow(item, badge);
+    syncDebugPanel();
   });
-  specInp.addEventListener("input", () => { item.spec = specInp.value; });
-  unitInp.addEventListener("input", () => { item.unit = unitInp.value; });
+  specInp.addEventListener("input", () => { item.spec = specInp.value; syncDebugPanel(); });
+  unitInp.addEventListener("input", () => { item.unit = unitInp.value; syncDebugPanel(); });
 
   qtyInp.addEventListener("input", () => {
     item.quantity = Number(qtyInp.value) || 0;
     if (!item._amountEditedByUser) recomputeAmount(item, amountInp);
+    syncDebugPanel();
   });
   priceInp.addEventListener("input", () => {
     item.unitPrice = Number(priceInp.value) || 0;
     if (!item._amountEditedByUser) recomputeAmount(item, amountInp);
+    syncDebugPanel();
   });
   amountInp.addEventListener("input", () => {
     item.amount = Number(amountInp.value) || 0;
     item._amountEditedByUser = true;
+    syncDebugPanel();
   });
 
   removeBtn.addEventListener("click", () => {
     rowEl.remove();
     session.items = session.items.filter(x => x !== item);
     updateItemCount();
+    syncDebugPanel();
   });
 
   updateBadgeForRow(item, badge);
@@ -507,6 +554,7 @@ function openPicker(anchor, item, result) {
         `사용자 선택 · 유사도 ${pct(cand.score)}`);
       detachPicker(anchor);
       closePicker();
+      syncDebugPanel();
     });
     menu.appendChild(btn);
   }
@@ -521,6 +569,7 @@ function openPicker(anchor, item, result) {
     setBadge(anchor, "new", "+ 새 수종", "사용자가 신규 등록 선택");
     detachPicker(anchor);
     closePicker();
+    syncDebugPanel();
   });
   menu.appendChild(newBtn);
 
