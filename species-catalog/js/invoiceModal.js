@@ -22,6 +22,7 @@
 
 import { state } from "./state.js";
 import { analyzeInvoice } from "./vision.js";
+import { matchSpecies } from "./matcher.js";
 
 // ============================================================
 // Module-local element cache + wiring context
@@ -144,6 +145,7 @@ function close() {
   els.modal.hidden = true;
   els.modal.setAttribute("aria-hidden", "true");
   clearAttachedPreview();
+  closePicker();
 }
 
 function resetSession() {
@@ -322,6 +324,8 @@ function appendItemRow(source) {
     quantity: Number(qtyInp.value) || 0,
     unitPrice: Number(priceInp.value) || 0,
     amount: Number(amountInp.value) || 0,
+    /** Resolved by the matcher (auto for `match`) or by user pick (for `possible`). */
+    speciesId: null,
     _row: rowEl,
     _amountEditedByUser: source.amount != null
   };
@@ -370,24 +374,180 @@ function updateItemCount() {
 }
 
 /**
- * Update the "matches / new / unknown" badge on a row after the name changes.
- * Match is case-insensitive on trimmed name.
+ * Update the 3-tier species badge on a row after the name changes.
+ *
+ * Tiers (from matcher.js `matchSpecies()`):
+ *   • match    → 자동 연결. Auto-fills `item.speciesId`.
+ *   • possible → 사용자 선택. Badge becomes clickable; opens a candidate menu.
+ *                If the user has already picked, badge shows the pick as match.
+ *   • new      → 새 Species. `item.speciesId` stays null → saveInvoice creates.
+ *   • unknown  → row name still empty.
  */
 function updateBadgeForRow(item, badge) {
-  const name = (item.name || "").trim().toLowerCase();
-  if (!name) {
+  detachPicker(badge);
+
+  const rawName = (item.name || "").trim();
+  if (!rawName) {
     badge.dataset.status = "unknown";
     badge.textContent = "이름 입력";
+    badge.title = "";
+    item.speciesId = null;
+    item._match = null;
     return;
   }
-  const match = state.data.species.find(s => (s.name || "").trim().toLowerCase() === name);
-  if (match) {
-    badge.dataset.status = "match";
-    badge.textContent = `✓ ${match.id}`;
-  } else {
-    badge.dataset.status = "new";
-    badge.textContent = "+ 새 수종";
+
+  const result = matchSpecies(rawName, state.data.species);
+  item._match = result;
+
+  if (result.status === "match") {
+    item.speciesId = result.species.id;
+    setBadge(badge, "match", `✓ ${result.species.name}`,
+      `${result.species.id} · 유사도 ${pct(result.score)}`);
+    return;
   }
+
+  if (result.status === "possible") {
+    // Honor an existing user pick if the row-name change kept it in the candidate list.
+    const picked = item.speciesId
+      ? result.candidates.find(c => c.species.id === item.speciesId)
+      : null;
+    if (picked) {
+      setBadge(badge, "match", `✓ ${picked.species.name}`,
+        `사용자 선택 · 유사도 ${pct(picked.score)}`);
+      return;
+    }
+    item.speciesId = null;
+    const top = result.candidates[0];
+    const more = result.candidates.length > 1 ? ` 외 ${result.candidates.length - 1}` : "";
+    setBadge(badge, "possible", `? ${top.species.name}${more} · 선택`,
+      `${result.candidates.length}개 후보 · 클릭해 선택 (top ${pct(result.score)})`);
+    attachPicker(badge, item, result);
+    return;
+  }
+
+  // status === "new"
+  item.speciesId = null;
+  setBadge(badge, "new", "+ 새 수종", "저장 시 새 Species 로 자동 등록됩니다");
+}
+
+function setBadge(badge, status, text, title) {
+  badge.dataset.status = status;
+  badge.textContent = text;
+  badge.title = title;
+}
+
+function pct(score) {
+  return `${Math.round(score * 100)}%`;
+}
+
+// ============================================================
+// Possible-tier candidate picker (inline popover)
+// ============================================================
+
+let currentPicker = null;
+
+function attachPicker(badge, item, result) {
+  badge.classList.add("clickable");
+  badge.tabIndex = 0;
+  badge.setAttribute("role", "button");
+  badge.setAttribute("aria-haspopup", "menu");
+  badge.setAttribute("aria-label",
+    `후보 수종 ${result.candidates.length}개 중 선택`);
+  const opener = e => { e.stopPropagation(); openPicker(badge, item, result); };
+  const keyOpener = e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPicker(badge, item, result); }
+  };
+  badge._pickerOpener = opener;
+  badge._pickerKey    = keyOpener;
+  badge.addEventListener("click",   opener);
+  badge.addEventListener("keydown", keyOpener);
+}
+
+function detachPicker(badge) {
+  if (badge._pickerOpener) badge.removeEventListener("click",   badge._pickerOpener);
+  if (badge._pickerKey)    badge.removeEventListener("keydown", badge._pickerKey);
+  badge._pickerOpener = null;
+  badge._pickerKey    = null;
+  badge.classList.remove("clickable");
+  badge.removeAttribute("role");
+  badge.removeAttribute("tabindex");
+  badge.removeAttribute("aria-haspopup");
+  badge.removeAttribute("aria-label");
+}
+
+function openPicker(anchor, item, result) {
+  closePicker();
+
+  const menu = document.createElement("div");
+  menu.className = "species-picker-menu";
+  menu.setAttribute("role", "menu");
+
+  const header = document.createElement("div");
+  header.className = "picker-header";
+  header.textContent = `"${item.name}" 에 가까운 후보`;
+  menu.appendChild(header);
+
+  for (const cand of result.candidates) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "picker-item";
+    btn.setAttribute("role", "menuitem");
+    btn.dataset.speciesId = cand.species.id;
+
+    const name  = document.createElement("span"); name.className  = "pi-name";  name.textContent  = cand.species.name;
+    const id    = document.createElement("span"); id.className    = "pi-id";    id.textContent    = cand.species.id;
+    const score = document.createElement("span"); score.className = "pi-score"; score.textContent = pct(cand.score);
+    btn.append(name, id, score);
+
+    btn.addEventListener("click", () => {
+      item.speciesId = cand.species.id;
+      setBadge(anchor, "match", `✓ ${cand.species.name}`,
+        `사용자 선택 · 유사도 ${pct(cand.score)}`);
+      detachPicker(anchor);
+      closePicker();
+    });
+    menu.appendChild(btn);
+  }
+
+  const newBtn = document.createElement("button");
+  newBtn.type = "button";
+  newBtn.className = "picker-item picker-new";
+  newBtn.setAttribute("role", "menuitem");
+  newBtn.textContent = "+ 새 수종으로 등록";
+  newBtn.addEventListener("click", () => {
+    item.speciesId = null;
+    setBadge(anchor, "new", "+ 새 수종", "사용자가 신규 등록 선택");
+    detachPicker(anchor);
+    closePicker();
+  });
+  menu.appendChild(newBtn);
+
+  // Position under the badge.
+  const rect = anchor.getBoundingClientRect();
+  menu.style.position = "fixed";
+  menu.style.top  = `${rect.bottom + 4}px`;
+  menu.style.left = `${Math.max(8, rect.left)}px`;
+
+  document.body.appendChild(menu);
+  currentPicker = menu;
+
+  // Close on outside click / Escape.
+  setTimeout(() => {
+    document.addEventListener("click", onDocClickForPicker);
+    document.addEventListener("keydown", onDocKeyForPicker);
+  }, 0);
+}
+
+function onDocClickForPicker(e) {
+  if (currentPicker && !currentPicker.contains(e.target)) closePicker();
+}
+function onDocKeyForPicker(e) {
+  if (e.key === "Escape") closePicker();
+}
+function closePicker() {
+  if (currentPicker) { currentPicker.remove(); currentPicker = null; }
+  document.removeEventListener("click", onDocClickForPicker);
+  document.removeEventListener("keydown", onDocKeyForPicker);
 }
 
 // ============================================================

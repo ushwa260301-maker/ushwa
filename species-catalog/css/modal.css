@@ -484,9 +484,89 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ii-species-badge[data-status="unknown"] { background: var(--rule-soft); color: var(--muted); }
-.ii-species-badge[data-status="match"] { background: var(--accent-soft); color: var(--accent-strong); }
-.ii-species-badge[data-status="new"] { background: var(--bloom-soft); color: var(--bloom-ink); }
+.ii-species-badge[data-status="unknown"]  { background: var(--rule-soft);   color: var(--muted); }
+.ii-species-badge[data-status="match"]    { background: var(--accent-soft); color: var(--accent-strong); }
+.ii-species-badge[data-status="possible"] {
+  background: #fff2c4;
+  color: #8b6a00;
+  border: 1px solid #e6c86a;
+}
+:root[data-theme="dark"] .ii-species-badge[data-status="possible"] {
+  background: rgba(232, 190, 60, 0.18);
+  color: #f0d97a;
+  border-color: rgba(232, 190, 60, 0.5);
+}
+.ii-species-badge[data-status="new"]      { background: var(--bloom-soft);  color: var(--bloom-ink); }
+
+.ii-species-badge.clickable { cursor: pointer; }
+.ii-species-badge.clickable:hover { filter: brightness(0.95); }
+.ii-species-badge.clickable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Candidate picker popover (opened when a "possible" badge is clicked) */
+.species-picker-menu {
+  z-index: 1000;
+  min-width: 240px;
+  max-width: 340px;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #d9d9d9);
+  border-radius: 10px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.species-picker-menu .picker-header {
+  font-size: 11px;
+  color: var(--color-text-muted, #666);
+  padding: 6px 8px 4px;
+  text-transform: none;
+  letter-spacing: 0;
+  border-bottom: 1px solid var(--color-border, #e2e2e2);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.species-picker-menu .picker-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  color: var(--color-text, inherit);
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.species-picker-menu .picker-item:hover,
+.species-picker-menu .picker-item:focus-visible {
+  background: var(--accent-soft, rgba(46, 150, 96, 0.12));
+  outline: none;
+}
+
+.species-picker-menu .pi-name  { font-weight: 600; }
+.species-picker-menu .pi-id    { font-size: 11px; color: var(--color-text-muted, #666); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.species-picker-menu .pi-score { font-size: 11px; font-weight: 700; color: var(--accent-strong, #2e9660); font-variant-numeric: tabular-nums; }
+
+.species-picker-menu .picker-new {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--color-border, #d9d9d9);
+  grid-template-columns: 1fr;
+  color: var(--bloom-ink, #1955a6);
+  font-weight: 600;
+}
 
 .ii-remove {
   color: var(--muted);

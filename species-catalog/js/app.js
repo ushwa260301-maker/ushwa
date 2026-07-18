@@ -20,6 +20,7 @@ import { cacheElements, els, render, refreshFilterUi, toast, toggleTheme } from 
 import { initModal, openModal } from "./modal.js";
 import { initInvoiceModal, openInvoiceModal } from "./invoiceModal.js";
 import { initHistoryModal, openHistoryModal } from "./historyModal.js";
+import { matchSpecies } from "./matcher.js";
 import { nextId } from "./utils.js";
 
 // ============================================================
@@ -240,20 +241,37 @@ function idAllocator(prefix, existing, pending) {
  * @returns {{invoiceId:string, newSpecies:object[], reusedSpecies:object[]}}
  */
 function saveInvoice(header, items) {
-  // 1. Resolve each row to a species (create if missing).
+  // 1. Resolve each row to a Species. Resolution priority:
+  //    (a) `it.speciesId` — set by the wizard when the matcher returned
+  //        "match" or the user picked a candidate for a "possible" row.
+  //    (b) `matchSpecies()` — for untouched rows, run the matcher directly
+  //        and honour a "match" verdict.
+  //    (c) Otherwise create a new Species with default metadata.
   const newSpecies = [];
   const reusedSpecies = [];
   const nextSp = idAllocator("sp", state.data.species, newSpecies);
   const resolved = items.map(it => {
     const trimmed = (it.name || "").trim();
-    const match = state.data.species.find(s =>
-      (s.name || "").trim().toLowerCase() === trimmed.toLowerCase()
-    );
-    if (match) {
-      if (!reusedSpecies.some(s => s.id === match.id)) reusedSpecies.push(match);
-      return { ...it, speciesId: match.id, speciesName: match.name };
+
+    // (a) wizard-resolved id
+    if (it.speciesId) {
+      const sp = state.data.species.find(s => s.id === it.speciesId);
+      if (sp) {
+        if (!reusedSpecies.some(s => s.id === sp.id)) reusedSpecies.push(sp);
+        return { ...it, speciesId: sp.id, speciesName: sp.name };
+      }
+      // Stale id (species deleted mid-flight) — fall through.
     }
-    // Create a new Species with default metadata; user can edit later.
+
+    // (b) matcher fallback
+    const verdict = matchSpecies(trimmed, state.data.species);
+    if (verdict.status === "match" && verdict.species) {
+      const sp = verdict.species;
+      if (!reusedSpecies.some(s => s.id === sp.id)) reusedSpecies.push(sp);
+      return { ...it, speciesId: sp.id, speciesName: sp.name };
+    }
+
+    // (c) create new — "possible" without a user pick and "new" both land here
     const created = {
       id: nextSp(),
       name: trimmed,
