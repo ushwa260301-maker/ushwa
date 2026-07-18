@@ -19,6 +19,7 @@ import { loadSeed, exportJson, importJson } from "./importExport.js";
 import { cacheElements, els, render, refreshFilterUi, toast, toggleTheme } from "./ui.js";
 import { initModal, openModal } from "./modal.js";
 import { initInvoiceModal, openInvoiceModal } from "./invoiceModal.js";
+import { initHistoryModal, openHistoryModal } from "./historyModal.js";
 import { nextId } from "./utils.js";
 
 // ============================================================
@@ -318,7 +319,8 @@ function persistAndRerender() {
 
 const cardHandlers = {
   onEdit: id => openModal(id),
-  onDelete: id => deleteSpecies(id)
+  onDelete: id => deleteSpecies(id),
+  onOpen: id => openHistoryModal(id)
 };
 
 function rerender() {
@@ -432,6 +434,8 @@ async function init() {
     onSave: saveInvoice,
     toast
   });
+
+  initHistoryModal({ toast });
 
   wireToolbar();
   wireFilterRail();

@@ -541,6 +541,190 @@
   margin-top: 8px;
 }
 
+/* ============================================================
+   Transaction-history modal — stats grid, filters, table
+   ============================================================ */
+
+.history-panel {
+  max-width: 1040px;
+}
+
+.hist-species-id {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  margin-left: 8px;
+  letter-spacing: 0.02em;
+}
+
+.hist-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.hist-stat {
+  background: var(--color-surface-2, rgba(0, 0, 0, 0.03));
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hist-stat dt {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.hist-stat dd {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.hist-filters-wrap {
+  margin-bottom: 12px;
+}
+
+.hist-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+
+.hist-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 130px;
+  flex: 1 1 130px;
+}
+
+.hist-filter > span {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.hist-filter > select,
+.hist-filter > input {
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+#histResetFilters {
+  align-self: end;
+  margin-bottom: 1px;
+}
+
+.hist-table-wrap {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  overflow-x: auto;
+  margin-bottom: 12px;
+}
+
+.hist-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 640px;
+}
+
+.hist-table thead th {
+  background: var(--color-surface-2, rgba(0, 0, 0, 0.04));
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.hist-table tbody td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+
+.hist-table tbody tr:nth-child(even) td {
+  background: var(--color-surface-2, rgba(0, 0, 0, 0.02));
+}
+
+.hist-table tbody tr:hover td {
+  background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
+}
+
+.hist-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.hist-table .col-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.hist-table .col-spec,
+.hist-table .col-date {
+  white-space: nowrap;
+}
+
+.hist-table .col-supplier {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hist-table tfoot .hist-foot td {
+  padding: 10px 12px;
+  font-weight: 700;
+  background: var(--color-surface-2, rgba(0, 0, 0, 0.04));
+  border-top: 1px solid var(--color-border);
+  font-size: 13px;
+}
+
+.hist-table tfoot .hist-foot small {
+  font-weight: 500;
+  color: var(--color-text-muted);
+  margin-left: 6px;
+}
+
+.hist-empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+/* Make cards look clickable — cursor only, no design changes. */
+#cardGrid .card {
+  cursor: pointer;
+}
+#cardGrid .card .icon-btn {
+  cursor: pointer;
+}
+
 /* -------------- Responsive tweaks -------------- */
 @media (max-width: 880px) {
   .form-grid { grid-template-columns: 1fr; }
@@ -559,5 +743,13 @@
     grid-column: span 3;
     justify-self: end;
     margin-top: 4px;
+  }
+
+  .hist-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .hist-filter {
+    flex: 1 1 45%;
+    min-width: 0;
   }
 }

@@ -427,6 +427,100 @@
     </div>
   </template>
 
+  <!-- ============================================================
+       Transaction History modal — per-species purchase history
+       ============================================================ -->
+  <div id="historyModal" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
+    <div class="modal-backdrop" data-close-history></div>
+    <div class="modal-panel history-panel">
+      <header class="modal-head">
+        <h2 id="historyModalTitle">구매 이력 · <span id="histSpeciesName"></span> <small id="histSpeciesId" class="hist-species-id"></small></h2>
+        <button class="icon-btn" type="button" aria-label="닫기" data-close-history>&#x2715;</button>
+      </header>
+
+      <div class="modal-body">
+
+        <!-- Auto-computed statistics -->
+        <div class="hist-stats" aria-label="구매 통계">
+          <div class="hist-stat"><dt>최근 구매일</dt><dd id="histLastDate">—</dd></div>
+          <div class="hist-stat"><dt>평균 단가</dt><dd id="histAvgPrice">—</dd></div>
+          <div class="hist-stat"><dt>최저 단가</dt><dd id="histMinPrice">—</dd></div>
+          <div class="hist-stat"><dt>최고 단가</dt><dd id="histMaxPrice">—</dd></div>
+          <div class="hist-stat"><dt>총 구매 횟수</dt><dd id="histTxCount">—</dd></div>
+          <div class="hist-stat"><dt>총 구매 수량</dt><dd id="histTotalQty">—</dd></div>
+          <div class="hist-stat"><dt>총 구매 금액</dt><dd id="histTotalAmount">—</dd></div>
+        </div>
+
+        <!-- Filters + sort -->
+        <fieldset class="form-section hist-filters-wrap">
+          <legend>필터·정렬</legend>
+          <div class="hist-filters">
+            <label class="hist-filter">
+              <span>거래처</span>
+              <select id="histFilterSupplier"><option value="">전체</option></select>
+            </label>
+            <label class="hist-filter">
+              <span>규격</span>
+              <select id="histFilterSpec"><option value="">전체</option></select>
+            </label>
+            <label class="hist-filter">
+              <span>시작</span>
+              <input type="date" id="histFilterFrom" />
+            </label>
+            <label class="hist-filter">
+              <span>종료</span>
+              <input type="date" id="histFilterTo" />
+            </label>
+            <label class="hist-filter">
+              <span>정렬</span>
+              <select id="histSort">
+                <option value="date-desc">최근 거래순</option>
+                <option value="date-asc">오래된 순</option>
+                <option value="price-desc">단가 높은순</option>
+                <option value="price-asc">단가 낮은순</option>
+                <option value="qty-desc">수량 많은순</option>
+              </select>
+            </label>
+            <button type="button" id="histResetFilters" class="btn-mini">필터 초기화</button>
+          </div>
+        </fieldset>
+
+        <!-- Table -->
+        <div class="hist-table-wrap">
+          <table class="hist-table" aria-label="거래 이력">
+            <thead>
+              <tr>
+                <th class="col-date">거래일</th>
+                <th class="col-supplier">거래처</th>
+                <th class="col-spec">규격</th>
+                <th class="col-num">수량</th>
+                <th class="col-num">단가</th>
+                <th class="col-num">금액</th>
+              </tr>
+            </thead>
+            <tbody id="histRows"></tbody>
+            <tfoot>
+              <tr class="hist-foot">
+                <td colspan="3">합계 <small id="histRowCount">0건</small></td>
+                <td class="col-num" id="histFootQty">—</td>
+                <td class="col-num">—</td>
+                <td class="col-num" id="histFootAmount">—</td>
+              </tr>
+            </tfoot>
+          </table>
+          <div id="histEmpty" class="hist-empty" hidden>
+            <p>선택한 조건에 맞는 거래 이력이 없습니다.</p>
+          </div>
+        </div>
+
+        <footer class="modal-foot">
+          <span></span>
+          <button type="button" class="btn-secondary" data-close-history>닫기</button>
+        </footer>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast" hidden></div>
 
   <!-- ES modules — served as /js/app.js on any static host -->
