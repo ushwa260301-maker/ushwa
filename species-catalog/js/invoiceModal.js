@@ -125,7 +125,9 @@ function wireEvents() {
   els.retryBtn.addEventListener("click", () => startAnalysis());
   els.goReview.addEventListener("click", () => enterReview());
   els.addItem.addEventListener("click", () => appendItemRow({}));
-  els.saveBtn.addEventListener("click", onSaveClicked);
+  els.saveBtn.addEventListener("click", () => { onSaveClicked().catch(err => {
+    ctx.toast && ctx.toast("저장 실패: " + (err?.message || err));
+  }); });
   els.doneBtn.addEventListener("click", close);
 }
 
@@ -554,7 +556,7 @@ function closePicker() {
 // Step 3 → Step 4 — Save
 // ============================================================
 
-function onSaveClicked() {
+async function onSaveClicked() {
   // Sync header from DOM
   session.header = {
     invoiceDate: els.invDate.value,
@@ -584,10 +586,20 @@ function onSaveClicked() {
     return;
   }
 
-  // Hand off to app.js
-  const result = ctx.onSave(session.header, validItems);
-  showSuccess(result, validItems.length);
-  goTo(4);
+  // Hand off to app.js. Attaches the original file (if any) + raw Vision
+  // JSON so `saveInvoice()` can push them into IndexedDB and the Invoice
+  // record respectively.
+  els.saveBtn.disabled = true;
+  try {
+    const result = await ctx.onSave(session.header, validItems, {
+      file:     session.file     || null,
+      analysis: session.analysis || null
+    });
+    showSuccess(result, validItems.length);
+    goTo(4);
+  } finally {
+    els.saveBtn.disabled = false;
+  }
 }
 
 function showSuccess(result, itemCount) {

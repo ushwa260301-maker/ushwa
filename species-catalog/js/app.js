@@ -21,6 +21,8 @@ import { initModal, openModal } from "./modal.js";
 import { initInvoiceModal, openInvoiceModal } from "./invoiceModal.js";
 import { initHistoryModal, openHistoryModal, refreshHistoryModal } from "./historyModal.js";
 import { initTransactionDetailModal, openTransactionDetailModal } from "./transactionDetailModal.js";
+import { initAttachmentViewer, openAttachmentViewer } from "./attachmentViewer.js";
+import { initAttachmentStore, putAttachment, deleteAttachmentsForInvoice } from "./attachmentStore.js";
 import { matchSpecies } from "./matcher.js";
 import { nextId } from "./utils.js";
 
@@ -239,9 +241,14 @@ function idAllocator(prefix, existing, pending) {
  *
  * @param {{invoiceDate,invoiceNumber,supplier,supplierPhone,supplierAddress}} header
  * @param {Array<{name,spec,unit,quantity,unitPrice,amount}>} items
- * @returns {{invoiceId:string, newSpecies:object[], reusedSpecies:object[]}}
+ * @param {{ file?: File|null, analysis?: object|null }} [extras]
+ *   `extras.file` is persisted to IndexedDB and referenced from
+ *   `invoice.attachment` (metadata only). `extras.analysis` is the raw
+ *   Vision-API JSON — stored on `invoice.analysis` for the viewer's
+ *   "AI 분석 결과" tab.
+ * @returns {Promise<{invoiceId:string, newSpecies:object[], reusedSpecies:object[]}>}
  */
-function saveInvoice(header, items) {
+async function saveInvoice(header, items, extras = {}) {
   // 1. Resolve each row to a Species. Resolution priority:
   //    (a) `it.speciesId` — set by the wizard when the matcher returned
   //        "match" or the user picked a candidate for a "possible" row.
@@ -301,6 +308,22 @@ function saveInvoice(header, items) {
     createdAt: new Date().toISOString()
   };
   state.data.invoices.push(invoice);
+
+  // 2b. Persist raw AI analysis (for the viewer's compare tab).
+  if (extras && extras.analysis) invoice.analysis = extras.analysis;
+
+  // 2c. Persist the original file (image / PDF) to IndexedDB and
+  //     stash metadata onto the invoice record. Failures are non-fatal —
+  //     the invoice still saves without an attachment.
+  if (extras && extras.file) {
+    try {
+      const meta = await putAttachment({ invoiceId: invoice.id, file: extras.file });
+      invoice.attachment = meta;
+    } catch (err) {
+      console.warn("[saveInvoice] putAttachment failed:", err);
+      toast("원본 파일 저장 실패: " + (err?.message || err));
+    }
+  }
 
   // 3. Create InvoiceItem rows.
   const nextItem = idAllocator("item", state.data.invoiceItems, []);
@@ -431,6 +454,9 @@ function deleteInvoice(invoiceId) {
   state.data.invoiceItems = state.data.invoiceItems.filter(it => it.invoiceId !== invoiceId);
   persistAndRerender();
   refreshHistoryModal();
+  // Cascade to IndexedDB — best-effort, fire and forget.
+  deleteAttachmentsForInvoice(invoiceId).catch(err =>
+    console.warn("[deleteInvoice] attachment cleanup failed:", err));
 }
 
 /** Save to storage, rebuild filter chips (in case master lists changed), rerender. */
@@ -566,8 +592,14 @@ async function init() {
   initTransactionDetailModal({
     onSave:   (invoiceId, header, items) => updateInvoice(invoiceId, header, items),
     onDelete: id => deleteInvoice(id),
+    onOpenAttachment: id => openAttachmentViewer(id),
     toast
   });
+
+  initAttachmentViewer({ toast });
+
+  // IndexedDB store (attachments) — pre-open; failures are non-fatal.
+  initAttachmentStore();
 
   wireToolbar();
   wireFilterRail();

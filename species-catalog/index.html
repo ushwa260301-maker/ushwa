@@ -624,6 +624,77 @@
     </div>
   </template>
 
+  <!-- ============================================================
+       Attachment Viewer modal — original invoice image / PDF
+       ============================================================ -->
+  <div id="attachmentViewerModal" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="viewerTitle">
+    <div class="modal-backdrop" data-close-viewer></div>
+    <div class="modal-panel viewer-panel">
+      <header class="modal-head viewer-head">
+        <div class="viewer-title-wrap">
+          <h2 id="viewerTitle">원본 이미지</h2>
+          <small>
+            <span id="viewerInvoiceId"></span>
+            · <span id="viewerFilename">—</span>
+          </small>
+        </div>
+        <div class="viewer-actions">
+          <button type="button" class="btn-mini" id="viewerZoomOutBtn" aria-label="축소" title="축소">−</button>
+          <span class="viewer-zoom" id="viewerZoomLevel">100%</span>
+          <button type="button" class="btn-mini" id="viewerZoomInBtn" aria-label="확대" title="확대">+</button>
+          <button type="button" class="btn-mini" id="viewerZoomResetBtn" aria-label="원본 크기" title="원본 크기">1:1</button>
+          <button type="button" class="btn-mini" id="viewerRotateBtn" aria-label="회전" title="90° 회전">↻</button>
+          <button type="button" class="btn-secondary" id="viewerDownloadBtn">↓ 다운로드</button>
+          <button type="button" class="btn-secondary" id="viewerOpenNewBtn">↗ 새 창</button>
+          <button class="icon-btn" type="button" aria-label="닫기" data-close-viewer>&#x2715;</button>
+        </div>
+      </header>
+
+      <div class="viewer-body">
+
+        <div class="viewer-stage">
+          <div class="viewer-image-container" id="viewerImageContainer">
+            <img id="viewerImage" alt="거래명세서 원본" />
+          </div>
+          <iframe class="viewer-pdf" id="viewerPdfFrame" title="거래명세서 PDF" hidden></iframe>
+          <div class="viewer-empty" id="viewerEmpty" hidden>
+            <p>이 거래에는 원본 이미지가 저장되지 않았습니다.</p>
+            <p class="hint">다음 거래명세서 등록 시부터 자동으로 원본이 저장됩니다.</p>
+          </div>
+        </div>
+
+        <aside class="viewer-side">
+          <nav class="viewer-tabs" role="tablist" aria-label="비교 탭">
+            <button type="button" class="viewer-tab active" role="tab" data-viewer-tab="original" aria-selected="true">원본</button>
+            <button type="button" class="viewer-tab"        role="tab" data-viewer-tab="ai"       aria-selected="false">AI 분석 결과</button>
+            <button type="button" class="viewer-tab"        role="tab" data-viewer-tab="final"    aria-selected="false">최종 저장값</button>
+          </nav>
+
+          <section class="viewer-tab-panel" data-viewer-tab-panel="original" role="tabpanel">
+            <dl class="viewer-meta" aria-label="파일 정보">
+              <div><dt>파일명</dt>   <dd id="viewerMetaFilename">—</dd></div>
+              <div><dt>파일 형식</dt> <dd id="viewerMetaMime">—</dd></div>
+              <div><dt>크기</dt>     <dd id="viewerMetaSize">—</dd></div>
+              <div><dt>업로드일</dt>  <dd id="viewerMetaCreated">—</dd></div>
+              <div><dt>저장 경로</dt> <dd id="viewerMetaPath" class="wraps">—</dd></div>
+            </dl>
+          </section>
+
+          <section class="viewer-tab-panel" data-viewer-tab-panel="ai" role="tabpanel" hidden>
+            <p class="viewer-tab-hint">Vision API 가 반환한 원본 JSON. <strong>읽기 전용</strong>.</p>
+            <pre id="viewerAiJson" class="viewer-json">—</pre>
+          </section>
+
+          <section class="viewer-tab-panel" data-viewer-tab-panel="final" role="tabpanel" hidden>
+            <p class="viewer-tab-hint">현재 Invoice 헤더 + 품목 (사용자 편집 반영).</p>
+            <pre id="viewerFinalJson" class="viewer-json">—</pre>
+          </section>
+        </aside>
+
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast" hidden></div>
 
   <!-- ES modules — served as /js/app.js on any static host -->

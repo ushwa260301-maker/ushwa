@@ -26,6 +26,8 @@ species-catalog/
 │   ├── invoiceModal.js  # ★ 거래명세서 등록 4-step 위저드 (업로드→AI분석→검토→완료)
 │   ├── historyModal.js  # ★ 구매 이력 모달 (수종별 통계 · 필터 · 정렬 · 이력 테이블)
 │   ├── transactionDetailModal.js  # ★ 거래 상세 모달 (view/edit/delete)
+│   ├── attachmentStore.js  # ★ IndexedDB CRUD (원본 이미지/PDF Blob)
+│   ├── attachmentViewer.js # ★ 뷰어 모달 (zoom/rotate/download + AI/최종 비교 탭)
 │   ├── matcher.js       # ★ Species Matching Engine (normalize + NFD-jamo Levenshtein)
 │                        #   3-tier verdict: match / possible / new
 │   ├── storage.js       # 3 컬렉션 LocalStorage 인터페이스 + v1→v2 자동 마이그레이션
@@ -767,11 +769,125 @@ refreshHistoryModal() ─► 구매 이력 모달이 열려 있으면 재렌더
 Species 는 삭제하지 않습니다 — 이 거래 외 다른 이력이 남아 있을 수 있고,
 없더라도 카드는 통계가 0 인 상태로 계속 표시됩니다.
 
-## 원본 이미지 (다음 버전)
+## 원본 이미지
 
-`[🖼 원본 이미지]` 버튼은 현재 자리만 마련되어 있습니다. 클릭하면
-"원본 이미지: 다음 버전에서 지원 예정" toast 만 표시합니다. 이번 단계에서는
-이미지를 저장하지 않기 때문입니다.
+`[🖼 원본 이미지]` 버튼은 이제 실제로 동작합니다. 첨부된 원본이 있으면
+enabled, 없으면 disabled 로 표시되며, 클릭 시 아래의 **첨부 뷰어** 모달을
+엽니다.
+
+---
+
+# 🖼 원본 첨부 (Attachment)
+
+거래명세서 원본(이미지 또는 PDF)을 브라우저 안에 안전하게 보관합니다.
+아직 Supabase / Firebase 는 사용하지 않습니다.
+
+## 저장 계층
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  LocalStorage  ─ species-catalog:v2:*                          │
+│      • Species / Invoice / InvoiceItem 3 컬렉션 (JSON 직렬화)  │
+│      • Invoice.attachment  = { id, filename, mimeType, size,   │
+│                                 createdAt, storagePath,        │
+│                                 thumbnailPath, status }        │
+│      • Invoice.analysis    = Vision API 원본 JSON              │
+├────────────────────────────────────────────────────────────────┤
+│  IndexedDB   ─ species-catalog · attachments                   │
+│      • { id, invoiceId, filename, mimeType, size,              │
+│           blob:Blob, createdAt } — 실제 바이너리               │
+│      • invoiceId 인덱스로 Invoice 삭제 시 카스케이드 제거     │
+└────────────────────────────────────────────────────────────────┘
+```
+
+메타데이터는 LocalStorage, **바이너리(수 MB)** 는 IndexedDB — 각각의
+용량 제약(5 MB vs 수백 MB)에 맞는 배치입니다.
+
+## `attachmentStore.js` API
+
+| 함수 | 설명 |
+|---|---|
+| `initAttachmentStore()` | 앱 부팅 시 DB open + 스토어 생성. 실패해도 앱 자체는 계속 동작. |
+| `putAttachment({invoiceId, file})` | Blob 저장 + JSON-직렬화 가능한 메타데이터 반환 |
+| `getAttachment(id)` | `{ id, invoiceId, filename, mimeType, size, blob, createdAt }` 반환 |
+| `deleteAttachment(id)` | 단일 삭제 |
+| `deleteAttachmentsForInvoice(invoiceId)` | Invoice 삭제 시 카스케이드 |
+| `listAttachments()` | 디버그용 · 메타데이터만 |
+
+## 업로드 흐름
+
+거래명세서 등록 위저드 Step 3 에서 **[저장]** 을 누르면:
+
+```
+invoiceModal.onSaveClicked (async)
+    │  session.file  · session.analysis
+    ▼
+app.saveInvoice(header, items, { file, analysis })   ← async
+    ├─ 1. Species 해결 (기존 로직 · matcher.js)
+    ├─ 2. Invoice 헤더 생성
+    ├─ 2b. invoice.analysis = Vision API 원본 JSON  (있는 경우)
+    ├─ 2c. putAttachment({invoiceId, file})
+    │       ↳ Blob → IndexedDB
+    │       ↳ 메타데이터 → invoice.attachment
+    │       (실패 시 toast, invoice 자체는 저장 진행)
+    ├─ 3. InvoiceItem 생성
+    └─ persistAndRerender()  ← LocalStorage 저장 + 카드 재렌더
+```
+
+## 뷰어 (`attachmentViewer.js`)
+
+Transaction Detail 의 `[🖼 원본 이미지]` → `openAttachmentViewer(invoiceId)`:
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│  원본 이미지 · inv-041 · sample-invoice.png                   │
+│  [ − ]  [ 100% ]  [ + ]  [ 1:1 ]  [ ↻ ]  [↓ 다운로드]  [↗ 새창] [✕]│
+├──────────────────────────────┬────────────────────────────────┤
+│                              │  [원본] [AI 분석] [최종 저장값] │
+│     (Blob 이미지 렌더링)     │                                │
+│                              │  파일명 : sample-invoice.png   │
+│     transform: scale/rotate  │  형식   : image/png            │
+│     scrollable stage         │  크기   : 68 B                 │
+│                              │  업로드 : 2026-07-18T…         │
+│                              │  경로   : indexeddb:…/att-…    │
+└──────────────────────────────┴────────────────────────────────┘
+```
+
+## 툴바 액션
+
+| 액션 | 구현 |
+|---|---|
+| **확대 / 축소** | `[25, 50, 75, 100, 125, 150, 200, 300, 400]%` step |
+| **원본 크기** | 100% 로 리셋 |
+| **회전** | 90° 씩 증가 (0 → 90 → 180 → 270 → 0) |
+| **다운로드** | `<a href=objectURL download=filename>` 클릭 |
+| **새 창 열기** | `window.open(objectURL, "_blank", "noopener")` |
+
+PDF는 `<iframe>` 으로 렌더되며 zoom/rotate 버튼은 자동 비활성화됩니다.
+
+## 비교 탭
+
+| 탭 | 내용 | 편집 |
+|---|---|---|
+| **원본** | 파일 메타데이터 (`filename`, `mimeType`, `size`, `createdAt`, `storagePath`) | — |
+| **AI 분석 결과** | `Invoice.analysis` — Vision API 원본 JSON | **읽기 전용** |
+| **최종 저장값** | 현재 `Invoice` 헤더 + 연결된 `InvoiceItem` 배열 | — |
+
+향후 Vision 재분석 · diff · 재편집 UI 는 이 3-way 구조 위에 붙일 수 있습니다.
+
+## 카스케이드 삭제
+
+`deleteInvoice(id)`:
+1. `state.data.invoices` 에서 제거
+2. `state.data.invoiceItems` 에서 `invoiceId === id` 제거
+3. `deleteAttachmentsForInvoice(id)` — IndexedDB 카스케이드 (best-effort)
+4. `persistAndRerender()` + `refreshHistoryModal()`
+
+## 원본이 없는 거래
+
+시드 데이터의 기존 Invoice 는 attachment 를 가지지 않습니다. 이 경우:
+- 상세 모달의 `[🖼 원본 이미지]` 버튼은 **disabled** + `title="이 거래에는 원본 이미지가 없습니다"`
+- 사용자가 강제로 뷰어를 열더라도 좌측 스테이지는 "저장되지 않음" 안내를 표시
 
 ---
 
@@ -794,8 +910,10 @@ ui.js         ── state · filter · stats · components
 modal.js      ── state · vision · stats · components
 invoiceModal  ── state · vision · matcher (Step 3 배지 · 후보 팝오버)
 historyModal  ── state · stats (거래 목록 · onOpenTransaction → 상세 모달)
-transactionDetailModal ── state (view/edit/delete)
-app.js        ── 위 모두 · matcher (saveInvoice · updateInvoice fallback) · orchestrates
+transactionDetailModal ── state (view/edit/delete · onOpenAttachment → 뷰어)
+attachmentStore ── IndexedDB (species-catalog/attachments)
+attachmentViewer ── state · attachmentStore (image transform · tabs)
+app.js        ── 위 모두 · matcher · IndexedDB 카스케이드 · orchestrates
 
 server/proxy.mjs  ── Node HTTP · reads .env · calls api.openai.com/v1/responses
 ```
@@ -836,7 +954,8 @@ server/proxy.mjs  ── Node HTTP · reads .env · calls api.openai.com/v1/resp
 - **거래명세서 등록**: `+ 거래명세서 등록` → 업로드 → **OpenAI Vision 분석** → 검토 → 저장 (신규 수종 자동 생성 포함, API Key는 프록시 안에서만)
 - **Species Matching**: Vision 결과가 오타여도 자동 연결 (`왕벗나무` → `왕벚나무`) · 애매하면 사용자 선택 팝오버 · 매치 없으면 새 수종 자동 생성
 - **구매 이력 조회**: 카드 본문 클릭 → 수종별 통계 · 필터(거래처/규격/기간) · 정렬 이력 테이블
-- **거래 상세 · 편집 · 삭제**: 이력 행 클릭 → view/edit 모드 전환 · 헤더/품목 편집 · 저장 시 stats 자동 재계산 (원본 이미지는 다음 버전)
+- **거래 상세 · 편집 · 삭제**: 이력 행 클릭 → view/edit 모드 전환 · 헤더/품목 편집 · 저장 시 stats 자동 재계산
+- **원본 첨부 뷰어**: 상세 모달의 [🖼 원본 이미지] → zoom · rotate · 다운로드 · 새 창 · 원본/AI/최종 저장값 3-way 비교 탭 (IndexedDB 저장)
 - **JSON 가져오기/내보내기**: 백업·공유용 (v1·v2 스키마 모두 호환)
 - **시드 복원**: `data/species.json` 원본으로 리셋
 - **개화기 블록**: 12칸, 개화 월만 활성색

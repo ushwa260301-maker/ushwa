@@ -45,6 +45,7 @@ function emptyHeader() {
 /**
  * @param {{ onSave: (invoiceId, header, items) => void,
  *           onDelete: (invoiceId) => void,
+ *           onOpenAttachment?: (invoiceId) => void,
  *           toast: (msg:string)=>void }} deps
  */
 export function initTransactionDetailModal(deps) {
@@ -88,7 +89,12 @@ function wireEvents() {
   els.saveBtn.addEventListener("click", commitSave);
   els.deleteBtn.addEventListener("click", confirmDelete);
   els.imageBtn.addEventListener("click", () => {
-    ctx.toast && ctx.toast("원본 이미지: 다음 버전에서 지원 예정");
+    if (!session.invoiceId) return;
+    if (!session.invoice?.attachment?.id) {
+      ctx.toast && ctx.toast("이 거래에는 원본 이미지가 없습니다");
+      return;
+    }
+    ctx.onOpenAttachment && ctx.onOpenAttachment(session.invoiceId);
   });
   els.addItemBtn.addEventListener("click", () => {
     appendItemRow({ speciesId: null, speciesName: "", spec: "", unit: "주",
@@ -142,6 +148,13 @@ function loadFromState() {
   writeHeaderInputs();
 
   els.invoiceIdLbl.textContent = inv.id;
+
+  // Original-image button — enabled only when an attachment exists.
+  const att = inv.attachment;
+  els.imageBtn.disabled = !att?.id;
+  els.imageBtn.title = att?.id
+    ? `원본 열기 · ${att.filename || ""}`
+    : "이 거래에는 원본 이미지가 없습니다";
 
   const raw = state.data.invoiceItems.filter(it => it.invoiceId === inv.id);
   els.itemRows.innerHTML = "";
