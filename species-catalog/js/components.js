@@ -25,7 +25,7 @@ import {
  * Build one species card node from the <template id="cardTemplate">.
  * @param {object} sp
  * @param {HTMLTemplateElement} cardTpl
- * @param {{onEdit:(id:string)=>void, onDelete:(id:string)=>void}} handlers
+ * @param {{onEdit:(id:string)=>void, onDelete:(id:string)=>void, onOpen?:(id:string)=>void}} handlers
  * @returns {HTMLElement}
  */
 export function createCard(sp, cardTpl, handlers) {
@@ -67,9 +67,27 @@ export function createCard(sp, cardTpl, handlers) {
   if (sp.notes) notes.textContent = "“" + sp.notes + "”";
   else notes.remove();
 
-  // Hover-revealed action buttons.
-  node.querySelector(".edit-btn").addEventListener("click", () => handlers.onEdit(sp.id));
-  node.querySelector(".delete-btn").addEventListener("click", () => handlers.onDelete(sp.id));
+  // Hover-revealed action buttons — stop propagation so the card body
+  // click (which opens the history modal) doesn't fire on top of them.
+  const editBtn = node.querySelector(".edit-btn");
+  const deleteBtn = node.querySelector(".delete-btn");
+  editBtn.addEventListener("click", e => { e.stopPropagation(); handlers.onEdit(sp.id); });
+  deleteBtn.addEventListener("click", e => { e.stopPropagation(); handlers.onDelete(sp.id); });
+
+  // Card body click → open history modal.
+  if (handlers.onOpen) {
+    node.classList.add("clickable");
+    node.setAttribute("role", "button");
+    node.setAttribute("tabindex", "0");
+    node.setAttribute("aria-label", `${sp.name} 구매 이력 열기`);
+    node.addEventListener("click", () => handlers.onOpen(sp.id));
+    node.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        handlers.onOpen(sp.id);
+      }
+    });
+  }
 
   return node;
 }

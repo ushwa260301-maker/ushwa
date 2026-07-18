@@ -18,6 +18,12 @@ import { storage } from "./storage.js";
 import { loadSeed, exportJson, importJson } from "./importExport.js";
 import { cacheElements, els, render, refreshFilterUi, toast, toggleTheme } from "./ui.js";
 import { initModal, openModal } from "./modal.js";
+import { initInvoiceModal, openInvoiceModal } from "./invoiceModal.js";
+import { initHistoryModal, openHistoryModal, refreshHistoryModal } from "./historyModal.js";
+import { initTransactionDetailModal, openTransactionDetailModal } from "./transactionDetailModal.js";
+import { initAttachmentViewer, openAttachmentViewer } from "./attachmentViewer.js";
+import { initAttachmentStore, putAttachment, deleteAttachmentsForInvoice } from "./attachmentStore.js";
+import { matchSpecies } from "./matcher.js";
 import { nextId } from "./utils.js";
 
 // ============================================================
@@ -220,6 +226,239 @@ function idAllocator(prefix, existing, pending) {
   return () => nextId(prefix, [...existing, ...pending]);
 }
 
+// ============================================================
+// Invoice registration (from 거래명세서 등록 wizard)
+// ============================================================
+
+/**
+ * Persist an invoice + its items produced by the wizard.
+ *
+ * For every item we resolve `speciesId`:
+ *   - if a Species with the same (trimmed, case-insensitive) name
+ *     already exists → link to it,
+ *   - otherwise auto-create a minimal Species record with default
+ *     fields; the user can flesh it out later via the 수종 modal.
+ *
+ * @param {{invoiceDate,invoiceNumber,supplier,supplierPhone,supplierAddress}} header
+ * @param {Array<{name,spec,unit,quantity,unitPrice,amount}>} items
+ * @param {{ file?: File|null, analysis?: object|null }} [extras]
+ *   `extras.file` is persisted to IndexedDB and referenced from
+ *   `invoice.attachment` (metadata only). `extras.analysis` is the raw
+ *   Vision-API JSON — stored on `invoice.analysis` for the viewer's
+ *   "AI 분석 결과" tab.
+ * @returns {Promise<{invoiceId:string, newSpecies:object[], reusedSpecies:object[]}>}
+ */
+async function saveInvoice(header, items, extras = {}) {
+  // 1. Resolve each row to a Species. Resolution priority:
+  //    (a) `it.speciesId` — set by the wizard when the matcher returned
+  //        "match" or the user picked a candidate for a "possible" row.
+  //    (b) `matchSpecies()` — for untouched rows, run the matcher directly
+  //        and honour a "match" verdict.
+  //    (c) Otherwise create a new Species with default metadata.
+  const newSpecies = [];
+  const reusedSpecies = [];
+  const nextSp = idAllocator("sp", state.data.species, newSpecies);
+  const resolved = items.map(it => {
+    const trimmed = (it.name || "").trim();
+
+    // (a) wizard-resolved id
+    if (it.speciesId) {
+      const sp = state.data.species.find(s => s.id === it.speciesId);
+      if (sp) {
+        if (!reusedSpecies.some(s => s.id === sp.id)) reusedSpecies.push(sp);
+        return { ...it, speciesId: sp.id, speciesName: sp.name };
+      }
+      // Stale id (species deleted mid-flight) — fall through.
+    }
+
+    // (b) matcher fallback
+    const verdict = matchSpecies(trimmed, state.data.species);
+    if (verdict.status === "match" && verdict.species) {
+      const sp = verdict.species;
+      if (!reusedSpecies.some(s => s.id === sp.id)) reusedSpecies.push(sp);
+      return { ...it, speciesId: sp.id, speciesName: sp.name };
+    }
+
+    // (c) create new — "possible" without a user pick and "new" both land here
+    const created = {
+      id: nextSp(),
+      name: trimmed,
+      latin: "",
+      category: state.data.categories[0] || "교목",
+      bloomMonths: [],
+      colors: [],
+      suppliers: header.supplier
+        ? [{ name: header.supplier, region: header.supplierAddress, contact: header.supplierPhone }]
+        : [],
+      notes: `${new Date().toISOString().slice(0, 10)} 거래명세서 등록으로 자동 생성`
+    };
+    newSpecies.push(created);
+    state.data.species.push(created);
+    return { ...it, speciesId: created.id, speciesName: created.name };
+  });
+
+  // 2. Create the Invoice header.
+  const invoice = {
+    id: nextId("inv", state.data.invoices),
+    invoiceDate: header.invoiceDate,
+    supplier: header.supplier,
+    supplierAddress: header.supplierAddress || "",
+    supplierPhone: header.supplierPhone || "",
+    invoiceNumber: header.invoiceNumber || "",
+    createdAt: new Date().toISOString()
+  };
+  state.data.invoices.push(invoice);
+
+  // 2b. Persist raw AI analysis (for the viewer's compare tab).
+  if (extras && extras.analysis) invoice.analysis = extras.analysis;
+
+  // 2c. Persist the original file (image / PDF) to IndexedDB and
+  //     stash metadata onto the invoice record. Failures are non-fatal —
+  //     the invoice still saves without an attachment.
+  if (extras && extras.file) {
+    try {
+      const meta = await putAttachment({ invoiceId: invoice.id, file: extras.file });
+      invoice.attachment = meta;
+    } catch (err) {
+      console.warn("[saveInvoice] putAttachment failed:", err);
+      toast("원본 파일 저장 실패: " + (err?.message || err));
+    }
+  }
+
+  // 3. Create InvoiceItem rows.
+  const nextItem = idAllocator("item", state.data.invoiceItems, []);
+  for (const r of resolved) {
+    const quantity = Number(r.quantity) || 1;
+    const unitPrice = Number(r.unitPrice) || 0;
+    const explicitAmount = Number(r.amount);
+    const amount = Number.isFinite(explicitAmount) && explicitAmount > 0
+      ? explicitAmount
+      : quantity * unitPrice;
+    state.data.invoiceItems.push({
+      id: nextItem(),
+      invoiceId: invoice.id,
+      speciesId: r.speciesId,
+      speciesName: r.speciesName,
+      spec: r.spec || "",
+      unit: r.unit || "주",
+      quantity,
+      unitPrice,
+      amount
+    });
+  }
+
+  persistAndRerender();
+  toast(`거래명세서 ${invoice.id} 저장 완료 (품목 ${resolved.length}건)`);
+  return { invoiceId: invoice.id, newSpecies, reusedSpecies };
+}
+
+// ============================================================
+// Transaction detail — update / delete existing Invoice
+// ============================================================
+
+/**
+ * Overwrite an existing Invoice + its items from the detail modal.
+ *
+ *   1. Patch the Invoice header in place (keeps its `id` and `createdAt`).
+ *   2. Purge every InvoiceItem tied to this invoice.
+ *   3. Recreate items from the supplied list, honoring pre-resolved
+ *      `speciesId` when present or falling back to `matchSpecies()` /
+ *      auto-create for names that don't yet exist.
+ *
+ * The rerender that follows recomputes every Species card's stats through
+ * `enrichAllSpecies()` (ui.js), so cards + charts are always up to date.
+ *
+ * @param {string} invoiceId
+ * @param {{invoiceDate,invoiceNumber,supplier,supplierPhone,supplierAddress}} header
+ * @param {Array<{id?:string, speciesId?:string, speciesName:string, spec:string, unit:string, quantity:number, unitPrice:number, amount:number}>} items
+ */
+function updateInvoice(invoiceId, header, items) {
+  const inv = state.data.invoices.find(i => i.id === invoiceId);
+  if (!inv) { toast("거래를 찾을 수 없습니다"); return; }
+
+  // 1. Patch header
+  inv.invoiceDate     = header.invoiceDate;
+  inv.invoiceNumber   = header.invoiceNumber   || "";
+  inv.supplier        = header.supplier;
+  inv.supplierPhone   = header.supplierPhone   || "";
+  inv.supplierAddress = header.supplierAddress || "";
+
+  // 2. Purge items belonging to this invoice
+  state.data.invoiceItems = state.data.invoiceItems.filter(it => it.invoiceId !== invoiceId);
+
+  // 3. Recreate items, resolving speciesId where needed
+  const nextSp   = idAllocator("sp",   state.data.species,      []);
+  const nextItem = idAllocator("item", state.data.invoiceItems, []);
+  for (const raw of items) {
+    let speciesId   = raw.speciesId || null;
+    let speciesName = (raw.speciesName || "").trim();
+
+    if (speciesId) {
+      const sp = state.data.species.find(s => s.id === speciesId);
+      if (!sp) speciesId = null;   // stale id → re-resolve
+      else speciesName = sp.name;
+    }
+    if (!speciesId) {
+      const verdict = matchSpecies(speciesName, state.data.species);
+      if (verdict.status === "match" && verdict.species) {
+        speciesId   = verdict.species.id;
+        speciesName = verdict.species.name;
+      } else {
+        // Auto-create a minimal Species record for a wholly-new name.
+        const created = {
+          id: nextSp(),
+          name: speciesName,
+          latin: "",
+          category: state.data.categories[0] || "교목",
+          bloomMonths: [],
+          colors: [],
+          suppliers: header.supplier
+            ? [{ name: header.supplier, region: header.supplierAddress, contact: header.supplierPhone }]
+            : [],
+          notes: `${new Date().toISOString().slice(0, 10)} 거래 편집으로 자동 생성`
+        };
+        state.data.species.push(created);
+        speciesId = created.id;
+      }
+    }
+
+    const quantity  = Math.max(0, Number(raw.quantity)  || 0);
+    const unitPrice = Math.max(0, Number(raw.unitPrice) || 0);
+    const declared  = Number(raw.amount);
+    const amount    = Number.isFinite(declared) && declared > 0 ? declared : quantity * unitPrice;
+
+    state.data.invoiceItems.push({
+      id:        nextItem(),
+      invoiceId,
+      speciesId,
+      speciesName,
+      spec:      raw.spec || "",
+      unit:      raw.unit || "주",
+      quantity,
+      unitPrice,
+      amount
+    });
+  }
+
+  persistAndRerender();
+  refreshHistoryModal();
+}
+
+/**
+ * Delete an Invoice and cascade to its items. Any Species is left alone —
+ * it may still have items from other invoices; if it becomes empty its
+ * stats simply go to zero (the card still renders).
+ */
+function deleteInvoice(invoiceId) {
+  state.data.invoices     = state.data.invoices.filter(i => i.id !== invoiceId);
+  state.data.invoiceItems = state.data.invoiceItems.filter(it => it.invoiceId !== invoiceId);
+  persistAndRerender();
+  refreshHistoryModal();
+  // Cascade to IndexedDB — best-effort, fire and forget.
+  deleteAttachmentsForInvoice(invoiceId).catch(err =>
+    console.warn("[deleteInvoice] attachment cleanup failed:", err));
+}
+
 /** Save to storage, rebuild filter chips (in case master lists changed), rerender. */
 function persistAndRerender() {
   storage.save(state.data);
@@ -229,7 +468,8 @@ function persistAndRerender() {
 
 const cardHandlers = {
   onEdit: id => openModal(id),
-  onDelete: id => deleteSpecies(id)
+  onDelete: id => deleteSpecies(id),
+  onOpen: id => openHistoryModal(id)
 };
 
 function rerender() {
@@ -242,6 +482,7 @@ function rerender() {
 
 function wireToolbar() {
   els.addBtn.addEventListener("click", () => openModal(null));
+  els.addInvoiceBtn?.addEventListener("click", () => openInvoiceModal());
 
   els.exportBtn.addEventListener("click", () => {
     exportJson(state.data);
@@ -337,6 +578,28 @@ async function init() {
     onDelete: deleteSpecies,
     toast
   });
+
+  initInvoiceModal({
+    onSave: saveInvoice,
+    toast
+  });
+
+  initHistoryModal({
+    toast,
+    onOpenTransaction: id => openTransactionDetailModal(id)
+  });
+
+  initTransactionDetailModal({
+    onSave:   (invoiceId, header, items) => updateInvoice(invoiceId, header, items),
+    onDelete: id => deleteInvoice(id),
+    onOpenAttachment: id => openAttachmentViewer(id),
+    toast
+  });
+
+  initAttachmentViewer({ toast });
+
+  // IndexedDB store (attachments) — pre-open; failures are non-fatal.
+  initAttachmentStore();
 
   wireToolbar();
   wireFilterRail();

@@ -88,6 +88,7 @@
       <div class="toolbar">
         <div class="toolbar-left">
           <button id="addBtn" class="btn-primary" type="button">+ 수종 추가</button>
+          <button id="addInvoiceBtn" class="btn-primary" type="button">+ 거래명세서 등록</button>
         </div>
         <div class="toolbar-right">
           <button id="exportBtn" class="btn-secondary" type="button">내보내기</button>
@@ -280,6 +281,419 @@
       <button type="button" class="icon-btn row-remove" aria-label="행 제거">&#x2715;</button>
     </div>
   </template>
+
+  <!-- ============================================================
+       거래명세서 등록 wizard (4 steps)
+       ============================================================ -->
+  <div id="invoiceModal" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="invoiceModalTitle">
+    <div class="modal-backdrop" data-close-invoice></div>
+    <div class="modal-panel invoice-panel">
+      <header class="modal-head">
+        <h2 id="invoiceModalTitle">거래명세서 등록</h2>
+        <button class="icon-btn" type="button" aria-label="닫기" data-close-invoice>&#x2715;</button>
+      </header>
+
+      <ol class="wizard-nav" id="wizardNav">
+        <li class="wiz-step active" data-step="1"><span class="n">1</span>업로드</li>
+        <li class="wiz-step" data-step="2"><span class="n">2</span>AI 분석</li>
+        <li class="wiz-step" data-step="3"><span class="n">3</span>검토</li>
+        <li class="wiz-step" data-step="4"><span class="n">4</span>완료</li>
+      </ol>
+
+      <div class="modal-body">
+
+        <!-- Step 1 · Upload -->
+        <section class="wiz-panel" data-wiz-panel="1">
+          <label class="dropzone" for="invFile">
+            <span class="dz-title">📎 거래명세서 파일 첨부</span>
+            <span class="dz-hint">
+              JPG · PNG · PDF 지원 · Mock 시연용 (실제 OCR은 향후 Vision API 연결 시 활성화)
+            </span>
+            <input type="file" id="invFile" accept="image/*,application/pdf,.pdf" hidden />
+          </label>
+          <div id="invPreview" class="attach-preview" hidden>
+            <img id="invPreviewImg" alt="첨부 파일 미리보기" />
+          </div>
+          <p id="invPickedName" class="hint" hidden></p>
+          <div class="step-actions">
+            <span></span>
+            <button type="button" class="btn-primary" id="invUploadNext" disabled>다음: AI 분석 →</button>
+          </div>
+        </section>
+
+        <!-- Step 2 · AI Analysis -->
+        <section class="wiz-panel" data-wiz-panel="2" hidden>
+          <div id="invAnalyzing" class="analyze-progress">
+            <div class="spinner" aria-hidden="true"></div>
+            <p>AI가 명세서를 분석 중입니다…</p>
+          </div>
+          <div id="invAnalysisResult" class="analysis-summary" hidden>
+            <div class="analysis-note" id="asNote">✓ Vision API 분석 완료</div>
+            <dl class="analysis-fields">
+              <div><dt>거래처</dt><dd id="asSupplier">—</dd></div>
+              <div><dt>전화번호</dt><dd id="asPhone">—</dd></div>
+              <div><dt>주소</dt><dd id="asAddress">—</dd></div>
+              <div><dt>거래일</dt><dd id="asDate">—</dd></div>
+              <div><dt>명세서 번호</dt><dd id="asInvoiceNumber">—</dd></div>
+              <div><dt>인식된 품목</dt><dd id="asItemCount">—</dd></div>
+            </dl>
+          </div>
+          <div id="invAnalysisError" class="analysis-error" hidden>
+            <div class="error-icon" aria-hidden="true">!</div>
+            <div class="error-body">
+              <h4>Vision API 분석에 실패했습니다</h4>
+              <p id="asErrorMessage" class="error-message"></p>
+              <p class="error-hint">
+                <code>node species-catalog/server/proxy.mjs</code> 로 프록시가 실행 중이고,
+                <code>.env</code> 의 <code>OPENAI_API_KEY</code> 가 설정되었는지 확인하세요.
+              </p>
+            </div>
+          </div>
+          <div class="step-actions">
+            <button type="button" class="btn-secondary" data-wiz-back="1">← 다시 업로드</button>
+            <button type="button" class="btn-secondary" id="invRetryBtn" hidden>↻ 다시 시도</button>
+            <button type="button" class="btn-primary" id="invGoReview">다음: 검토 →</button>
+          </div>
+        </section>
+
+        <!-- Step 3 · Review + Edit -->
+        <section class="wiz-panel" data-wiz-panel="3" hidden>
+          <fieldset class="form-section">
+            <legend>거래 정보</legend>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="invDate">거래일 <span class="req">*</span></label>
+                <input type="date" id="invDate" required />
+              </div>
+              <div class="form-field">
+                <label for="invNumber">명세서 번호</label>
+                <input type="text" id="invNumber" maxlength="30" />
+              </div>
+              <div class="form-field">
+                <label for="invSupplier">거래처 <span class="req">*</span></label>
+                <input type="text" id="invSupplier" required maxlength="40" />
+              </div>
+              <div class="form-field">
+                <label for="invPhone">전화번호</label>
+                <input type="text" id="invPhone" maxlength="30" inputmode="tel" />
+              </div>
+              <div class="form-field span-2">
+                <label for="invAddress">주소</label>
+                <input type="text" id="invAddress" maxlength="120" />
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="form-section">
+            <legend>품목 목록 <small>(<span id="invItemCount">0</span>건 · 규격/수량/단가/금액 편집 가능)</small></legend>
+            <div class="invoice-item-grid">
+              <div class="ii-header">
+                <span>품목명</span>
+                <span>규격</span>
+                <span>단위</span>
+                <span>수량</span>
+                <span>단가</span>
+                <span>금액</span>
+                <span>수종</span>
+                <span></span>
+              </div>
+              <div id="invItemRows"></div>
+            </div>
+            <button type="button" id="invAddItem" class="btn-mini">+ 품목 추가</button>
+          </fieldset>
+
+          <div class="step-actions">
+            <button type="button" class="btn-secondary" data-wiz-back="2">← 다시 분석</button>
+            <button type="button" class="btn-primary" id="invSaveBtn">저장 →</button>
+          </div>
+        </section>
+
+        <!-- Step 4 · Success -->
+        <section class="wiz-panel" data-wiz-panel="4" hidden>
+          <div class="success-panel">
+            <div class="success-icon">✓</div>
+            <h3>저장 완료</h3>
+            <div id="invSuccessSummary" class="success-summary"></div>
+            <div class="step-actions">
+              <span></span>
+              <button type="button" class="btn-primary" id="invDoneBtn">닫기</button>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Invoice item row (cloned per row in Step 3) -->
+  <template id="invoiceItemRowTemplate">
+    <div class="ii-row">
+      <input type="text" class="ii-name" placeholder="품목명" />
+      <input type="text" class="ii-spec" placeholder="R6" maxlength="20" />
+      <input type="text" class="ii-unit" placeholder="주" maxlength="10" />
+      <input type="number" class="ii-qty" min="1" step="1" value="1" />
+      <input type="number" class="ii-price" min="0" step="1" placeholder="단가" />
+      <input type="number" class="ii-amount" min="0" step="1" placeholder="금액" />
+      <span class="ii-species-badge" data-status="unknown">?</span>
+      <button type="button" class="icon-btn ii-remove" aria-label="행 제거">&#x2715;</button>
+    </div>
+  </template>
+
+  <!-- ============================================================
+       Transaction History modal — per-species purchase history
+       ============================================================ -->
+  <div id="historyModal" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
+    <div class="modal-backdrop" data-close-history></div>
+    <div class="modal-panel history-panel">
+      <header class="modal-head">
+        <h2 id="historyModalTitle">구매 이력 · <span id="histSpeciesName"></span> <small id="histSpeciesId" class="hist-species-id"></small></h2>
+        <button class="icon-btn" type="button" aria-label="닫기" data-close-history>&#x2715;</button>
+      </header>
+
+      <div class="modal-body">
+
+        <!-- Auto-computed statistics -->
+        <div class="hist-stats" aria-label="구매 통계">
+          <div class="hist-stat"><dt>최근 구매일</dt><dd id="histLastDate">—</dd></div>
+          <div class="hist-stat"><dt>평균 단가</dt><dd id="histAvgPrice">—</dd></div>
+          <div class="hist-stat"><dt>최저 단가</dt><dd id="histMinPrice">—</dd></div>
+          <div class="hist-stat"><dt>최고 단가</dt><dd id="histMaxPrice">—</dd></div>
+          <div class="hist-stat"><dt>총 구매 횟수</dt><dd id="histTxCount">—</dd></div>
+          <div class="hist-stat"><dt>총 구매 수량</dt><dd id="histTotalQty">—</dd></div>
+          <div class="hist-stat"><dt>총 구매 금액</dt><dd id="histTotalAmount">—</dd></div>
+        </div>
+
+        <!-- Filters + sort -->
+        <fieldset class="form-section hist-filters-wrap">
+          <legend>필터·정렬</legend>
+          <div class="hist-filters">
+            <label class="hist-filter">
+              <span>거래처</span>
+              <select id="histFilterSupplier"><option value="">전체</option></select>
+            </label>
+            <label class="hist-filter">
+              <span>규격</span>
+              <select id="histFilterSpec"><option value="">전체</option></select>
+            </label>
+            <label class="hist-filter">
+              <span>시작</span>
+              <input type="date" id="histFilterFrom" />
+            </label>
+            <label class="hist-filter">
+              <span>종료</span>
+              <input type="date" id="histFilterTo" />
+            </label>
+            <label class="hist-filter">
+              <span>정렬</span>
+              <select id="histSort">
+                <option value="date-desc">최근 거래순</option>
+                <option value="date-asc">오래된 순</option>
+                <option value="price-desc">단가 높은순</option>
+                <option value="price-asc">단가 낮은순</option>
+                <option value="qty-desc">수량 많은순</option>
+              </select>
+            </label>
+            <button type="button" id="histResetFilters" class="btn-mini">필터 초기화</button>
+          </div>
+        </fieldset>
+
+        <!-- Table -->
+        <div class="hist-table-wrap">
+          <table class="hist-table" aria-label="거래 이력">
+            <thead>
+              <tr>
+                <th class="col-date">거래일</th>
+                <th class="col-supplier">거래처</th>
+                <th class="col-spec">규격</th>
+                <th class="col-num">수량</th>
+                <th class="col-num">단가</th>
+                <th class="col-num">금액</th>
+              </tr>
+            </thead>
+            <tbody id="histRows"></tbody>
+            <tfoot>
+              <tr class="hist-foot">
+                <td colspan="3">합계 <small id="histRowCount">0건</small></td>
+                <td class="col-num" id="histFootQty">—</td>
+                <td class="col-num">—</td>
+                <td class="col-num" id="histFootAmount">—</td>
+              </tr>
+            </tfoot>
+          </table>
+          <div id="histEmpty" class="hist-empty" hidden>
+            <p>선택한 조건에 맞는 거래 이력이 없습니다.</p>
+          </div>
+        </div>
+
+        <footer class="modal-foot">
+          <span></span>
+          <button type="button" class="btn-secondary" data-close-history>닫기</button>
+        </footer>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       Transaction Detail modal — view + edit + delete one Invoice
+       ============================================================ -->
+  <div id="transactionDetailModal" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+    <div class="modal-backdrop" data-close-detail></div>
+    <div class="modal-panel detail-panel mode-view">
+      <header class="modal-head detail-head">
+        <div class="detail-title-wrap">
+          <h2 id="detailTitle">거래 상세</h2>
+          <small class="detail-invoice-id" id="detailInvoiceId"></small>
+        </div>
+        <div class="detail-head-actions">
+          <button type="button" class="btn-secondary mode-view-only" id="detailImageBtn" title="원본 이미지 (다음 버전)">🖼 원본 이미지</button>
+          <button type="button" class="btn-secondary mode-view-only" id="detailEditBtn">✎ 수정</button>
+          <button type="button" class="btn-ghost-sm mode-view-only" id="detailDeleteBtn">삭제</button>
+          <button class="icon-btn" type="button" aria-label="닫기" data-close-detail>&#x2715;</button>
+        </div>
+      </header>
+
+      <div class="modal-body">
+
+        <fieldset class="form-section">
+          <legend>거래 정보</legend>
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="detailDate">거래일 <span class="req">*</span></label>
+              <input type="date" id="detailDate" required readonly />
+            </div>
+            <div class="form-field">
+              <label for="detailNumber">거래번호</label>
+              <input type="text" id="detailNumber" maxlength="30" readonly />
+            </div>
+            <div class="form-field">
+              <label for="detailSupplier">거래처 <span class="req">*</span></label>
+              <input type="text" id="detailSupplier" required maxlength="40" readonly />
+            </div>
+            <div class="form-field">
+              <label for="detailPhone">연락처</label>
+              <input type="text" id="detailPhone" maxlength="30" inputmode="tel" readonly />
+            </div>
+            <div class="form-field span-2">
+              <label for="detailAddress">주소</label>
+              <input type="text" id="detailAddress" maxlength="120" readonly />
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend>품목 목록 <small>(<span id="detailItemCount">0</span>건)</small></legend>
+          <div class="detail-item-grid">
+            <div class="di-header">
+              <span>수종명</span>
+              <span>규격</span>
+              <span>단위</span>
+              <span>수량</span>
+              <span>단가</span>
+              <span>금액</span>
+              <span></span>
+            </div>
+            <div id="detailItemRows"></div>
+          </div>
+          <button type="button" id="detailAddItem" class="btn-mini mode-edit-only">+ 품목 추가</button>
+        </fieldset>
+
+        <div class="detail-totals" aria-label="합계">
+          <div><span class="lbl">총 구매수량</span> <strong id="detailTotalQty">0</strong></div>
+          <div><span class="lbl">총 구매금액</span> <strong id="detailTotalAmount">0원</strong></div>
+        </div>
+
+        <footer class="modal-foot">
+          <button type="button" class="btn-secondary mode-view-only" data-close-detail>닫기</button>
+          <button type="button" class="btn-secondary mode-edit-only" id="detailCancelBtn">취소</button>
+          <button type="button" class="btn-primary mode-edit-only" id="detailSaveBtn" disabled>저장</button>
+        </footer>
+      </div>
+    </div>
+  </div>
+
+  <!-- Transaction detail item row (cloned per row) -->
+  <template id="detailItemRowTemplate">
+    <div class="di-row">
+      <input type="text"   class="di-name"   placeholder="수종명" readonly />
+      <input type="text"   class="di-spec"   placeholder="R6"    maxlength="20" readonly />
+      <input type="text"   class="di-unit"   placeholder="주"    maxlength="10" readonly />
+      <input type="number" class="di-qty"    min="0" step="1"    readonly />
+      <input type="number" class="di-price"  min="0" step="1"    readonly />
+      <input type="number" class="di-amount" min="0" step="1"    readonly />
+      <button type="button" class="icon-btn di-remove mode-edit-only" aria-label="행 제거">&#x2715;</button>
+    </div>
+  </template>
+
+  <!-- ============================================================
+       Attachment Viewer modal — original invoice image / PDF
+       ============================================================ -->
+  <div id="attachmentViewerModal" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="viewerTitle">
+    <div class="modal-backdrop" data-close-viewer></div>
+    <div class="modal-panel viewer-panel">
+      <header class="modal-head viewer-head">
+        <div class="viewer-title-wrap">
+          <h2 id="viewerTitle">원본 이미지</h2>
+          <small>
+            <span id="viewerInvoiceId"></span>
+            · <span id="viewerFilename">—</span>
+          </small>
+        </div>
+        <div class="viewer-actions">
+          <button type="button" class="btn-mini" id="viewerZoomOutBtn" aria-label="축소" title="축소">−</button>
+          <span class="viewer-zoom" id="viewerZoomLevel">100%</span>
+          <button type="button" class="btn-mini" id="viewerZoomInBtn" aria-label="확대" title="확대">+</button>
+          <button type="button" class="btn-mini" id="viewerZoomResetBtn" aria-label="원본 크기" title="원본 크기">1:1</button>
+          <button type="button" class="btn-mini" id="viewerRotateBtn" aria-label="회전" title="90° 회전">↻</button>
+          <button type="button" class="btn-secondary" id="viewerDownloadBtn">↓ 다운로드</button>
+          <button type="button" class="btn-secondary" id="viewerOpenNewBtn">↗ 새 창</button>
+          <button class="icon-btn" type="button" aria-label="닫기" data-close-viewer>&#x2715;</button>
+        </div>
+      </header>
+
+      <div class="viewer-body">
+
+        <div class="viewer-stage">
+          <div class="viewer-image-container" id="viewerImageContainer">
+            <img id="viewerImage" alt="거래명세서 원본" />
+          </div>
+          <iframe class="viewer-pdf" id="viewerPdfFrame" title="거래명세서 PDF" hidden></iframe>
+          <div class="viewer-empty" id="viewerEmpty" hidden>
+            <p>이 거래에는 원본 이미지가 저장되지 않았습니다.</p>
+            <p class="hint">다음 거래명세서 등록 시부터 자동으로 원본이 저장됩니다.</p>
+          </div>
+        </div>
+
+        <aside class="viewer-side">
+          <nav class="viewer-tabs" role="tablist" aria-label="비교 탭">
+            <button type="button" class="viewer-tab active" role="tab" data-viewer-tab="original" aria-selected="true">원본</button>
+            <button type="button" class="viewer-tab"        role="tab" data-viewer-tab="ai"       aria-selected="false">AI 분석 결과</button>
+            <button type="button" class="viewer-tab"        role="tab" data-viewer-tab="final"    aria-selected="false">최종 저장값</button>
+          </nav>
+
+          <section class="viewer-tab-panel" data-viewer-tab-panel="original" role="tabpanel">
+            <dl class="viewer-meta" aria-label="파일 정보">
+              <div><dt>파일명</dt>   <dd id="viewerMetaFilename">—</dd></div>
+              <div><dt>파일 형식</dt> <dd id="viewerMetaMime">—</dd></div>
+              <div><dt>크기</dt>     <dd id="viewerMetaSize">—</dd></div>
+              <div><dt>업로드일</dt>  <dd id="viewerMetaCreated">—</dd></div>
+              <div><dt>저장 경로</dt> <dd id="viewerMetaPath" class="wraps">—</dd></div>
+            </dl>
+          </section>
+
+          <section class="viewer-tab-panel" data-viewer-tab-panel="ai" role="tabpanel" hidden>
+            <p class="viewer-tab-hint">Vision API 가 반환한 원본 JSON. <strong>읽기 전용</strong>.</p>
+            <pre id="viewerAiJson" class="viewer-json">—</pre>
+          </section>
+
+          <section class="viewer-tab-panel" data-viewer-tab-panel="final" role="tabpanel" hidden>
+            <p class="viewer-tab-hint">현재 Invoice 헤더 + 품목 (사용자 편집 반영).</p>
+            <pre id="viewerFinalJson" class="viewer-json">—</pre>
+          </section>
+        </aside>
+
+      </div>
+    </div>
+  </div>
 
   <div id="toast" class="toast" hidden></div>
 

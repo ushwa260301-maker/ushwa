@@ -26,7 +26,7 @@ const CACHED_IDS = [
   "supplierSelect", "minPrice", "maxPrice",
   "sortSelect", "resetBtn", "themeToggle",
   "cardTemplate", "modal", "toast",
-  "addBtn", "exportBtn", "importFile", "resetSeedBtn"
+  "addBtn", "addInvoiceBtn", "exportBtn", "importFile", "resetSeedBtn"
 ];
 
 /** Look up every top-level element the app touches. Call once at startup. */
