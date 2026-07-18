@@ -21,7 +21,7 @@
  */
 
 import { state } from "./state.js";
-import { analyzeInvoiceMock } from "./vision.js";
+import { analyzeInvoice } from "./vision.js";
 
 // ============================================================
 // Module-local element cache + wiring context
@@ -79,13 +79,17 @@ export function initInvoiceModal(deps) {
   // Step 2
   els.analyzing        = document.getElementById("invAnalyzing");
   els.analysisResult   = document.getElementById("invAnalysisResult");
+  els.analysisError    = document.getElementById("invAnalysisError");
+  els.asNote           = document.getElementById("asNote");
   els.asSupplier       = document.getElementById("asSupplier");
   els.asPhone          = document.getElementById("asPhone");
   els.asAddress        = document.getElementById("asAddress");
   els.asDate           = document.getElementById("asDate");
   els.asInvoiceNumber  = document.getElementById("asInvoiceNumber");
   els.asItemCount      = document.getElementById("asItemCount");
+  els.asErrorMessage   = document.getElementById("asErrorMessage");
   els.goReview         = document.getElementById("invGoReview");
+  els.retryBtn         = document.getElementById("invRetryBtn");
 
   // Step 3
   els.invDate          = document.getElementById("invDate");
@@ -117,6 +121,7 @@ function wireEvents() {
 
   els.file.addEventListener("change", onFilePicked);
   els.uploadNext.addEventListener("click", () => startAnalysis());
+  els.retryBtn.addEventListener("click", () => startAnalysis());
   els.goReview.addEventListener("click", () => enterReview());
   els.addItem.addEventListener("click", () => appendItemRow({}));
   els.saveBtn.addEventListener("click", onSaveClicked);
@@ -155,6 +160,9 @@ function resetSession() {
 
   els.analyzing.hidden = true;
   els.analysisResult.hidden = true;
+  els.analysisError.hidden = true;
+  els.retryBtn.hidden = true;
+  els.goReview.hidden = false;
 
   els.itemRows.innerHTML = "";
   els.itemCount.textContent = "0";
@@ -218,32 +226,44 @@ function onFilePicked(e) {
 }
 
 // ============================================================
-// Step 2 — Mock analysis
+// Step 2 — Real OpenAI Vision analysis (via /api/analyze-invoice proxy)
 // ============================================================
 
 async function startAnalysis() {
   goTo(2);
+  // Show only the spinner; hide previous result / error.
   els.analyzing.hidden = false;
   els.analysisResult.hidden = true;
+  els.analysisError.hidden = true;
+  els.retryBtn.hidden = true;
+  els.goReview.hidden = false;
+  els.goReview.disabled = true;
 
   try {
-    session.analysis = await analyzeInvoiceMock(session.file);
+    session.analysis = await analyzeInvoice(session.file);
   } catch (err) {
-    ctx.toast("분석 실패: " + err.message);
-    goTo(1);
+    els.analyzing.hidden = true;
+    els.analysisError.hidden = false;
+    els.asErrorMessage.textContent = err?.message || "알 수 없는 오류가 발생했습니다.";
+    els.retryBtn.hidden = false;
+    els.goReview.hidden = true;
     return;
   }
 
   const a = session.analysis;
-  els.asSupplier.textContent = a.supplier?.name || "—";
-  els.asPhone.textContent = a.supplier?.contact || "—";
-  els.asAddress.textContent = a.supplier?.region || "—";
-  els.asDate.textContent = a.invoiceDate || "—";
-  els.asInvoiceNumber.textContent = a.invoiceNumber || "—";
-  els.asItemCount.textContent = `${a.rows?.length || 0}건`;
+  els.asNote.textContent = a.mock
+    ? "⚠ Mock 데이터입니다. 실제 응답이 아닙니다."
+    : `✓ Vision API 분석 완료 (${a.meta?.model || "OpenAI"})`;
+  els.asSupplier.textContent      = a.supplier?.name    || "—";
+  els.asPhone.textContent         = a.supplier?.contact || "—";
+  els.asAddress.textContent       = a.supplier?.region  || "—";
+  els.asDate.textContent          = a.invoiceDate       || "—";
+  els.asInvoiceNumber.textContent = a.invoiceNumber     || "—";
+  els.asItemCount.textContent     = `${a.rows?.length || 0}건`;
 
   els.analyzing.hidden = true;
   els.analysisResult.hidden = false;
+  els.goReview.disabled = false;
 }
 
 // ============================================================

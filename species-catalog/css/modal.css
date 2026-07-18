@@ -542,6 +542,80 @@
 }
 
 /* ============================================================
+   Analysis error card (step 2, when the Vision proxy fails)
+   ============================================================ */
+
+.analysis-error {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px 18px;
+  border: 1px solid var(--color-danger, #d94848);
+  background: color-mix(in srgb, var(--color-danger, #d94848) 8%, transparent);
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+
+.analysis-error .error-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-danger, #d94848);
+  color: #fff;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.analysis-error .error-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.analysis-error h4 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-danger, #d94848);
+}
+
+.analysis-error .error-message {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.analysis-error .error-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.analysis-error code {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+}
+
+/* Reuse the note strip for the success banner */
+.analysis-note {
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--color-accent, #2e9660) 12%, transparent);
+  color: var(--color-accent, #2e9660);
+  margin-bottom: 12px;
+  display: inline-block;
+}
+
+/* ============================================================
    Transaction-history modal — stats grid, filters, table
    ============================================================ */
 

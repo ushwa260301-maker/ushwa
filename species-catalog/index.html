@@ -328,7 +328,7 @@
             <p>AI가 명세서를 분석 중입니다…</p>
           </div>
           <div id="invAnalysisResult" class="analysis-summary" hidden>
-            <div class="analysis-note">⚠ Mock 데이터입니다. 실제 OCR은 Vision API 연결 후 활성화됩니다.</div>
+            <div class="analysis-note" id="asNote">✓ Vision API 분석 완료</div>
             <dl class="analysis-fields">
               <div><dt>거래처</dt><dd id="asSupplier">—</dd></div>
               <div><dt>전화번호</dt><dd id="asPhone">—</dd></div>
@@ -338,8 +338,20 @@
               <div><dt>인식된 품목</dt><dd id="asItemCount">—</dd></div>
             </dl>
           </div>
+          <div id="invAnalysisError" class="analysis-error" hidden>
+            <div class="error-icon" aria-hidden="true">!</div>
+            <div class="error-body">
+              <h4>Vision API 분석에 실패했습니다</h4>
+              <p id="asErrorMessage" class="error-message"></p>
+              <p class="error-hint">
+                <code>node species-catalog/server/proxy.mjs</code> 로 프록시가 실행 중이고,
+                <code>.env</code> 의 <code>OPENAI_API_KEY</code> 가 설정되었는지 확인하세요.
+              </p>
+            </div>
+          </div>
           <div class="step-actions">
             <button type="button" class="btn-secondary" data-wiz-back="1">← 다시 업로드</button>
+            <button type="button" class="btn-secondary" id="invRetryBtn" hidden>↻ 다시 시도</button>
             <button type="button" class="btn-primary" id="invGoReview">다음: 검토 →</button>
           </div>
         </section>

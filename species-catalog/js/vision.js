@@ -1,13 +1,16 @@
 /**
  * OCR / invoice-analysis module.
  *
- * Two entry points:
- *   analyzeInvoice(file)     — Vision-API-shaped entry, MOCK today.
- *   parseInvoiceText(text)   — regex parser for pasted 명세서 text (works today).
+ * Three entry points:
+ *   analyzeInvoice(file)      — Real OpenAI Vision, via same-origin proxy.
+ *   analyzeInvoiceMock(file)  — Deterministic sample used by tests + demo.
+ *   parseInvoiceText(text)    — Regex parser for pasted 명세서 text.
  *
- * The mock inside `analyzeInvoice` is where a real Vision integration
- * (Claude Vision, OpenAI Vision, Google Cloud Vision) will plug in; the
- * surrounding UI and state code never needs to change.
+ * `analyzeInvoice()` never touches the OpenAI API key directly — it POSTs
+ * the file (as base64 JSON) to `/api/analyze-invoice`, which is served by
+ * `species-catalog/server/proxy.mjs`. The proxy reads OPENAI_API_KEY from
+ * `.env` and forwards to the Responses API. The browser only sees the
+ * proxy's response, which is shaped to match `analyzeInvoiceMock()`.
  */
 
 // ============================================================
@@ -70,144 +73,88 @@ const META_LINE_RE = /^(?:금\s*액|아\s*래|위\s*와|계\s*산|일\s*금|합\
  */
 
 /**
- * Analyze an invoice image/PDF with a Vision-model backend.
+ * Analyze an invoice image or PDF via the same-origin `/api/analyze-invoice`
+ * proxy (see `species-catalog/server/proxy.mjs`).
  *
- * **Currently a MOCK** — returns `ok: false` with an empty result so the UI
- * naturally falls through to the manual/paste flow. Wire a real API here
- * without touching any caller: keep the AnalyzeResult shape stable.
+ * The proxy forwards the file to the OpenAI Responses API and returns a
+ * JSON payload with the same shape as {@link analyzeInvoiceMock}, so the
+ * wizard code path is identical for real and mock responses.
+ *
+ * Throws with a human-readable Korean message on:
+ *   • network / connection failure  (proxy not running)
+ *   • timeout                      (default 60s)
+ *   • non-2xx proxy response       (message copied from proxy body)
+ *   • proxy body with `ok:false`   (OpenAI or config error surfaced)
+ *
+ * The API key is **never** in browser code — it lives only in `.env`
+ * consumed by the proxy.
  *
  * @param {File} file
- * @returns {Promise<AnalyzeResult>}
+ * @param {{timeoutMs?:number, endpoint?:string}} [opts]
+ * @returns {Promise<AnalyzeInvoiceMockResult>}
  */
-export async function analyzeInvoice(file) {
-  // Small simulated delay so callers can show a spinner without race conditions.
-  await new Promise(res => setTimeout(res, 300));
+export async function analyzeInvoice(file, opts = {}) {
+  if (!file) throw new Error("파일이 선택되지 않았습니다.");
+  const timeoutMs = Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : 60000;
+  const endpoint  = opts.endpoint || "/api/analyze-invoice";
 
-  return {
-    ok: false,
-    reason: "Vision API 미연동 (Mock)",
-    supplier: { name: "", region: "", contact: "" },
-    rows: [],
-    meta: {
-      filename: file?.name || "",
-      size: file?.size || 0,
-      type: file?.type || ""
+  const dataBase64 = await fileToBase64(file);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let res;
+  try {
+    res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        filename: file.name || "",
+        mimeType: file.type || "",
+        dataBase64
+      }),
+      signal: controller.signal
+    });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error(`분석 요청 시간이 초과되었습니다 (${Math.round(timeoutMs / 1000)}초).`);
     }
-  };
+    // TypeError from fetch usually means the proxy is not reachable.
+    throw new Error(
+      `Vision 프록시(${endpoint})에 연결할 수 없습니다. ` +
+      "'node species-catalog/server/proxy.mjs' 로 프록시를 실행 중인지 확인하세요."
+    );
+  } finally {
+    clearTimeout(timer);
+  }
 
-  /* eslint-disable no-unreachable */
-  // ==========================================================
-  // 🔌 REAL VISION INTEGRATION — SWAP EITHER PROVIDER IN HERE
-  //
-  // The rest of the app never needs to change: as long as this function
-  // resolves to an `AnalyzeResult` (see the typedef at the bottom of this
-  // file), modal.js will apply the supplier + row extractions to the form.
-  //
-  // Two integration points are pre-marked below; pick one, delete the
-  // other, and remove the `return { ok: false, ... }` block above.
-  // ==========================================================
+  let data = null;
+  try { data = await res.json(); } catch { /* body was not JSON */ }
 
-  // ----------------------------------------------------------
-  // Option A · Claude Vision (Anthropic)
-  // ----------------------------------------------------------
-  // Endpoint (recommended: proxy through your backend so the API key
-  // stays server-side):
-  //
-  //   POST https://api.anthropic.com/v1/messages
-  //   Headers:
-  //     x-api-key:         <ANTHROPIC_API_KEY>
-  //     anthropic-version: 2023-06-01
-  //     content-type:      application/json
-  //
-  //   Body:
-  //     {
-  //       "model": "claude-sonnet-5",
-  //       "max_tokens": 2048,
-  //       "messages": [{
-  //         "role": "user",
-  //         "content": [
-  //           { "type": "image",
-  //             "source": { "type": "base64",
-  //                         "media_type": file.type,
-  //                         "data": <base64> }
-  //           },
-  //           { "type": "text", "text":
-  //             "이 거래명세서에서 상호/사업장 소재지/핸드폰 번호를 추출하고, " +
-  //             "품목/규격/단위/단가/수량/공급가액을 JSON 배열로 반환하세요. " +
-  //             "다음 스키마로 답하세요: { supplier: {name, region, contact}, " +
-  //             "rows: [{name, spec, unit, quantity, unitPrice, amount}] }"
-  //           }
-  //         ]
-  //       }]
-  //     }
-  //
-  //   const claudeRes = await fetch("/api/claude/vision", {
-  //     method: "POST",
-  //     headers: { "Content-Type": "application/json" },
-  //     body: JSON.stringify({ image: await fileToBase64(file), mimeType: file.type })
-  //   });
-  //   const claudeJson = await claudeRes.json();
-  //   return normalizeToAnalyzeResult(claudeJson);
+  if (!res.ok) {
+    const msg = data?.message || data?.error || `HTTP ${res.status}`;
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
+  }
+  if (!data || data.ok === false) {
+    throw new Error(data?.message || data?.error || "알 수 없는 오류입니다.");
+  }
+  return data;
+}
 
-  // ----------------------------------------------------------
-  // Option B · OpenAI Vision (gpt-4o / gpt-5)
-  // ----------------------------------------------------------
-  // Endpoint (again, prefer a backend proxy):
-  //
-  //   POST https://api.openai.com/v1/chat/completions
-  //   Headers:
-  //     Authorization: Bearer <OPENAI_API_KEY>
-  //     content-type:  application/json
-  //
-  //   Body:
-  //     {
-  //       "model": "gpt-4o",
-  //       "response_format": { "type": "json_object" },
-  //       "messages": [{
-  //         "role": "user",
-  //         "content": [
-  //           { "type": "text", "text":
-  //             "Extract 상호/사업장 소재지/핸드폰 번호 and each row's " +
-  //             "품목/규격/단위/단가/수량/공급가액. Answer in JSON: " +
-  //             "{ supplier: {name, region, contact}, rows: [...] }"
-  //           },
-  //           { "type": "image_url",
-  //             "image_url": { "url": `data:${file.type};base64,${base64}` }
-  //           }
-  //         ]
-  //       }]
-  //     }
-  //
-  //   const openaiRes = await fetch("/api/openai/vision", {
-  //     method: "POST",
-  //     headers: { "Content-Type": "application/json" },
-  //     body: JSON.stringify({ image: await fileToBase64(file), mimeType: file.type })
-  //   });
-  //   const openaiJson = await openaiRes.json();
-  //   return normalizeToAnalyzeResult(openaiJson);
-
-  // Shared helpers you'll want alongside either provider:
-  //
-  //   async function fileToBase64(file) {
-  //     return new Promise((resolve, reject) => {
-  //       const r = new FileReader();
-  //       r.onload = () => resolve(r.result.split(",")[1]);
-  //       r.onerror = reject;
-  //       r.readAsDataURL(file);
-  //     });
-  //   }
-  //
-  //   function normalizeToAnalyzeResult(json) {
-  //     return {
-  //       ok: true,
-  //       supplier: json.supplier || { name:"", region:"", contact:"" },
-  //       rows: (json.rows || []).map(r => ({
-  //         name: r.name || "", spec: r.spec || "", unit: r.unit || "",
-  //         price: Number(r.unitPrice ?? r.price ?? 0)
-  //       }))
-  //     };
-  //   }
-  /* eslint-enable no-unreachable */
+/** File → base64 (strip the "data:...;base64," prefix). */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = () => reject(new Error("파일을 읽을 수 없습니다."));
+    fr.onload = () => {
+      const s = String(fr.result || "");
+      const i = s.indexOf(",");
+      resolve(i >= 0 ? s.slice(i + 1) : s);
+    };
+    fr.readAsDataURL(file);
+  });
 }
 
 /**
