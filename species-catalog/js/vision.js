@@ -1,17 +1,34 @@
 /**
- * OCR / invoice-analysis module.
+ * OCR / invoice-analysis module — **fully free, client-side Tesseract.js**.
  *
  * Three entry points:
- *   analyzeInvoice(file)      — Real OpenAI Vision, via same-origin proxy.
+ *   analyzeInvoice(file)      — Free browser OCR via Tesseract.js (+ pdf.js).
  *   analyzeInvoiceMock(file)  — Deterministic sample used by tests + demo.
- *   parseInvoiceText(text)    — Regex parser for pasted 명세서 text.
+ *   parseInvoiceText(text)    — Regex parser for OCR / pasted 명세서 text.
  *
- * `analyzeInvoice()` never touches the OpenAI API key directly — it POSTs
- * the file (as base64 JSON) to `/api/analyze-invoice`, which is served by
- * `species-catalog/server/proxy.mjs`. The proxy reads OPENAI_API_KEY from
- * `.env` and forwards to the Responses API. The browser only sees the
- * proxy's response, which is shaped to match `analyzeInvoiceMock()`.
+ * No API keys · no proxy · no cost. Tesseract.js (Korean + English) and
+ * pdf.js are loaded on-demand from public CDNs and executed entirely in
+ * the user's browser, so the same static bundle works on GitHub Pages.
+ *
+ * `analyzeInvoice()` keeps the exact AnalyzeResult shape the wizard
+ * expects (invoiceDate / invoiceNumber / supplier / rows / meta / _debug),
+ * so every downstream consumer (Debug Panel, matcher, invoiceModal) is
+ * unchanged.
+ *
+ * Bypass switches for tests / demos:
+ *   • window.__OCR_MODE__ = "mock"  → returns analyzeInvoiceMock(file)
+ *   • window.__OCR_MODE__ = "fail"  → throws canned error with _debug
+ *   • URL query    ?ocr=mock | ?ocr=fail   — same effect
+ *   • URL query    ?ocr=real          — force real OCR (default)
  */
+
+// ============================================================
+// CDN endpoints (loaded lazily, only when user actually starts an OCR run)
+// ============================================================
+
+const TESSERACT_SRC   = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+const PDFJS_SRC       = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.min.mjs";
+const PDFJS_WORKER_SRC = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.worker.min.mjs";
 
 // ============================================================
 // Regex constants — 거래명세서 layouts vary a lot, hence the length.
@@ -73,126 +90,271 @@ const META_LINE_RE = /^(?:금\s*액|아\s*래|위\s*와|계\s*산|일\s*금|합\
  */
 
 /**
- * Analyze an invoice image or PDF via the same-origin `/api/analyze-invoice`
- * proxy (see `species-catalog/server/proxy.mjs`).
+ * Analyze an invoice (JPG · PNG · PDF) with **Tesseract.js** entirely in
+ * the browser. No API keys · no proxy · no server-side cost.
  *
- * The proxy forwards the file to the OpenAI Responses API and returns a
- * JSON payload with the same shape as {@link analyzeInvoiceMock}, so the
- * wizard code path is identical for real and mock responses.
- *
- * Throws with a human-readable Korean message on:
- *   • network / connection failure  (proxy not running)
- *   • timeout                      (default 60s)
- *   • non-2xx proxy response       (message copied from proxy body)
- *   • proxy body with `ok:false`   (OpenAI or config error surfaced)
- *
- * The API key is **never** in browser code — it lives only in `.env`
- * consumed by the proxy.
+ * Pipeline
+ *   1. Route by mode (mock / fail / real — via `window.__OCR_MODE__` or `?ocr=`).
+ *   2. Load Tesseract from CDN (once, cached). PDFs also load pdf.js and
+ *      render the first page to a canvas.
+ *   3. Run `worker.recognize()` with Korean + English trained data.
+ *   4. Normalize raw text (fragmented Hangul, spec spacing, price commas).
+ *   5. Reuse {@link parseInvoiceText} to extract supplier + item rows.
+ *   6. Return the exact same AnalyzeResult shape the wizard expects
+ *      (invoiceDate / invoiceNumber / supplier / rows / meta / _debug),
+ *      so `matcher.js`, the Debug Panel, and every downstream consumer
+ *      keep working unchanged.
  *
  * @param {File} file
- * @param {{timeoutMs?:number, endpoint?:string}} [opts]
+ * @param {{ onProgress?: (p:{stage:string,percent:number|null,message?:string}) => void, mock?: boolean }} [opts]
  * @returns {Promise<AnalyzeInvoiceMockResult>}
  */
 export async function analyzeInvoice(file, opts = {}) {
   if (!file) throw new Error("파일이 선택되지 않았습니다.");
-  const timeoutMs = Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : 60000;
-  const endpoint  = opts.endpoint || "/api/analyze-invoice";
+
+  const mode = getOcrMode(opts);
+  if (mode === "mock") return analyzeInvoiceMock(file);
+  if (mode === "fail") throw makeCannedError();
+
+  const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : () => {};
   const requestedAt = new Date().toISOString();
   const t0 = Date.now();
 
-  const dataBase64 = await fileToBase64(file);
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  let res;
   try {
-    res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        filename: file.name || "",
-        mimeType: file.type || "",
-        dataBase64
-      }),
-      signal: controller.signal
+    // Step 1 — Prepare an image source (canvas for PDF, blob for image).
+    let source;
+    if (isPdf(file)) {
+      onProgress({ stage: "pdf",     percent: 5, message: "PDF 첫 페이지 렌더링 중…" });
+      source = await pdfToCanvas(file);
+    } else if (isImage(file)) {
+      source = file;
+    } else {
+      throw new Error("지원하지 않는 파일 형식입니다. JPG · PNG · PDF 만 지원합니다.");
+    }
+
+    // Step 2 — Load Tesseract on-demand from CDN.
+    onProgress({ stage: "loading", percent: 10, message: "Tesseract.js 로드 중…" });
+    const Tesseract = await loadTesseract();
+    onProgress({ stage: "loaded",  percent: 15, message: "언어팩(kor+eng) 준비 중…" });
+
+    // Step 3 — Recognize.
+    const worker = await Tesseract.createWorker(["kor", "eng"], 1, {
+      logger: m => {
+        if (m.status === "recognizing text") {
+          onProgress({
+            stage:   "recognizing",
+            percent: 15 + Math.round((m.progress || 0) * 80),
+            message: `OCR 진행 중 · ${Math.round((m.progress || 0) * 100)}%`
+          });
+        } else if (m.status) {
+          onProgress({ stage: m.status, percent: null, message: m.status });
+        }
+      }
     });
-  } catch (err) {
+    const { data } = await worker.recognize(source);
+    await worker.terminate();
+    onProgress({ stage: "postprocess", percent: 96, message: "텍스트 정규화 · 파싱 중…" });
+
+    // Step 4 — Normalize raw text + parse.
+    const rawText   = data.text || "";
+    const normText  = normalizeOcrText(rawText);
+    const parsed    = parseInvoiceText(normText);
+
+    // Step 5 — Build AnalyzeResult (identical shape to Mock/Vision).
     const latencyMs = Date.now() - t0;
-    const msg = controller.signal.aborted
-      ? `분석 요청 시간이 초과되었습니다 (${Math.round(timeoutMs / 1000)}초).`
-      : `Vision 프록시(${endpoint})에 연결할 수 없습니다. `
-        + "'node species-catalog/server/proxy.mjs' 로 프록시를 실행 중인지 확인하세요.";
-    const errOut = new Error(msg);
+    onProgress({ stage: "done", percent: 100, message: "완료" });
+
+    return {
+      ok: true,
+      mock: false,
+      reason: "",
+      invoiceDate:   extractInvoiceDate(normText),
+      invoiceNumber: extractInvoiceNumber(normText),
+      supplier:      parsed.supplier,
+      rows:          parsed.rows.map(r => ({
+        name:      r.name,
+        spec:      r.spec || "",
+        unit:      r.unit || "주",
+        quantity:  1,
+        unitPrice: Number(r.price) || 0,
+        amount:    Number(r.price) || 0
+      })),
+      meta: {
+        filename: file.name || "",
+        size:     file.size || 0,
+        type:     file.type || "",
+        model:    "tesseract-5"
+      },
+      _debug: {
+        provider:     "tesseract",
+        model:        "tesseract-5 (kor+eng)",
+        requestedAt,
+        latencyMs,
+        confidence:   typeof data.confidence === "number" ? data.confidence / 100 : null,
+        errorMessage: null,
+        httpStatus:   null,   // local OCR — no HTTP round-trip
+        raw: {
+          text:          rawText,
+          normalized:    normText,
+          tesseractConfidence: data.confidence ?? null,
+          lineCount:     Array.isArray(data.lines) ? data.lines.length : 0,
+          wordCount:     Array.isArray(data.words) ? data.words.length : 0
+        }
+      }
+    };
+  } catch (err) {
+    const errOut = new Error(err?.message || String(err));
     errOut._debug = {
-      provider:     "unknown",
-      model:        null,
+      provider:     "tesseract",
+      model:        "tesseract-5 (kor+eng)",
       requestedAt,
-      latencyMs,
+      latencyMs:    Date.now() - t0,
       confidence:   null,
-      errorMessage: msg,
+      errorMessage: errOut.message,
       httpStatus:   null,
       raw:          null
     };
     throw errOut;
-  } finally {
-    clearTimeout(timer);
   }
-
-  let data = null;
-  try { data = await res.json(); } catch { /* body was not JSON */ }
-  const latencyMs = Date.now() - t0;
-
-  if (!res.ok) {
-    const msg = data?.message || data?.error || `HTTP ${res.status}`;
-    const err = new Error(msg);
-    err.status = res.status;
-    err._debug = {
-      provider:     data?._debug?.provider     || "openai",
-      model:        data?._debug?.model        || null,
-      requestedAt:  data?._debug?.requestedAt  || requestedAt,
-      latencyMs:    data?._debug?.latencyMs    ?? latencyMs,
-      confidence:   null,
-      errorMessage: msg,
-      httpStatus:   res.status,
-      raw:          data?._debug?.raw          || data
-    };
-    throw err;
-  }
-  if (!data || data.ok === false) {
-    const msg = data?.message || data?.error || "알 수 없는 오류입니다.";
-    const err = new Error(msg);
-    err._debug = {
-      provider:     data?._debug?.provider    || "openai",
-      model:        data?._debug?.model       || null,
-      requestedAt:  data?._debug?.requestedAt || requestedAt,
-      latencyMs:    data?._debug?.latencyMs   ?? latencyMs,
-      confidence:   null,
-      errorMessage: msg,
-      httpStatus:   res.status,
-      raw:          data?._debug?.raw         || data
-    };
-    throw err;
-  }
-
-  // Success — attach client-side HTTP status so Debug meta has it.
-  if (data._debug) data._debug.httpStatus = res.status;
-  return data;
 }
 
-/** File → base64 (strip the "data:...;base64," prefix). */
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onerror = () => reject(new Error("파일을 읽을 수 없습니다."));
-    fr.onload = () => {
-      const s = String(fr.result || "");
-      const i = s.indexOf(",");
-      resolve(i >= 0 ? s.slice(i + 1) : s);
-    };
-    fr.readAsDataURL(file);
+// ============================================================
+// Mode dispatch (mock · fail · real)
+// ============================================================
+
+function getOcrMode(opts) {
+  if (opts?.mock) return "mock";
+  const w = typeof window !== "undefined" ? window : null;
+  if (w?.__OCR_MODE__ === "mock" || w?.__OCR_MODE__ === "fail" || w?.__OCR_MODE__ === "real") {
+    return w.__OCR_MODE__;
+  }
+  if (w) {
+    try {
+      const p = new URL(w.location.href).searchParams.get("ocr");
+      if (p === "mock" || p === "fail" || p === "real") return p;
+    } catch { /* SSR-safe */ }
+  }
+  return "real";
+}
+
+function makeCannedError() {
+  const err = new Error("테스트 강제 오류 (?ocr=fail)");
+  err._debug = {
+    provider:     "tesseract",
+    model:        "tesseract-5 (kor+eng)",
+    requestedAt:  new Date().toISOString(),
+    latencyMs:    0,
+    confidence:   null,
+    errorMessage: err.message,
+    httpStatus:   null,
+    raw:          { forced: true }
+  };
+  return err;
+}
+
+// ============================================================
+// CDN loaders (lazy)
+// ============================================================
+
+let tesseractPromise = null;
+let pdfjsPromise     = null;
+
+function loadTesseract() {
+  if (typeof window !== "undefined" && window.Tesseract) return Promise.resolve(window.Tesseract);
+  if (tesseractPromise) return tesseractPromise;
+  tesseractPromise = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src   = TESSERACT_SRC;
+    s.async = true;
+    s.onload  = () => resolve(window.Tesseract);
+    s.onerror = () => reject(new Error(`Tesseract.js CDN 로드 실패 (${TESSERACT_SRC}) — 네트워크를 확인하세요.`));
+    document.head.appendChild(s);
   });
+  return tesseractPromise;
 }
+
+async function loadPdfjs() {
+  if (pdfjsPromise) return pdfjsPromise;
+  pdfjsPromise = import(/* webpackIgnore: true */ PDFJS_SRC).then(mod => {
+    const pdfjs = mod.default || mod;
+    if (pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+    return pdfjs;
+  }).catch(err => {
+    pdfjsPromise = null;
+    throw new Error(`pdf.js CDN 로드 실패 — ${err?.message || err}`);
+  });
+  return pdfjsPromise;
+}
+
+// ============================================================
+// File-type helpers
+// ============================================================
+
+function isPdf(file)   { return /pdf/i.test(file?.type || file?.name || ""); }
+function isImage(file) { return (file?.type || "").toLowerCase().startsWith("image/"); }
+
+async function pdfToCanvas(file) {
+  const pdfjs = await loadPdfjs();
+  const buf   = await file.arrayBuffer();
+  const doc   = await pdfjs.getDocument({ data: buf }).promise;
+  const page  = await doc.getPage(1);
+  const viewport = page.getViewport({ scale: 2.0 });
+  const canvas = document.createElement("canvas");
+  canvas.width  = viewport.width;
+  canvas.height = viewport.height;
+  await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+  return canvas;
+}
+
+// ============================================================
+// Text normalization + additional field extractors
+// ============================================================
+
+/**
+ * OCR clean-up before parsing:
+ *   1. Trim per-line whitespace + collapse duplicate blank lines.
+ *   2. Join fragmented Hangul syllables — `왕 벚 나 무` → `왕벚나무`.
+ *   3. Fix spec spacing — `R 8` → `R8`, `H 1.2` → `H1.2`.
+ *   4. Strip price commas — `35,000` → `35000`.
+ * @param {string} text
+ * @returns {string}
+ */
+export function normalizeOcrText(text) {
+  if (!text) return "";
+  let t = String(text)
+    .split(/\r?\n/)
+    .map(l => l.replace(/[ \t]+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+  // Join runs of single Hangul syllables separated by spaces (≥3 tokens).
+  t = t.replace(/(?:[가-힣][ \t])+[가-힣]/g, m => m.replace(/\s+/g, ""));
+  // Collapse spec markers.
+  t = t.replace(/\b([RHBWDrhbwd])[ \t]+(\d)/g, "$1$2");
+  // Strip price commas so downstream parser can Number() cleanly.
+  t = t.replace(/(\d{1,3}(?:,\d{3})+)/g, m => m.replace(/,/g, ""));
+  return t;
+}
+
+/** Extract invoice date in YYYY-MM-DD format from normalized text. */
+export function extractInvoiceDate(text) {
+  if (!text) return "";
+  // YYYY-MM-DD · YYYY/MM/DD · YYYY.MM.DD
+  const iso = text.match(/(20\d{2})[-./](\d{1,2})[-./](\d{1,2})/);
+  if (iso) return `${iso[1]}-${pad2(iso[2])}-${pad2(iso[3])}`;
+  // 2026년 07월 18일
+  const kr = text.match(/(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  if (kr) return `${kr[1]}-${pad2(kr[2])}-${pad2(kr[3])}`;
+  return "";
+}
+
+/** Extract invoice number ("거래명세서 번호: TR-2026-…"). */
+export function extractInvoiceNumber(text) {
+  if (!text) return "";
+  const m = text.match(/(?:거래(?:명세서\s*)?번호|명세서\s*번호|No\.?|번호)\s*[:.\-–]?\s*([A-Za-z0-9][A-Za-z0-9\-]{2,25})/i);
+  return m ? m[1].trim() : "";
+}
+
+function pad2(n) { return String(n).padStart(2, "0"); }
 
 /**
  * Parse pasted plaintext of an invoice (post-OCR or PDF-copy).

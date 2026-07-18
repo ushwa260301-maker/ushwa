@@ -307,7 +307,7 @@
           <label class="dropzone" for="invFile">
             <span class="dz-title">📎 거래명세서 파일 첨부</span>
             <span class="dz-hint">
-              JPG · PNG · PDF 지원 · Mock 시연용 (실제 OCR은 향후 Vision API 연결 시 활성화)
+              JPG · PNG · PDF 지원 · 무료 브라우저 OCR (Tesseract.js · 서버 없음)
             </span>
             <input type="file" id="invFile" accept="image/*,application/pdf,.pdf" hidden />
           </label>
@@ -321,14 +321,16 @@
           </div>
         </section>
 
-        <!-- Step 2 · AI Analysis -->
+        <!-- Step 2 · Free browser OCR (Tesseract.js) -->
         <section class="wiz-panel" data-wiz-panel="2" hidden>
           <div id="invAnalyzing" class="analyze-progress">
             <div class="spinner" aria-hidden="true"></div>
-            <p>AI가 명세서를 분석 중입니다…</p>
+            <p id="invAnalyzingLabel">Tesseract OCR 준비 중…</p>
+            <progress id="invAnalyzingBar" class="ocr-progress-bar" value="0" max="100" aria-label="OCR 진행률"></progress>
+            <p class="ocr-progress-hint">최초 실행 시 언어팩(kor + eng)을 다운로드 하므로 10-30초 걸릴 수 있습니다.</p>
           </div>
           <div id="invAnalysisResult" class="analysis-summary" hidden>
-            <div class="analysis-note" id="asNote">✓ Vision API 분석 완료</div>
+            <div class="analysis-note" id="asNote">✓ OCR 분석 완료</div>
             <dl class="analysis-fields">
               <div><dt>거래처</dt><dd id="asSupplier">—</dd></div>
               <div><dt>전화번호</dt><dd id="asPhone">—</dd></div>
@@ -341,11 +343,11 @@
           <div id="invAnalysisError" class="analysis-error" hidden>
             <div class="error-icon" aria-hidden="true">!</div>
             <div class="error-body">
-              <h4>Vision API 분석에 실패했습니다</h4>
+              <h4>OCR 분석에 실패했습니다</h4>
               <p id="asErrorMessage" class="error-message"></p>
               <p class="error-hint">
-                <code>node species-catalog/server/proxy.mjs</code> 로 프록시가 실행 중이고,
-                <code>.env</code> 의 <code>OPENAI_API_KEY</code> 가 설정되었는지 확인하세요.
+                네트워크 연결을 확인하세요. Tesseract.js는 최초 실행 시 CDN 에서
+                라이브러리와 언어팩(kor+eng, 약 15 MB)을 다운로드 합니다.
               </p>
             </div>
           </div>

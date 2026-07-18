@@ -380,6 +380,27 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 
+.ocr-progress-bar {
+  width: 100%;
+  max-width: 320px;
+  height: 8px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--rule-soft, rgba(0, 0, 0, 0.08));
+}
+.ocr-progress-bar::-webkit-progress-bar   { background: var(--rule-soft, rgba(0, 0, 0, 0.08)); border-radius: 4px; }
+.ocr-progress-bar::-webkit-progress-value { background: var(--accent, #2e9660); transition: width 200ms ease; border-radius: 4px; }
+.ocr-progress-bar::-moz-progress-bar      { background: var(--accent, #2e9660); border-radius: 4px; }
+.ocr-progress-hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 4px 0 0;
+  text-align: center;
+}
+
 .analysis-summary {
   display: flex;
   flex-direction: column;
@@ -1407,12 +1428,13 @@ html.debug-mode .debug-only { display: revert !important; }
      missing    → red   (OCR did NOT recognize this field)
      recognized → green (OCR value == user value)
      modified   → orange (user changed the OCR value) */
+/* 3-tier field state per requirement 🟢🟡🔴 */
 .dbg-diff-row.field-recognized td { background: #d9f4de; color: #0f5b32; }
-.dbg-diff-row.field-modified   td { background: #ffe6bf; color: #6a4d00; }
+.dbg-diff-row.field-modified   td { background: #fff6c2; color: #5c4700; }
 .dbg-diff-row.field-missing    td { background: #ffd7d7; color: #7a1e1e; }
-:root[data-theme="dark"] .dbg-diff-row.field-recognized td { background: rgba(46, 150, 96, 0.22); color: #8adfa5; }
-:root[data-theme="dark"] .dbg-diff-row.field-modified   td { background: rgba(232, 190, 60, 0.22); color: #f0d97a; }
-:root[data-theme="dark"] .dbg-diff-row.field-missing    td { background: rgba(232, 60, 60, 0.22);  color: #ff9a9a; }
+:root[data-theme="dark"] .dbg-diff-row.field-recognized td { background: rgba( 46, 150,  96, 0.22); color: #8adfa5; }
+:root[data-theme="dark"] .dbg-diff-row.field-modified   td { background: rgba(255, 220,  70, 0.22); color: #f4e281; }
+:root[data-theme="dark"] .dbg-diff-row.field-missing    td { background: rgba(232,  60,  60, 0.22); color: #ff9a9a; }
 
 /* Checklist */
 .dbg-checklist-wrap {

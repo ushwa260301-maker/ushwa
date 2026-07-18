@@ -80,6 +80,8 @@ export function initInvoiceModal(deps) {
 
   // Step 2
   els.analyzing        = document.getElementById("invAnalyzing");
+  els.analyzingLabel   = document.getElementById("invAnalyzingLabel");
+  els.analyzingBar     = document.getElementById("invAnalyzingBar");
   els.analysisResult   = document.getElementById("invAnalysisResult");
   els.analysisError    = document.getElementById("invAnalysisError");
   els.asNote           = document.getElementById("asNote");
@@ -262,8 +264,18 @@ async function startAnalysis() {
   els.goReview.hidden = false;
   els.goReview.disabled = true;
 
+  // Reset the progress bar for this attempt.
+  if (els.analyzingBar) els.analyzingBar.value = 0;
+  if (els.analyzingLabel) els.analyzingLabel.textContent = "Tesseract OCR 준비 중…";
+
   try {
-    session.analysis = await analyzeInvoice(session.file);
+    session.analysis = await analyzeInvoice(session.file, {
+      onProgress: p => {
+        if (!p) return;
+        if (els.analyzingLabel && p.message) els.analyzingLabel.textContent = p.message;
+        if (els.analyzingBar   && typeof p.percent === "number") els.analyzingBar.value = p.percent;
+      }
+    });
   } catch (err) {
     els.analyzing.hidden = true;
     els.analysisError.hidden = false;
@@ -284,7 +296,7 @@ async function startAnalysis() {
   const a = session.analysis;
   els.asNote.textContent = a.mock
     ? "⚠ Mock 데이터입니다. 실제 응답이 아닙니다."
-    : `✓ Vision API 분석 완료 (${a.meta?.model || "OpenAI"})`;
+    : `✓ OCR 분석 완료 (${a.meta?.model || "tesseract-5"})`;
   els.asSupplier.textContent      = a.supplier?.name    || "—";
   els.asPhone.textContent         = a.supplier?.contact || "—";
   els.asAddress.textContent       = a.supplier?.region  || "—";
