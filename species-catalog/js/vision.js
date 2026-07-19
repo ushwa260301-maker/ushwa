@@ -102,7 +102,7 @@ const COLUMN_HEADER_WORDS = new Set([
 const NOISE_NAMES = new Set([
   "귀하", "귀중", "원정", "일금", "이하", "이상", "위와", "아래", "계산",
   "발행", "청구", "송장", "인수자", "잔금", "전잔금", "입금", "본사",
-  "거래명세서", "명세서", "견적서", "발주서", "청구서", "영수증",
+  "거래명세서", "거래명세표", "명세서", "견적서", "발주서", "청구서", "영수증",
   "대량", "납품", "당사", "귀사", "일자"
 ]);
 // A row is a "date-only" line when it has 년/월/일 markers OR a pure
@@ -879,22 +879,24 @@ function detectSupplier(text) {
   }
   if (!name) {
     // First-line fallback — brand names without a business suffix
-    // (e.g. `허브아일랜드 대량 납품 견적서`). Take the first Hangul-only
-    // token from the first substantial line, skipping doc titles, phones,
-    // dates, addresses, and known noise words / column headers.
-    for (const l of head) {
-      if (HEADER_LINE_RE.test(l)) continue;
-      if (PHONE_TEST_RE.test(l)) continue;
-      if (DATE_LINE_RE.test(l)) continue;
-      if (ADDRESS_LINE_RE.test(l)) continue;
-      if (REGION_HINT_RE.test(l)) continue;
-      const tokens = l.split(/\s+/);
+    // (e.g. `허브아일랜드 대량 납품 견적서`). Restricted to line 0 only:
+    // wandering into later lines was picking up section labels like
+    // `작성년월일` / `영수` / `귀하` on handwritten templates whose top
+    // label (e.g. `거래명세표`) got NOISE-skipped.
+    const l0 = head[0];
+    if (l0
+        && !HEADER_LINE_RE.test(l0)
+        && !PHONE_TEST_RE.test(l0)
+        && !DATE_LINE_RE.test(l0)
+        && !ADDRESS_LINE_RE.test(l0)
+        && !REGION_HINT_RE.test(l0)) {
+      const tokens = l0.split(/\s+/);
       const cand = tokens.find(t =>
         /^[가-힣]{2,20}$/.test(t) &&
         !NOISE_NAMES.has(t) &&
         !COLUMN_HEADER_WORDS.has(t)
       );
-      if (cand) { name = cand; break; }
+      if (cand) name = cand;
     }
   }
 

@@ -1,0 +1,43 @@
+{
+  "id": "22-daerim-kakao-blank-body",
+  "description": "대림원예가든센터 · KakaoTalk 저해상도 촬영본(55 KB PNG) · Tesseract 가 제목 · 보일러플레이트('위와 같이 계산합니다' → '마래와 같미') · 세로 파이프선만 인식 · 헤더/표/필기 전부 실패 · 전 필드 OCR 계층 문제",
+  "ocr": "거 래 명 세 서\n마래와 같미 계산합니다                   전화 번호\n[ole] a [a | |\nㅣ | | | | | | |\nㅣ | | | | | | |\nㅣ | | | | | | |\nㅣ | | | | | | |\nㅣ | | | | | | |\nㅣ | | | | | | |\nㅣ | | | | | | |\nㅣ | | | | | | |\nㅣ | | | | | | |\nㅣ | | | | | | |\nㅣ | | | | | | |\nㅣ | | | | | | |\nㅣ | | | | | | |\nㅣ | | | | | | |\nㅣ | | | | | | |\nㅣ | | | | | | |\n1 | | ㅣ ㅣ ㅣ，| 」 |\n",
+  "expect": {
+    "invoiceDate": "2024-06-10",
+    "supplier": {
+      "name": "대림원예가든센터",
+      "region": "서초구",
+      "contact": "010-5329-5933"
+    }
+  },
+  "coverage": {
+    "rows": false,
+    "reason": "표 3행(주목 20EA · 가이즈까 15주 · 눈향 5주) 및 규격/수량/단가/금액 전셀 Tesseract raw 에 부재. 이미지 층에서 셀 내부 텍스트 완전 손실 (파이프 세로선만 pipe/ㅣ 문자로 인식됨). Parser/Matcher 층 회복 불가 · 이미지 전처리 또는 Tesseract 옵션 개선 후 재검증 예정."
+  },
+  "changeLog": [
+    {
+      "field": "supplier.name",
+      "before": null,
+      "after": "대림원예가든센터",
+      "reason": "이미지에서 인쇄된 상호 확인. OCR raw 에 부재 (best fuzzy sim=0.22 << 0.60 possible tier) → classifier verdict: OCR 계층 문제. Parser 는 이 raw 에서 상호를 잡을 수 없음 (branch 코드 기준 supplier.name='' 반환)."
+    },
+    {
+      "field": "invoiceDate",
+      "before": null,
+      "after": "2024-06-10",
+      "reason": "이미지 상 '2024. 6. 10.' 확인. OCR raw 의 digit runs 는 ['1'] 뿐 · sim=0.00 → OCR 계층 문제."
+    },
+    {
+      "field": "supplier.contact",
+      "before": null,
+      "after": "010-5329-5933",
+      "reason": "이미지 하단 인쇄된 전화번호. OCR raw 에 부재 → OCR 계층 문제."
+    },
+    {
+      "field": "supplier.region",
+      "before": null,
+      "after": "서초구",
+      "reason": "이미지 상 '서울특별시 서초구 헌인릉1길 21' 확인. OCR raw 에 '서' 단독 조각만 · sim=0.33 → OCR 계층 문제."
+    }
+  ]
+}
