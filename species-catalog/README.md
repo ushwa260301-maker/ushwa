@@ -450,6 +450,109 @@ Playwright E2E 나 로컬 데모를 위해 다음 세 가지 모드가 있습니
 기본은 `real` 이므로 일반 사용자는 어떤 설정도 필요 없이 실제 Tesseract 가
 동작합니다.
 
+## OCR 품질 · 실제 명세서 반복 테스트
+
+Tesseract 원본 텍스트는 농원마다 다른 서식·규격 마커·잡음(로고/스탬프/여러
+페이지 헤더) 때문에 완벽할 수 없습니다. `normalizeOcrText()` 와
+`parseInvoiceText()` 는 **실제 거래명세서에서 관찰한 실패 케이스를 하나씩
+fixture 로 코퍼스에 담아** 규칙을 넣는 방식으로 개선됩니다.
+새로운 규칙은 반드시 새로운 fixture 와 함께 추가합니다.
+
+### 코퍼스 구조
+
+```
+species-catalog/tests/
+├── ocr-accuracy.mjs           ← Node CLI 러너 (pure export 만 import)
+└── ocr-corpus/
+    ├── README.md              ← fixture 포맷 설명
+    ├── 01-cheonripo-standard.json
+    ├── 02-fragmented-hangul.json
+    ├── … (총 20개, 각기 다른 서식·오탐)
+    └── 20-heavy-noise.json
+```
+
+각 fixture 는 원본 OCR 텍스트와 기대값을 한 파일에 담습니다:
+
+```jsonc
+{
+  "id": "05-corporate-marker",
+  "description": "㈜ 법인 마커 · 주식회사 표기 · 사업자등록번호 노이즈 라인",
+  "ocr": "TAX INVOICE / 거래명세서\n\n공급자: ㈜ 담양원예\n사업자등록번호 …",
+  "expect": {
+    "invoiceDate": "2025-07-18",
+    "supplier": { "name": "담양원예", "region": "전남 담양군", "contact": "061-381-4567" },
+    "rows": [{ "name": "라벤더", "spec": "3분", "unitPrice": 3500 }]
+  }
+}
+```
+
+### 러너 실행
+
+```bash
+node species-catalog/tests/ocr-accuracy.mjs
+```
+
+`normalizeOcrText` → `parseInvoiceText` → `extractInvoiceDate` ·
+`extractInvoiceNumber` 순으로 pure 함수를 호출하고, 필드별로 다음 기준으로
+채점합니다:
+
+| 필드 | 비교 방식 |
+|---|---|
+| `supplier.name` | exact (앞뒤 공백만 trim) |
+| `supplier.region` | substring (기대값이 짧으면 전체 주소에 포함되면 pass) |
+| `supplier.contact` | 숫자만 비교 (하이픈·공백 차이 무시) |
+| `invoiceDate` | `YYYY-MM-DD` exact |
+| `invoiceNumber` | exact |
+| `rows[i].name` / `spec` | exact |
+| `rows[i].unitPrice` | numeric equality |
+
+fixture 별 pass/fail, 필드별 got/want diff, 전체 정확도(%)를 출력하며
+**정확도 95% 미만이면 exit code 1** 로 CI 를 실패시킵니다.
+
+현재 코퍼스 성적:
+
+```
+Overall: 224 / 224 passed  ·  100.0%
+Target: 95% ≥  ✓ PASS
+```
+
+### 반복 개선 워크플로우
+
+새 실제 명세서에서 잘못 인식되는 필드가 발견되면:
+
+1. **fixture 추가** — `tests/ocr-corpus/NN-<slug>.json` 에 원문 OCR 과
+   기대값을 저장합니다. (Debug Panel 의 "OCR 원본 텍스트 다운로드" 버튼으로
+   가져올 수 있습니다.)
+2. **러너 실행** — 해당 fixture 가 실패하는지 확인합니다.
+3. **규칙 추가** — `normalizeOcrText()` (텍스트 클린업) 또는
+   `parseInvoiceText()` / `detectSupplier()` / `extractInvoice*()`
+   (파서 규칙) 에 최소한의 규칙을 추가합니다. **다른 fixture 가 깨지지 않는
+   방향으로 좁게** 짜야 합니다 (예: `왕 벚 나 무 → 왕벚나무` 는 붙지만
+   `충남 태안군` 은 그대로).
+4. **재실행 · 회귀 확인** — 20 개 전체가 다시 pass 하는지 확인합니다.
+5. **커밋** — fixture + 규칙 개선을 한 커밋으로.
+
+### 규칙이 규칙이 된 이유 (감사 로그)
+
+`vision.js` 의 각 규칙은 실제 fixture 에서 발생한 실패로부터 유래했습니다:
+
+| 규칙 | 유래 fixture | 실패 형태 |
+|---|---|---|
+| 파편화 한글 결합 (≥3개 연속) | `02-fragmented-hangul` | `왕 벚 나 무` → `왕벚나무` |
+| 규격 문자↔숫자 스왑 (`R O`→`R0`, `R l`→`R1`) | `06-spec-letter-swap` | Tesseract 특유의 O/0, l/1 오탐 |
+| 장식 문자 제거 (`★☆✦…`) | `20-heavy-noise` | 로고 라인 잡음이 상호에 딸려 들어옴 |
+| 전화 정규식 토큰 경계 (lookbehind/ahead) | `14-quantity-in-price-column` | `500 3200 1600000` 이 phone 으로 오탐 |
+| 사업자등록번호 lookbehind | `18-mokryeon-target` | `123-45-67890` 이 명세서 번호로 잡힘 |
+| `대표번호` lookbehind | `20-heavy-noise` | 유선 번호가 명세서 번호 후보로 들어감 |
+| `번호` 라벨 다중 매치 순회 | `20-heavy-noise` | 첫 매치가 rejected 되면 다음 후보로 |
+| `stripCorporateMarker` (`㈜`, `주식회사`) | `05-corporate-marker` | `㈜ 담양원예` → `담양원예` |
+| 첫 줄 fallback (접미사 없는 상호) | `14-quantity-in-price-column` | `허브아일랜드` 같은 브랜드명 |
+| 라벨 접두어 스트립 (`공급자<value>`) | `02-fragmented-hangul` | 파편화 후 `공급자남양수목원` 처럼 붙음 |
+| 날짜 라인 배제 (`YYYY-MM-DD`) | `20-heavy-noise` | 날짜 라인이 품목 행으로 오탐 |
+| 노이즈 단어 확장 (`대량`, `납품`, `견적서` …) | `14`, `20` | 첫 줄 fallback 시 잡음 제거 |
+
+새 규칙을 넣을 때는 이 표에 한 줄을 추가하는 것을 원칙으로 합니다.
+
 ---
 
 # 🎯 Species Matching Engine (`js/matcher.js`)

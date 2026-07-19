@@ -1,0 +1,19 @@
+{
+  "id": "15-simple-two-column",
+  "description": "품목-단가 2컬럼 · 소량 견적 · 다른 규격 여러 개",
+  "ocr": "천리포수목원\n주소: 충남 태안군 소원면 천리포1길 187\n041-672-9982\n\n2025.02.14\n\n왕벚나무 R4    18,000\n왕벚나무 R6    45,000\n왕벚나무 R8    75,000\n왕벚나무 R10  130,000",
+  "expect": {
+    "invoiceDate": "2025-02-14",
+    "supplier": {
+      "name": "천리포수목원",
+      "region": "충남 태안군",
+      "contact": "041-672-9982"
+    },
+    "rows": [
+      { "name": "왕벚나무", "spec": "R4",  "unitPrice": 18000 },
+      { "name": "왕벚나무", "spec": "R6",  "unitPrice": 45000 },
+      { "name": "왕벚나무", "spec": "R8",  "unitPrice": 75000 },
+      { "name": "왕벚나무", "spec": "R10", "unitPrice": 130000 }
+    ]
+  }
+}

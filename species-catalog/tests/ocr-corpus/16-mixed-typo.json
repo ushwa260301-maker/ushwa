@@ -1,0 +1,17 @@
+{
+  "id": "16-mixed-typo",
+  "description": "종성 자모 OCR 오탐 (왕벚 → 왕벗) · matcher 가 잡을 것으로 기대",
+  "ocr": "산림조합중앙회\n주소 충북 청주시 흥덕구 강내면\n043-234-5678\n\n2025.04.30\n\n왕벗나무 R6 주  1  42,000\n산수유   R4 주  1  20,000\n미상 나무 R6 주  1  30,000",
+  "expect": {
+    "invoiceDate": "2025-04-30",
+    "supplier": {
+      "name": "산림조합중앙회",
+      "region": "충북 청주시",
+      "contact": "043-234-5678"
+    },
+    "rows": [
+      { "name": "왕벗나무", "spec": "R6", "unitPrice": 42000 },
+      { "name": "산수유",   "spec": "R4", "unitPrice": 20000 }
+    ]
+  }
+}
