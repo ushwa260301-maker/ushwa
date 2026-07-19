@@ -1,0 +1,43 @@
+{
+  "id": "23-seoul-wonye-clean-photo-empty-ocr",
+  "description": "서울원예가든센터 · 고해상도(2MB JPG) 촬영본 · Tesseract confidence 82% 이나 실제 캡처된 텍스트는 3개 인쇄 라벨(거래명세표/작성년월일/공급대가총액) + Latin garbage 'RHE he' 뿐 · 인쇄 헤더값(상호/주소/전화/사업번호/날짜/총액) 및 손글씨 표 3행 · 모든 필드 raw 부재 · 전 필드 OCR 계층 실패",
+  "ocr": "거래명세표\n\n    RHE he\n|  작성년월일     공급대가총액\n",
+  "expect": {
+    "invoiceDate": "2026-04-09",
+    "supplier": {
+      "name": "서울원예가든센터",
+      "region": "서초구",
+      "contact": "010-5329-5933"
+    }
+  },
+  "coverage": {
+    "rows": false,
+    "reason": "손글씨 표 3행(황금사철 5치 × 3 · 황금사철 4치 × 3 · 설유화 1주) 전셀 OCR raw 에 부재. 이미지 층 실패 · parser 회복 불가 · 이미지 전처리/Tesseract 옵션 층 개선 후 재검증 예정."
+  },
+  "changeLog": [
+    {
+      "field": "supplier.name",
+      "before": null,
+      "after": "서울원예가든센터",
+      "reason": "이미지 상단 인쇄된 상호. OCR raw 부재 (best fuzzy '거래명세표' sim=0.15 << 0.60) → 이미지 층 문제. 배포된 main(c0410eb)에서는 파서가 '거래명세표'를 잘못 잡음 · branch(2187edc)에는 이미 fix 커밋 완료(상호=''로 정정)."
+    },
+    {
+      "field": "invoiceDate",
+      "before": null,
+      "after": "2026-04-09",
+      "reason": "이미지 상 '2026. 4. 9.' 확인. OCR raw 의 digit runs = **0개**(!) → 이미지 층 실패. 파서로 회복 불가."
+    },
+    {
+      "field": "supplier.contact",
+      "before": null,
+      "after": "010-5329-5933",
+      "reason": "이미지 하단 인쇄 '문의전화 010-5329-5933'. OCR raw digit runs = 0개 → 이미지 층 실패."
+    },
+    {
+      "field": "supplier.region",
+      "before": null,
+      "after": "서초구",
+      "reason": "이미지 상 '서울특별시 서초구 헌인릉1길 21(내곡동)' 확인. OCR raw 에 부재 (best fuzzy '성년' sim=0.33) → 이미지 층 실패."
+    }
+  ]
+}
