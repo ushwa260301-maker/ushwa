@@ -255,6 +255,7 @@ function onFilePicked(e) {
 // ============================================================
 
 async function startAnalysis() {
+  console.info("[wizard] startAnalysis ▶ file=", session.file?.name, session.file?.type, session.file?.size);
   goTo(2);
   // Show only the spinner; hide previous result / error.
   els.analyzing.hidden = false;
@@ -272,14 +273,25 @@ async function startAnalysis() {
     session.analysis = await analyzeInvoice(session.file, {
       onProgress: p => {
         if (!p) return;
-        if (els.analyzingLabel && p.message) els.analyzingLabel.textContent = p.message;
+        // Prefix stage into the visible label so a stalled UI is diagnosable.
+        if (els.analyzingLabel && p.message) {
+          els.analyzingLabel.textContent = p.stage
+            ? `[${p.stage}] ${p.message}`
+            : p.message;
+        }
         if (els.analyzingBar   && typeof p.percent === "number") els.analyzingBar.value = p.percent;
       }
     });
+    console.info("[wizard] analyzeInvoice ✓ resolved · rows=",
+                 session.analysis?.rows?.length,
+                 "· supplier=", session.analysis?.supplier?.name);
   } catch (err) {
+    console.error("[wizard] analyzeInvoice ✗ rejected · stage=", err?._stalledStage,
+                  "· message=", err?.message);
     els.analyzing.hidden = true;
     els.analysisError.hidden = false;
-    els.asErrorMessage.textContent = err?.message || "알 수 없는 오류가 발생했습니다.";
+    const stageTag = err?._stalledStage ? ` [stage: ${err._stalledStage}]` : "";
+    els.asErrorMessage.textContent = (err?.message || "알 수 없는 오류가 발생했습니다.") + stageTag;
     els.retryBtn.hidden = false;
     els.goReview.hidden = true;
     // Surface the failure envelope in the debug panel too — a developer
@@ -314,6 +326,8 @@ async function startAnalysis() {
 // ============================================================
 
 function enterReview() {
+  console.info("[wizard] enterReview ▶ hasAnalysis=", !!session.analysis,
+               "· rows=", session.analysis?.rows?.length ?? 0);
   const a = session.analysis || {};
 
   // Header defaults from analysis
