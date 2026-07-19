@@ -30,6 +30,16 @@ const TESSERACT_SRC   = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/te
 const PDFJS_SRC       = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.min.mjs";
 const PDFJS_WORKER_SRC = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.worker.min.mjs";
 
+import { preprocessForOcr, canvasToThumbnailDataUrl } from "./preprocess.js";
+
+// Tesseract PSM constants we experiment with. Names match the upstream enum.
+const PSM = { SINGLE_COLUMN: "4", SINGLE_BLOCK: "6", SPARSE_TEXT: "11" };
+const PRIMARY_PSM = PSM.SINGLE_BLOCK;     // best default for tabular invoices
+const RETRY_PSM   = PSM.SINGLE_COLUMN;    // fallback for column-heavy layouts
+// If the primary pass' mean word confidence is below this we run a second
+// pass with RETRY_PSM and keep whichever pass scored higher.
+const CONFIDENCE_RETRY_THRESHOLD = 65;
+
 // ============================================================
 // Watchdog thresholds — when analyzeInvoice() stalls silently the wizard
 // used to hang at "분석 중" forever. Each stage now has an idle watchdog:
@@ -218,26 +228,58 @@ export async function analyzeInvoice(file, opts = {}) {
 
 /** The actual OCR pipeline, extracted so `analyzeInvoice()` can race it
  *  against the idle watchdog. Every stage boundary calls `onProgress()`
- *  which both surfaces to the wizard UI and resets the watchdog timer. */
+ *  which both surfaces to the wizard UI and resets the watchdog timer.
+ *
+ *  Pipeline (v2 — quality-focused):
+ *   1. Source → canvas (PDF via pdf.js, image via ImageBitmap)
+ *   2. **Preprocess canvas** — 2× upscale · gray · contrast · sharpen
+ *   3. Load Tesseract, create ONE reusable worker
+ *   4. Recognize with PRIMARY_PSM (SINGLE_BLOCK) + preserve_interword_spaces
+ *   5. If mean word confidence < CONFIDENCE_RETRY_THRESHOLD, re-recognize
+ *      with RETRY_PSM (SINGLE_COLUMN) and keep the better pass
+ *   6. Parse the winning pass' text
+ *
+ *  Preprocessing is toggleable via `?preprocess=off` for A/B comparison. */
 async function runOcrPipeline(file, onProgress, getStage, requestedAt, t0) {
   // Step 1 — Prepare an image source (canvas for PDF, blob for image).
-  let source;
+  let originalSource;
   if (isPdf(file)) {
-    onProgress({ stage: "pdf", percent: 5, message: "PDF 첫 페이지 렌더링 중…" });
-    source = await pdfToCanvas(file);
-    onProgress({ stage: "pdf-ready", percent: 8, message: "PDF 렌더링 완료" });
+    onProgress({ stage: "pdf", percent: 4, message: "PDF 첫 페이지 렌더링 중…" });
+    originalSource = await pdfToCanvas(file);
+    onProgress({ stage: "pdf-ready", percent: 7, message: "PDF 렌더링 완료" });
   } else if (isImage(file)) {
-    source = file;
+    originalSource = file;
   } else {
     throw new Error("지원하지 않는 파일 형식입니다. JPG · PNG · PDF 만 지원합니다.");
   }
 
-  // Step 2 — Load Tesseract on-demand from CDN (with CDN-load timeout).
-  onProgress({ stage: "loading-tesseract", percent: 10, message: "Tesseract.js 로드 중…" });
+  // Step 2 — Preprocess (unless user set ?preprocess=off).
+  const preprocessEnabled = getPreprocessEnabled();
+  let ocrSource;
+  let originalThumb = "";
+  let preprocessedThumb = "";
+  try {
+    if (preprocessEnabled) {
+      onProgress({ stage: "preprocess", percent: 9, message: "이미지 전처리 중… (upscale · gray · contrast · sharpen)" });
+      ocrSource = await preprocessForOcr(originalSource, { scale: 2 });
+      originalThumb     = await sourceToThumbnail(originalSource, 320);
+      preprocessedThumb = canvasToThumbnailDataUrl(ocrSource, { maxWidth: 320, quality: 0.6 });
+    } else {
+      ocrSource = originalSource;
+      originalThumb = await sourceToThumbnail(originalSource, 320);
+    }
+  } catch (err) {
+    // Preprocessing must never break OCR — fall through to raw source.
+    console.warn("[vision] preprocess failed, falling back to raw source:", err?.message || err);
+    ocrSource = originalSource;
+  }
+
+  // Step 3 — Load Tesseract on-demand from CDN (with CDN-load timeout).
+  onProgress({ stage: "loading-tesseract", percent: 12, message: "Tesseract.js 로드 중…" });
   const Tesseract = await loadTesseract();
   onProgress({ stage: "loaded-tesseract", percent: 15, message: "언어팩(kor+eng) 준비 중…" });
 
-  // Step 3 — Create worker + recognize. Tesseract fires its logger with
+  // Step 4 — Create worker + recognize. Tesseract fires its logger with
   // status changes ("loading language traineddata", "recognizing text", …)
   // which we forward as progress so the watchdog stays alive.
   let worker;
@@ -248,7 +290,7 @@ async function runOcrPipeline(file, onProgress, getStage, requestedAt, t0) {
         if (m.status === "recognizing text") {
           onProgress({
             stage:   "recognizing",
-            percent: 15 + Math.round((m.progress || 0) * 80),
+            percent: 15 + Math.round((m.progress || 0) * 75),
             message: `OCR 진행 중 · ${Math.round((m.progress || 0) * 100)}%`
           });
         } else {
@@ -260,22 +302,72 @@ async function runOcrPipeline(file, onProgress, getStage, requestedAt, t0) {
     throw new Error(`Tesseract worker 생성 실패 (stage=${getStage()}): ${err?.message || err}`);
   }
 
-  let data;
+  // preserve_interword_spaces keeps multi-space table columns intact so
+  // parseInvoiceText can still tell 품목 / 규격 / 수량 / 단가 columns
+  // apart when reading a single flattened line.
   try {
-    ({ data } = await worker.recognize(source));
+    await worker.setParameters({
+      tessedit_pageseg_mode:    PRIMARY_PSM,
+      preserve_interword_spaces: "1"
+    });
   } catch (err) {
-    try { await worker.terminate(); } catch { /* ignore secondary error */ }
+    console.warn("[vision] setParameters failed (proceeding with defaults):", err?.message || err);
+  }
+
+  const passes = [];  // audit trail for _debug.raw
+
+  // ---------- Primary pass ----------
+  let primaryData;
+  try {
+    onProgress({ stage: `recognize-psm${PRIMARY_PSM}`, percent: 25,
+                 message: `OCR 실행 (psm=${PRIMARY_PSM})` });
+    ({ data: primaryData } = await worker.recognize(ocrSource));
+  } catch (err) {
+    try { await worker.terminate(); } catch { /* ignore secondary */ }
     throw new Error(`OCR 인식 실패 (stage=${getStage()}): ${err?.message || err}`);
   }
+  passes.push(summarizePass(PRIMARY_PSM, primaryData));
+  console.info("[vision] pass psm=" + PRIMARY_PSM + " · confidence=" +
+               (primaryData.confidence ?? "n/a") + " · text.length=" +
+               (primaryData.text?.length ?? 0));
+
+  // ---------- Confidence-based retry ----------
+  let winningData = primaryData;
+  let winningPsm  = PRIMARY_PSM;
+  const primaryConf = typeof primaryData.confidence === "number" ? primaryData.confidence : 0;
+  if (primaryConf < CONFIDENCE_RETRY_THRESHOLD) {
+    onProgress({ stage: `recognize-psm${RETRY_PSM}`, percent: 60,
+                 message: `1차 confidence 낮음 (${Math.round(primaryConf)}%) — psm=${RETRY_PSM} 로 재시도` });
+    try {
+      await worker.setParameters({ tessedit_pageseg_mode: RETRY_PSM });
+      const { data: retryData } = await worker.recognize(ocrSource);
+      passes.push(summarizePass(RETRY_PSM, retryData));
+      console.info("[vision] pass psm=" + RETRY_PSM + " · confidence=" +
+                   (retryData.confidence ?? "n/a") + " · text.length=" +
+                   (retryData.text?.length ?? 0));
+      // Pick the pass with higher confidence. Ties: prefer primary (fewer surprises).
+      if ((retryData.confidence ?? 0) > primaryConf) {
+        winningData = retryData;
+        winningPsm  = RETRY_PSM;
+      }
+    } catch (err) {
+      // Retry failure is non-fatal — keep the primary result.
+      console.warn("[vision] retry pass failed:", err?.message || err);
+    }
+  }
   try { await worker.terminate(); } catch { /* ignore — recognize already succeeded */ }
+
   onProgress({ stage: "postprocess", percent: 96, message: "텍스트 정규화 · 파싱 중…" });
 
-  // Step 4 — Normalize raw text + parse.
-  const rawText   = data.text || "";
+  // Step 5 — Normalize raw text + parse.
+  const rawText   = winningData.text || "";
   const normText  = normalizeOcrText(rawText);
   const parsed    = parseInvoiceText(normText);
 
-  // Step 5 — Build AnalyzeResult (identical shape to Mock/Vision).
+  // Per-line low-confidence flag so Debug Panel can highlight suspect rows.
+  const lowConfLines = pickLowConfidenceLines(winningData);
+
+  // Step 6 — Build AnalyzeResult (identical shape to Mock/Vision).
   const latencyMs = Date.now() - t0;
   onProgress({ stage: "done", percent: 100, message: "완료" });
 
@@ -305,18 +397,93 @@ async function runOcrPipeline(file, onProgress, getStage, requestedAt, t0) {
       model:        "tesseract-5 (kor+eng)",
       requestedAt,
       latencyMs,
-      confidence:   typeof data.confidence === "number" ? data.confidence / 100 : null,
+      confidence:   typeof winningData.confidence === "number" ? winningData.confidence / 100 : null,
       errorMessage: null,
       httpStatus:   null,   // local OCR — no HTTP round-trip
       raw: {
         text:          rawText,
         normalized:    normText,
-        tesseractConfidence: data.confidence ?? null,
-        lineCount:     Array.isArray(data.lines) ? data.lines.length : 0,
-        wordCount:     Array.isArray(data.words) ? data.words.length : 0
+        tesseractConfidence: winningData.confidence ?? null,
+        lineCount:     Array.isArray(winningData.lines) ? winningData.lines.length : 0,
+        wordCount:     Array.isArray(winningData.words) ? winningData.words.length : 0,
+        // Quality-focused additions
+        preprocessed:        preprocessEnabled,
+        primaryPsm:          PRIMARY_PSM,
+        winningPsm,
+        passes,              // per-psm confidence + text length
+        lowConfidenceLines:  lowConfLines,
+        originalImage:       originalThumb,
+        preprocessedImage:   preprocessedThumb
       }
     }
   };
+}
+
+/** Which passes ran, and how each did — for Debug Panel audit + regression. */
+function summarizePass(psm, data) {
+  return {
+    psm,
+    confidence: data?.confidence ?? null,
+    textLength: data?.text?.length ?? 0,
+    lineCount:  Array.isArray(data?.lines) ? data.lines.length : 0,
+    wordCount:  Array.isArray(data?.words) ? data.words.length : 0
+  };
+}
+
+/** Return every OCR line whose confidence is below 60 so the Debug Panel
+ *  can highlight suspect rows for the user to double-check. */
+function pickLowConfidenceLines(data) {
+  const out = [];
+  if (!Array.isArray(data?.lines)) return out;
+  for (const line of data.lines) {
+    if (typeof line?.confidence === "number" && line.confidence < 60) {
+      const text = (line.text || "").trim();
+      if (text) out.push({ text, confidence: Math.round(line.confidence) });
+    }
+  }
+  return out;
+}
+
+/** Encode any source (File/Blob/Image/Canvas) to a small JPEG thumbnail
+ *  data URL for the Debug Panel preview strip. */
+async function sourceToThumbnail(source, maxWidth) {
+  try {
+    let bitmap, w, h;
+    if (source instanceof HTMLCanvasElement) {
+      return canvasToThumbnailDataUrl(source, { maxWidth });
+    } else if (typeof HTMLImageElement !== "undefined" && source instanceof HTMLImageElement) {
+      bitmap = source; w = source.naturalWidth || source.width; h = source.naturalHeight || source.height;
+    } else if (typeof ImageBitmap !== "undefined" && source instanceof ImageBitmap) {
+      bitmap = source; w = source.width; h = source.height;
+    } else if (source instanceof Blob) {
+      bitmap = await createImageBitmap(source); w = bitmap.width; h = bitmap.height;
+    } else {
+      return "";
+    }
+    const s = Math.min(1, maxWidth / Math.max(w, h));
+    const tw = Math.max(1, Math.round(w * s));
+    const th = Math.max(1, Math.round(h * s));
+    const tc = document.createElement("canvas");
+    tc.width = tw; tc.height = th;
+    const ctx = tc.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "medium";
+    ctx.drawImage(bitmap, 0, 0, tw, th);
+    return tc.toDataURL("image/jpeg", 0.6);
+  } catch (err) {
+    console.warn("[vision] sourceToThumbnail failed:", err?.message || err);
+    return "";
+  }
+}
+
+/** Preprocessing on by default. `?preprocess=off` disables for A/B. */
+function getPreprocessEnabled() {
+  if (typeof window === "undefined") return true;
+  try {
+    const p = new URL(window.location.href).searchParams.get("preprocess");
+    if (p === "off" || p === "0" || p === "false") return false;
+  } catch { /* SSR-safe */ }
+  return true;
 }
 
 // ============================================================

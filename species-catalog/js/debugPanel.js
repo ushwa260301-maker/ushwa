@@ -195,6 +195,125 @@ function renderRawPanel() {
   const raw = session.analysis?._debug?.raw;
   els.rawPre.textContent = raw ? stringify(raw)
     : "Vision Raw 데이터가 아직 없습니다. OCR 실행 후 다시 확인하세요.";
+
+  // Also render two thumbnails (원본 / 전처리) above the JSON block so a
+  // developer can visually compare what Tesseract actually saw against the
+  // upload. Injected purely from JS — the HTML shell stays unchanged.
+  renderPreviewStrip(raw);
+}
+
+/** Build (or update) an image comparison strip sitting inline just before
+ *  the Raw JSON pre. Idempotent — safe to call on every refresh. */
+function renderPreviewStrip(raw) {
+  const anchor = els.rawPre;
+  if (!anchor?.parentNode) return;
+
+  const originalUrl     = raw?.originalImage     || "";
+  const preprocessedUrl = raw?.preprocessedImage || "";
+  const lowConf         = Array.isArray(raw?.lowConfidenceLines) ? raw.lowConfidenceLines : [];
+  const passes          = Array.isArray(raw?.passes) ? raw.passes : [];
+
+  let strip = anchor.parentNode.querySelector(".dbg-preview-strip");
+  if (!originalUrl && !preprocessedUrl && !lowConf.length && !passes.length) {
+    if (strip) strip.remove();
+    return;
+  }
+
+  if (!strip) {
+    strip = document.createElement("div");
+    strip.className = "dbg-preview-strip";
+    // Inline styling so we don't need to touch modal.css.
+    strip.style.cssText =
+      "display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;" +
+      "margin:8px 0 12px;font-size:12px;";
+    anchor.parentNode.insertBefore(strip, anchor);
+  }
+  strip.innerHTML = "";
+
+  strip.appendChild(makePreviewTile("원본",       originalUrl));
+  strip.appendChild(makePreviewTile("전처리 (OCR 입력)", preprocessedUrl));
+  if (passes.length)  strip.appendChild(makePassesTile(passes, raw?.winningPsm));
+  if (lowConf.length) strip.appendChild(makeLowConfTile(lowConf));
+}
+
+function makePreviewTile(label, dataUrl) {
+  const tile = document.createElement("div");
+  tile.style.cssText =
+    "flex:1 1 200px;max-width:280px;display:flex;flex-direction:column;gap:4px;";
+  const cap = document.createElement("div");
+  cap.textContent = label + (dataUrl ? "" : " (없음)");
+  cap.style.cssText = "font-weight:600;opacity:.75;";
+  tile.appendChild(cap);
+  if (dataUrl) {
+    const img = document.createElement("img");
+    img.src = dataUrl;
+    img.alt = label;
+    img.style.cssText =
+      "max-width:100%;max-height:200px;background:#0002;border:1px dashed #8884;border-radius:4px;object-fit:contain;";
+    tile.appendChild(img);
+  } else {
+    const holder = document.createElement("div");
+    holder.textContent = "—";
+    holder.style.cssText =
+      "height:80px;display:flex;align-items:center;justify-content:center;" +
+      "background:#0001;border:1px dashed #8883;border-radius:4px;color:#8886;";
+    tile.appendChild(holder);
+  }
+  return tile;
+}
+
+function makePassesTile(passes, winningPsm) {
+  const tile = document.createElement("div");
+  tile.style.cssText =
+    "flex:1 1 180px;max-width:260px;display:flex;flex-direction:column;gap:4px;";
+  const cap = document.createElement("div");
+  cap.textContent = "OCR pass 요약";
+  cap.style.cssText = "font-weight:600;opacity:.75;";
+  tile.appendChild(cap);
+  const list = document.createElement("div");
+  list.style.cssText =
+    "display:grid;grid-template-columns:auto auto auto;gap:2px 8px;font-family:ui-monospace,monospace;font-size:11px;";
+  const th = (t) => { const s = document.createElement("span"); s.textContent = t; s.style.opacity = ".55"; return s; };
+  list.append(th("psm"), th("conf"), th("chars"));
+  for (const p of passes) {
+    const winner = String(p.psm) === String(winningPsm);
+    const psmS  = document.createElement("span"); psmS.textContent = "psm=" + p.psm + (winner ? " ✓" : "");
+    const confS = document.createElement("span"); confS.textContent = (p.confidence != null ? Math.round(p.confidence) + "%" : "—");
+    const lenS  = document.createElement("span"); lenS.textContent  = String(p.textLength ?? 0);
+    if (winner) [psmS, confS, lenS].forEach(el => el.style.fontWeight = "700");
+    list.append(psmS, confS, lenS);
+  }
+  tile.appendChild(list);
+  return tile;
+}
+
+function makeLowConfTile(lines) {
+  const tile = document.createElement("div");
+  tile.style.cssText =
+    "flex:1 1 220px;max-width:320px;display:flex;flex-direction:column;gap:4px;";
+  const cap = document.createElement("div");
+  cap.textContent = `저(<60%) confidence 라인 · ${lines.length}건`;
+  cap.style.cssText = "font-weight:600;opacity:.75;";
+  tile.appendChild(cap);
+  const box = document.createElement("div");
+  box.style.cssText =
+    "max-height:200px;overflow:auto;font-family:ui-monospace,monospace;font-size:11px;" +
+    "background:#0001;border:1px dashed #8883;border-radius:4px;padding:6px;";
+  const shown = lines.slice(0, 12);
+  for (const l of shown) {
+    const row = document.createElement("div");
+    row.style.cssText = "padding:2px 0;border-bottom:1px dashed #8882;";
+    row.textContent = `${String(l.confidence).padStart(2, " ")}% · ${l.text}`;
+    box.appendChild(row);
+  }
+  if (lines.length > shown.length) {
+    const more = document.createElement("div");
+    more.textContent = `… 외 ${lines.length - shown.length}건`;
+    more.style.cssText = "padding-top:4px;opacity:.6;";
+    box.appendChild(more);
+  }
+  tile.appendChild(box);
+  return tile;
 }
 
 function renderNormalizedPanel() {

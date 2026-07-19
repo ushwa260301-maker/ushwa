@@ -375,6 +375,72 @@ Tesseract 의 `logger` 콜백을 위저드 Step 2 의 `<progress>` 바로 연결
 | `postprocess` | 텍스트 정규화 · 파싱 중 | 96% |
 | `done` | 완료 | 100% |
 
+## OCR 전처리 파이프라인 (`js/preprocess.js`)
+
+Tesseract 에 원본 파일을 그대로 넣으면 그림자 · 저해상도 · JPEG 압축 ·
+휴대폰 촬영 기울기 때문에 인식률이 크게 떨어집니다. 실제 명세서에서
+관찰한 실패 패턴을 순수 Canvas 파이프라인으로 흡수합니다 — 새로운
+의존성 없음 · 원본 파일은 IndexedDB 에 그대로 유지되고 OCR 입력에만
+전처리된 canvas 를 사용합니다.
+
+| 단계 | 목적 | 구현 |
+|---|---|---|
+| 2× upscale | 작은 글씨 회복 | `drawImage` (`imageSmoothingQuality:"high"`) |
+| Grayscale | 색상은 OCR 에 무의미 · 후처리 단순화 | Rec.601 luma |
+| Contrast stretch | 워시아웃된 사진 살리기 | 히스토그램 0.5% percentile clip |
+| Unsharp mask | 리샘플로 흐려진 획 회복 | 3×3 laplacian (`amount=0.6`) |
+
+의도적으로 하지 **않는** 것:
+- **Threshold (binarize)** — 사진에서 anti-aliasing 정보를 잃어 OCR 이 오히려 나빠짐
+- **Deskew (기울기 보정)** — 5° 이하는 Tesseract 내부에서 처리 · 그 이상은
+  가벼운 파이프라인에 넣기 어려움 (필요 시 별도 PR)
+
+메모리 안전: 최종 캔버스는 `PREPROCESSED_MAX_DIM = 3200` 픽셀로 제한됩니다.
+
+**A/B 토글**: URL 쿼리 `?preprocess=off` 로 전처리를 끄고 원본으로 인식해
+같은 이미지에서의 정확도 차이를 비교할 수 있습니다.
+
+## Tesseract 옵션 · 신뢰도 기반 재시도
+
+`analyzeInvoice()` 는 매 요청에 다음을 적용합니다:
+
+| 옵션 | 값 | 근거 |
+|---|---|---|
+| `oem` | `1` (LSTM_ONLY) | v5 default · 정확도 최고 |
+| `tessedit_pageseg_mode` | `6` (SINGLE_BLOCK) | 조경업체 명세서 대부분 단일 블록 표 |
+| `preserve_interword_spaces` | `"1"` | 표 컬럼(수량/단가/금액) 사이 다중 공백 유지 |
+| whitelist | **적용 안 함** | 한글 + 숫자 + 라틴 + 특수 다 필요 |
+
+**Confidence 기반 재시도**:
+
+1차 pass 의 평균 word confidence 가 **65% 미만**이면 `psm=4` (SINGLE_COLUMN)
+로 2차 pass 를 실행해 더 높은 confidence 를 얻은 쪽을 채택합니다. 두 pass
+모두 `_debug.raw.passes` 배열에 기록되어 Debug Panel 에서 비교 가능:
+
+```jsonc
+"passes": [
+  { "psm": "6", "confidence": 58, "textLength": 812, "lineCount": 42 },
+  { "psm": "4", "confidence": 71, "textLength": 851, "lineCount": 45 }   // ← winner
+],
+"winningPsm": "4"
+```
+
+**Line-level low-confidence flag**: `_debug.raw.lowConfidenceLines` 에 신뢰도
+60% 미만 라인이 원문 · 신뢰도 % 와 함께 담기며, Debug Panel 이 목록을
+표시합니다 — 잘못 읽었을 가능성이 높은 줄을 눈으로 즉시 판별할 수 있습니다.
+
+## Debug Panel — 이미지 비교
+
+`?debug=1` 로 진입한 Debug Panel 의 **① Vision Raw** 탭 상단에 세 가지 타일이
+자동으로 나옵니다:
+
+- **원본 · 전처리** — 두 이미지 썸네일 (JPEG 320 px)
+- **OCR pass 요약** — 각 psm 의 confidence · 문자수 · winner 표시
+- **저(<60%) confidence 라인** — 원문과 confidence 목록
+
+HTML 은 변경하지 않았고 (`renderRawPanel()` 이 안전하게 inject),
+데이터가 없으면 스트립이 자동 제거됩니다.
+
 ## OCR 후처리 파이프라인
 
 Tesseract 의 원본 텍스트는 자모 사이 공백, 규격 사이 공백, 콤마가 섞여 있어
@@ -516,21 +582,36 @@ Overall: 224 / 224 passed  ·  100.0%
 Target: 95% ≥  ✓ PASS
 ```
 
-### 반복 개선 워크플로우
+### 반복 개선 워크플로우 (Debug Panel → fixture 자동 저장)
 
 새 실제 명세서에서 잘못 인식되는 필드가 발견되면:
 
-1. **fixture 추가** — `tests/ocr-corpus/NN-<slug>.json` 에 원문 OCR 과
-   기대값을 저장합니다. (Debug Panel 의 "OCR 원본 텍스트 다운로드" 버튼으로
-   가져올 수 있습니다.)
-2. **러너 실행** — 해당 fixture 가 실패하는지 확인합니다.
-3. **규칙 추가** — `normalizeOcrText()` (텍스트 클린업) 또는
+1. **명세서 업로드** → `?debug=1` 진입 → Wizard Step 3 진입
+2. **Debug Panel 다운로드** — 두 개 버튼 중 아무거나:
+   - **`↓ OCR 결과 다운로드`** — 전체 스냅샷 (원문 OCR + userEdit + toSave + meta)
+   - **`💾 Vision 응답 저장`** — `_debug.raw` (원문 OCR + normalized + passes)
+3. **사용자 수정** — 잘못된 필드를 Step 3 폼에서 올바른 값으로 고칩니다.
+   이 값이 스냅샷의 `userEdit` 에 담깁니다.
+4. **fixture 자동 저장**:
+   ```bash
+   node species-catalog/tests/import-fixture.mjs \
+     ~/Downloads/ocr-debug-2026-07-19T04-01-00.json \
+     --slug=deokyusan-farm --desc="덕유산농원 · B/W 규격 혼합"
+   ```
+   자동으로 다음 NN 을 붙여 `tests/ocr-corpus/NN-deokyusan-farm.json`
+   을 생성합니다. `raw.text` → `ocr` 필드, `userEdit.header/items` → `expect`.
+5. **러너 실행** — `node species-catalog/tests/ocr-accuracy.mjs`.
+   새 fixture 가 실패하면 어느 필드가 어긋났는지 diff 로 출력됩니다.
+6. **규칙 추가** — `normalizeOcrText()` (텍스트 클린업) 또는
    `parseInvoiceText()` / `detectSupplier()` / `extractInvoice*()`
    (파서 규칙) 에 최소한의 규칙을 추가합니다. **다른 fixture 가 깨지지 않는
    방향으로 좁게** 짜야 합니다 (예: `왕 벚 나 무 → 왕벚나무` 는 붙지만
    `충남 태안군` 은 그대로).
-4. **재실행 · 회귀 확인** — 20 개 전체가 다시 pass 하는지 확인합니다.
-5. **커밋** — fixture + 규칙 개선을 한 커밋으로.
+7. **재실행 · 회귀 확인** — 20+ 개 전체가 다시 pass 하는지 확인.
+8. **커밋** — fixture + 규칙 개선을 한 커밋으로.
+
+50 장 규모로 확장할 때도 동일 워크플로우 — Debug Panel 스냅샷 하나당
+`import-fixture.mjs` 한 번 실행이면 회귀 코퍼스에 추가됩니다.
 
 ### 규칙이 규칙이 된 이유 (감사 로그)
 
