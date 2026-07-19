@@ -1,17 +1,34 @@
 /**
- * OCR / invoice-analysis module.
+ * OCR / invoice-analysis module — **fully free, client-side Tesseract.js**.
  *
  * Three entry points:
- *   analyzeInvoice(file)      — Real OpenAI Vision, via same-origin proxy.
+ *   analyzeInvoice(file)      — Free browser OCR via Tesseract.js (+ pdf.js).
  *   analyzeInvoiceMock(file)  — Deterministic sample used by tests + demo.
- *   parseInvoiceText(text)    — Regex parser for pasted 명세서 text.
+ *   parseInvoiceText(text)    — Regex parser for OCR / pasted 명세서 text.
  *
- * `analyzeInvoice()` never touches the OpenAI API key directly — it POSTs
- * the file (as base64 JSON) to `/api/analyze-invoice`, which is served by
- * `species-catalog/server/proxy.mjs`. The proxy reads OPENAI_API_KEY from
- * `.env` and forwards to the Responses API. The browser only sees the
- * proxy's response, which is shaped to match `analyzeInvoiceMock()`.
+ * No API keys · no proxy · no cost. Tesseract.js (Korean + English) and
+ * pdf.js are loaded on-demand from public CDNs and executed entirely in
+ * the user's browser, so the same static bundle works on GitHub Pages.
+ *
+ * `analyzeInvoice()` keeps the exact AnalyzeResult shape the wizard
+ * expects (invoiceDate / invoiceNumber / supplier / rows / meta / _debug),
+ * so every downstream consumer (Debug Panel, matcher, invoiceModal) is
+ * unchanged.
+ *
+ * Bypass switches for tests / demos:
+ *   • window.__OCR_MODE__ = "mock"  → returns analyzeInvoiceMock(file)
+ *   • window.__OCR_MODE__ = "fail"  → throws canned error with _debug
+ *   • URL query    ?ocr=mock | ?ocr=fail   — same effect
+ *   • URL query    ?ocr=real          — force real OCR (default)
  */
+
+// ============================================================
+// CDN endpoints (loaded lazily, only when user actually starts an OCR run)
+// ============================================================
+
+const TESSERACT_SRC   = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+const PDFJS_SRC       = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.min.mjs";
+const PDFJS_WORKER_SRC = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.worker.min.mjs";
 
 // ============================================================
 // Regex constants — 거래명세서 layouts vary a lot, hence the length.
@@ -25,8 +42,11 @@ const SPEC_RE =
 const PRICE_RE =
   /\d{1,3}(?:,\d{3})+(?:\s?원)?|\d{4,}(?:\s?원)?|\d{1,4}\s*원|\d{1,4}\s*\.\s*[-–]/g;
 
-const PHONE_RE_G = /0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}/g;
-const PHONE_TEST_RE = /0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}/;
+// Token-bounded phone regex — the 0 must NOT be preceded or followed by
+// another digit, otherwise embedded price sequences like `500 3200 1600000`
+// look like `0 3200 1600` to the naive matcher and get flagged as phones.
+const PHONE_RE_G = /(?<!\d)0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}(?!\d)/g;
+const PHONE_TEST_RE = /(?<!\d)0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}(?!\d)/;
 const MOBILE_PREFIX_RE = /^01[016789]/;
 
 const PROVINCE_RE =
@@ -39,11 +59,15 @@ const REGION_HINT_RE = new RegExp(`${PROVINCE_RE.source}[가-힣 \\d]*?[시군�
 const UNIT_HINT_RE = /(?:^|\s)(주|포트|본|그루|치|개|EA)(?:\s|$)/;
 
 const BIZ_SUFFIX_KEYWORDS = [
-  "농원", "수목원", "원예", "농장", "조합", "산업",
+  "농원", "수목원", "원예", "농장", "조합", "산업", "묘목원", "묘목장",
+  "철쭉원", "화훼단지", "축제조합", "마을조합", "영농조합", "산림조합",
   "㈜", "주식회사", "회사", "상사", "화훼", "너서리", "널서리", "팜"
 ];
+// Label + delimiter + inline value. Delimiter is REQUIRED so a bare "공급자"
+// line doesn't scavenge the next line's own label ("공급자\n상호 : 천리포..."),
+// and the capture class excludes \n so the value stays on-line.
 const BIZ_KEYWORD_RE =
-  /(?:상\s*호|업체명|공급자|공급업체|사업자명)\s*[:.\-–]?\s*([가-힣A-Za-z0-9()\s㈜]{2,40})/;
+  /(?:상\s*호|업체명|공급자|공급업체|사업자명)[ \t]*[:.\-–][ \t]*([가-힣A-Za-z0-9()㈜ \t]{2,40})/;
 const ADDRESS_KEYWORD_RE =
   /(?:주\s*소|소\s*재\s*지|사\s*업\s*장\s*소\s*재\s*지|address)\s*[:.\-–]?\s*([^\n]+)/i;
 const MOBILE_KEYWORD_RE =
@@ -57,9 +81,14 @@ const COLUMN_HEADER_WORDS = new Set([
 ]);
 const NOISE_NAMES = new Set([
   "귀하", "귀중", "원정", "일금", "이하", "이상", "위와", "아래", "계산",
-  "발행", "청구", "송장", "인수자", "잔금", "전잔금", "입금", "본사"
+  "발행", "청구", "송장", "인수자", "잔금", "전잔금", "입금", "본사",
+  "거래명세서", "명세서", "견적서", "발주서", "청구서", "영수증",
+  "대량", "납품", "당사", "귀사", "일자"
 ]);
-const DATE_LINE_RE = /(?:\d{2,4}\s*년|\d{1,2}\s*월|\d{1,2}\s*일)/;
+// A row is a "date-only" line when it has 년/월/일 markers OR a pure
+// YYYY-MM-DD / YYYY.MM.DD / YYYY/MM/DD triple — those must never be
+// treated as item rows even when they carry Korean noise next to them.
+const DATE_LINE_RE = /(?:\d{2,4}\s*년|\d{1,2}\s*월|\d{1,2}\s*일|(?:19|20)\d{2}[-.\/]\d{1,2}[-.\/]\d{1,2})/;
 const META_LINE_RE = /^(?:금\s*액|아\s*래|위\s*와|계\s*산|일\s*금|합\s*계|총\s*계|공\s*급\s*자|공\s*급\s*받)/;
 
 // ============================================================
@@ -73,89 +102,316 @@ const META_LINE_RE = /^(?:금\s*액|아\s*래|위\s*와|계\s*산|일\s*금|합\
  */
 
 /**
- * Analyze an invoice image or PDF via the same-origin `/api/analyze-invoice`
- * proxy (see `species-catalog/server/proxy.mjs`).
+ * Analyze an invoice (JPG · PNG · PDF) with **Tesseract.js** entirely in
+ * the browser. No API keys · no proxy · no server-side cost.
  *
- * The proxy forwards the file to the OpenAI Responses API and returns a
- * JSON payload with the same shape as {@link analyzeInvoiceMock}, so the
- * wizard code path is identical for real and mock responses.
- *
- * Throws with a human-readable Korean message on:
- *   • network / connection failure  (proxy not running)
- *   • timeout                      (default 60s)
- *   • non-2xx proxy response       (message copied from proxy body)
- *   • proxy body with `ok:false`   (OpenAI or config error surfaced)
- *
- * The API key is **never** in browser code — it lives only in `.env`
- * consumed by the proxy.
+ * Pipeline
+ *   1. Route by mode (mock / fail / real — via `window.__OCR_MODE__` or `?ocr=`).
+ *   2. Load Tesseract from CDN (once, cached). PDFs also load pdf.js and
+ *      render the first page to a canvas.
+ *   3. Run `worker.recognize()` with Korean + English trained data.
+ *   4. Normalize raw text (fragmented Hangul, spec spacing, price commas).
+ *   5. Reuse {@link parseInvoiceText} to extract supplier + item rows.
+ *   6. Return the exact same AnalyzeResult shape the wizard expects
+ *      (invoiceDate / invoiceNumber / supplier / rows / meta / _debug),
+ *      so `matcher.js`, the Debug Panel, and every downstream consumer
+ *      keep working unchanged.
  *
  * @param {File} file
- * @param {{timeoutMs?:number, endpoint?:string}} [opts]
+ * @param {{ onProgress?: (p:{stage:string,percent:number|null,message?:string}) => void, mock?: boolean }} [opts]
  * @returns {Promise<AnalyzeInvoiceMockResult>}
  */
 export async function analyzeInvoice(file, opts = {}) {
   if (!file) throw new Error("파일이 선택되지 않았습니다.");
-  const timeoutMs = Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : 60000;
-  const endpoint  = opts.endpoint || "/api/analyze-invoice";
 
-  const dataBase64 = await fileToBase64(file);
+  const mode = getOcrMode(opts);
+  if (mode === "mock") return analyzeInvoiceMock(file);
+  if (mode === "fail") throw makeCannedError();
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : () => {};
+  const requestedAt = new Date().toISOString();
+  const t0 = Date.now();
 
-  let res;
   try {
-    res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        filename: file.name || "",
-        mimeType: file.type || "",
-        dataBase64
-      }),
-      signal: controller.signal
-    });
-  } catch (err) {
-    if (controller.signal.aborted) {
-      throw new Error(`분석 요청 시간이 초과되었습니다 (${Math.round(timeoutMs / 1000)}초).`);
+    // Step 1 — Prepare an image source (canvas for PDF, blob for image).
+    let source;
+    if (isPdf(file)) {
+      onProgress({ stage: "pdf",     percent: 5, message: "PDF 첫 페이지 렌더링 중…" });
+      source = await pdfToCanvas(file);
+    } else if (isImage(file)) {
+      source = file;
+    } else {
+      throw new Error("지원하지 않는 파일 형식입니다. JPG · PNG · PDF 만 지원합니다.");
     }
-    // TypeError from fetch usually means the proxy is not reachable.
-    throw new Error(
-      `Vision 프록시(${endpoint})에 연결할 수 없습니다. ` +
-      "'node species-catalog/server/proxy.mjs' 로 프록시를 실행 중인지 확인하세요."
-    );
-  } finally {
-    clearTimeout(timer);
-  }
 
-  let data = null;
-  try { data = await res.json(); } catch { /* body was not JSON */ }
+    // Step 2 — Load Tesseract on-demand from CDN.
+    onProgress({ stage: "loading", percent: 10, message: "Tesseract.js 로드 중…" });
+    const Tesseract = await loadTesseract();
+    onProgress({ stage: "loaded",  percent: 15, message: "언어팩(kor+eng) 준비 중…" });
 
-  if (!res.ok) {
-    const msg = data?.message || data?.error || `HTTP ${res.status}`;
-    const err = new Error(msg);
-    err.status = res.status;
-    throw err;
-  }
-  if (!data || data.ok === false) {
-    throw new Error(data?.message || data?.error || "알 수 없는 오류입니다.");
-  }
-  return data;
-}
+    // Step 3 — Recognize.
+    const worker = await Tesseract.createWorker(["kor", "eng"], 1, {
+      logger: m => {
+        if (m.status === "recognizing text") {
+          onProgress({
+            stage:   "recognizing",
+            percent: 15 + Math.round((m.progress || 0) * 80),
+            message: `OCR 진행 중 · ${Math.round((m.progress || 0) * 100)}%`
+          });
+        } else if (m.status) {
+          onProgress({ stage: m.status, percent: null, message: m.status });
+        }
+      }
+    });
+    const { data } = await worker.recognize(source);
+    await worker.terminate();
+    onProgress({ stage: "postprocess", percent: 96, message: "텍스트 정규화 · 파싱 중…" });
 
-/** File → base64 (strip the "data:...;base64," prefix). */
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onerror = () => reject(new Error("파일을 읽을 수 없습니다."));
-    fr.onload = () => {
-      const s = String(fr.result || "");
-      const i = s.indexOf(",");
-      resolve(i >= 0 ? s.slice(i + 1) : s);
+    // Step 4 — Normalize raw text + parse.
+    const rawText   = data.text || "";
+    const normText  = normalizeOcrText(rawText);
+    const parsed    = parseInvoiceText(normText);
+
+    // Step 5 — Build AnalyzeResult (identical shape to Mock/Vision).
+    const latencyMs = Date.now() - t0;
+    onProgress({ stage: "done", percent: 100, message: "완료" });
+
+    return {
+      ok: true,
+      mock: false,
+      reason: "",
+      invoiceDate:   extractInvoiceDate(normText),
+      invoiceNumber: extractInvoiceNumber(normText),
+      supplier:      parsed.supplier,
+      rows:          parsed.rows.map(r => ({
+        name:      r.name,
+        spec:      r.spec || "",
+        unit:      r.unit || "주",
+        quantity:  1,
+        unitPrice: Number(r.price) || 0,
+        amount:    Number(r.price) || 0
+      })),
+      meta: {
+        filename: file.name || "",
+        size:     file.size || 0,
+        type:     file.type || "",
+        model:    "tesseract-5"
+      },
+      _debug: {
+        provider:     "tesseract",
+        model:        "tesseract-5 (kor+eng)",
+        requestedAt,
+        latencyMs,
+        confidence:   typeof data.confidence === "number" ? data.confidence / 100 : null,
+        errorMessage: null,
+        httpStatus:   null,   // local OCR — no HTTP round-trip
+        raw: {
+          text:          rawText,
+          normalized:    normText,
+          tesseractConfidence: data.confidence ?? null,
+          lineCount:     Array.isArray(data.lines) ? data.lines.length : 0,
+          wordCount:     Array.isArray(data.words) ? data.words.length : 0
+        }
+      }
     };
-    fr.readAsDataURL(file);
-  });
+  } catch (err) {
+    const errOut = new Error(err?.message || String(err));
+    errOut._debug = {
+      provider:     "tesseract",
+      model:        "tesseract-5 (kor+eng)",
+      requestedAt,
+      latencyMs:    Date.now() - t0,
+      confidence:   null,
+      errorMessage: errOut.message,
+      httpStatus:   null,
+      raw:          null
+    };
+    throw errOut;
+  }
 }
+
+// ============================================================
+// Mode dispatch (mock · fail · real)
+// ============================================================
+
+function getOcrMode(opts) {
+  if (opts?.mock) return "mock";
+  const w = typeof window !== "undefined" ? window : null;
+  if (w?.__OCR_MODE__ === "mock" || w?.__OCR_MODE__ === "fail" || w?.__OCR_MODE__ === "real") {
+    return w.__OCR_MODE__;
+  }
+  if (w) {
+    try {
+      const p = new URL(w.location.href).searchParams.get("ocr");
+      if (p === "mock" || p === "fail" || p === "real") return p;
+    } catch { /* SSR-safe */ }
+  }
+  return "real";
+}
+
+function makeCannedError() {
+  const err = new Error("테스트 강제 오류 (?ocr=fail)");
+  err._debug = {
+    provider:     "tesseract",
+    model:        "tesseract-5 (kor+eng)",
+    requestedAt:  new Date().toISOString(),
+    latencyMs:    0,
+    confidence:   null,
+    errorMessage: err.message,
+    httpStatus:   null,
+    raw:          { forced: true }
+  };
+  return err;
+}
+
+// ============================================================
+// CDN loaders (lazy)
+// ============================================================
+
+let tesseractPromise = null;
+let pdfjsPromise     = null;
+
+function loadTesseract() {
+  if (typeof window !== "undefined" && window.Tesseract) return Promise.resolve(window.Tesseract);
+  if (tesseractPromise) return tesseractPromise;
+  tesseractPromise = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src   = TESSERACT_SRC;
+    s.async = true;
+    s.onload  = () => resolve(window.Tesseract);
+    s.onerror = () => reject(new Error(`Tesseract.js CDN 로드 실패 (${TESSERACT_SRC}) — 네트워크를 확인하세요.`));
+    document.head.appendChild(s);
+  });
+  return tesseractPromise;
+}
+
+async function loadPdfjs() {
+  if (pdfjsPromise) return pdfjsPromise;
+  pdfjsPromise = import(/* webpackIgnore: true */ PDFJS_SRC).then(mod => {
+    const pdfjs = mod.default || mod;
+    if (pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+    return pdfjs;
+  }).catch(err => {
+    pdfjsPromise = null;
+    throw new Error(`pdf.js CDN 로드 실패 — ${err?.message || err}`);
+  });
+  return pdfjsPromise;
+}
+
+// ============================================================
+// File-type helpers
+// ============================================================
+
+function isPdf(file)   { return /pdf/i.test(file?.type || file?.name || ""); }
+function isImage(file) { return (file?.type || "").toLowerCase().startsWith("image/"); }
+
+async function pdfToCanvas(file) {
+  const pdfjs = await loadPdfjs();
+  const buf   = await file.arrayBuffer();
+  const doc   = await pdfjs.getDocument({ data: buf }).promise;
+  const page  = await doc.getPage(1);
+  const viewport = page.getViewport({ scale: 2.0 });
+  const canvas = document.createElement("canvas");
+  canvas.width  = viewport.width;
+  canvas.height = viewport.height;
+  await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+  return canvas;
+}
+
+// ============================================================
+// Text normalization + additional field extractors
+// ============================================================
+
+/**
+ * OCR clean-up before parsing. Every rule was added from a real-invoice
+ * miss captured in `tests/ocr-corpus/` — see `tests/ocr-accuracy.mjs`.
+ *
+ *   1. Trim per-line whitespace + drop blank lines.
+ *   2. Strip decorative marks (★ ✦ ► etc.) that Tesseract keeps around
+ *      logo areas — they confuse supplier detection.
+ *   3. Join fragmented Hangul syllables — `왕 벚 나 무` → `왕벚나무`.
+ *      REQUIRES ≥3 single-char Hangul tokens (`{2,}` iterations of
+ *      `[가-힣][ \t]`), so bigrams like `충남 태안군` or `3분 포트` are
+ *      left alone. Under-collapse ≫ over-collapse for accuracy.
+ *   4. Common Tesseract letter-vs-digit swaps after a spec marker:
+ *      `R O` → `R0`, `H l` → `H1`, `B I` → `B1`.
+ *   5. Fix spec spacing — `R 8` → `R8`, `H 1.2` → `H1.2`.
+ *   6. Strip price commas — `35,000` → `35000`.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function normalizeOcrText(text) {
+  if (!text) return "";
+  let t = String(text)
+    .split(/\r?\n/)
+    .map(l => l.replace(/[ \t]+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+
+  // 2. Strip decorative marks that flank logo/hero areas.
+  t = t.replace(/[★☆✦✧✭✮▶►◆◇■□●○※◈]+/g, " ");
+
+  // 3. Join runs of single-Hangul-space patterns (≥3 chars).
+  //    `왕 벚 나 무` → `왕벚나무` · `충남 태안군` unchanged
+  t = t.replace(/(?:[가-힣][ \t]){2,}[가-힣]/g, m => m.replace(/\s+/g, ""));
+
+  // 4. OCR letter↔digit swaps after a spec marker letter (R/H/B/W/D).
+  //    O/o → 0, l/I → 1. Only fire when the character is NOT part of
+  //    a longer Latin token (so 'Rome' stays Rome, but 'R O 주' → 'R0 주').
+  t = t.replace(/([RHBWDrhbwd])[ \t]*([OolI])(?![A-Za-z가-힣])/g,
+    (_, l, x) => l + ({ O: "0", o: "0", l: "1", I: "1" }[x]));
+
+  // 5. Spec spacing: `R 8` → `R8`, `H 1.2` → `H1.2`. Also accept `.` or `:`
+  //    OCR sometimes inserts after the letter.
+  t = t.replace(/([RHBWDrhbwd])[ \t.:]*(\d)/g, "$1$2");
+
+  // 6. Strip price commas so downstream parser can Number() cleanly.
+  t = t.replace(/(\d{1,3}(?:,\d{3})+)/g, m => m.replace(/,/g, ""));
+
+  return t;
+}
+
+/** Extract invoice date in YYYY-MM-DD format from normalized text. */
+export function extractInvoiceDate(text) {
+  if (!text) return "";
+  // YYYY-MM-DD · YYYY/MM/DD · YYYY.MM.DD
+  const iso = text.match(/(20\d{2})[-./](\d{1,2})[-./](\d{1,2})/);
+  if (iso) return `${iso[1]}-${pad2(iso[2])}-${pad2(iso[3])}`;
+  // 2026년 07월 18일
+  const kr = text.match(/(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  if (kr) return `${kr[1]}-${pad2(kr[2])}-${pad2(kr[3])}`;
+  return "";
+}
+
+/**
+ * Extract invoice number ("거래명세서 번호: TR-2026-…").
+ *   1. Prefer an explicitly-labelled invoice/명세서 번호.
+ *   2. Otherwise take a "번호" match but SKIP business-registration
+ *      numbers (사업자등록번호 123-45-67890) and pure-digit-only tokens.
+ */
+export function extractInvoiceNumber(text) {
+  if (!text) return "";
+  // 1. Explicit Korean label — 거래명세서 번호 / 명세서 번호 / 문서 번호.
+  //    (English "No." intentionally excluded — it collides with
+  //    "Business Registration No. 123-45-67890" boilerplate.)
+  const preferred = text.match(
+    /(?:거래(?:\s*명세서)?\s*번호|명세서\s*번호|문서\s*번호)\s*[:.\-–]?\s*([A-Za-z0-9][A-Za-z0-9\-]{2,25})/i
+  );
+  if (preferred && /[A-Za-z]/.test(preferred[1])) return preferred[1].trim();
+  // 2. Any "번호" occurrence, but skip 사업자등록번호 / 대표번호 (phones)
+  //    and any candidate whose value has no letters (a pure phone/regno
+  //    would come through with digits+hyphens only). matchAll iterates
+  //    every hit so a bogus first match doesn't short-circuit the good one.
+  const genericRe = /(?<!사업자등록\s*)(?<!등록\s*)(?<!대표)번호\s*[:.\-–]?\s*([A-Za-z0-9]+(?:-[A-Za-z0-9]+){1,4})/gi;
+  for (const m of text.matchAll(genericRe)) {
+    const val = m[1].trim();
+    if (/[A-Za-z]/.test(val)) return val;
+  }
+  return "";
+}
+
+function pad2(n) { return String(n).padStart(2, "0"); }
 
 /**
  * Parse pasted plaintext of an invoice (post-OCR or PDF-copy).
@@ -189,10 +445,24 @@ export function parseInvoiceText(text) {
  */
 export async function analyzeInvoiceMock(file) {
   // Simulated latency — the wizard shows a "분석 중..." spinner during it.
+  const requestedAt = new Date().toISOString();
+  const t0 = Date.now();
   await new Promise(res => setTimeout(res, 600));
+  const latencyMs = Date.now() - t0;
 
   const today = new Date().toISOString().slice(0, 10);
   const monthNumber = today.slice(0, 7).replace("-", "");
+
+  const supplier = {
+    name: "천리포수목원",
+    region: "충남 태안군 소원면 천리포1길 187",
+    contact: "041-672-9982"
+  };
+  const rows = [
+    { name: "왕벚나무",     spec: "R6",   unit: "주", quantity: 2, unitPrice: 45000, amount: 90000 },
+    { name: "산수유",       spec: "R4",   unit: "주", quantity: 1, unitPrice: 22000, amount: 22000 },
+    { name: "신품종개나리", spec: "H1.0", unit: "주", quantity: 3, unitPrice: 15000, amount: 45000 }
+  ];
 
   return {
     ok: true,
@@ -200,20 +470,30 @@ export async function analyzeInvoiceMock(file) {
     reason: "Vision API 미연결 — Mock 데이터를 반환했습니다.",
     invoiceDate: today,
     invoiceNumber: `M-${monthNumber}-001`,
-    supplier: {
-      name: "천리포수목원",
-      region: "충남 태안군 소원면 천리포1길 187",
-      contact: "041-672-9982"
-    },
-    rows: [
-      { name: "왕벚나무",      spec: "R6",   unit: "주", quantity: 2, unitPrice: 45000, amount: 90000 },
-      { name: "산수유",        spec: "R4",   unit: "주", quantity: 1, unitPrice: 22000, amount: 22000 },
-      { name: "신품종개나리",  spec: "H1.0", unit: "주", quantity: 3, unitPrice: 15000, amount: 45000 }
-    ],
+    supplier,
+    rows,
     meta: {
       filename: file?.name || "",
-      size: file?.size || 0,
-      type: file?.type || ""
+      size:     file?.size || 0,
+      type:     file?.type || "",
+      model:    "mock"
+    },
+    // Provider-neutral debug envelope (see JSDoc typedef below).
+    _debug: {
+      provider:    "mock",
+      model:       "mock",
+      requestedAt,
+      latencyMs,
+      confidence:  null,
+      errorMessage: null,
+      httpStatus:  200,
+      raw: {
+        note: "This is a deterministic Mock. No provider call was made.",
+        invoiceDate: today,
+        invoiceNumber: `M-${monthNumber}-001`,
+        supplier,
+        rows
+      }
     }
   };
 }
@@ -222,12 +502,30 @@ export async function analyzeInvoiceMock(file) {
  * @typedef {Object} AnalyzeInvoiceMockResult
  * @property {boolean} ok
  * @property {boolean} mock                  — true = "이 데이터는 Mock" 표시용
- * @property {string} reason
- * @property {string} invoiceDate            YYYY-MM-DD
- * @property {string} invoiceNumber
+ * @property {string}  reason
+ * @property {string}  invoiceDate            YYYY-MM-DD
+ * @property {string}  invoiceNumber
  * @property {Supplier} supplier
  * @property {Array<{name:string, spec:string, unit:string, quantity:number, unitPrice:number, amount:number}>} rows
- * @property {Object} meta
+ * @property {Object}  meta
+ * @property {DebugEnvelope} [_debug]        — 개발자 검증 화면용 (Debug Panel)
+ */
+
+/**
+ * Provider-neutral debug envelope. Every real analyzer (OpenAI / Claude /
+ * Gemini …) MUST attach one of these so `debugPanel.js` renders the same
+ * information regardless of provider. Any of the fields may be null when
+ * a provider doesn't return that particular signal.
+ *
+ * @typedef {Object} DebugEnvelope
+ * @property {string}      provider        "openai" | "anthropic" | "gemini" | "mock"
+ * @property {string}      model           e.g. "gpt-4o", "claude-sonnet-5"
+ * @property {string}      requestedAt     ISO-8601 request start
+ * @property {number}      latencyMs       provider round-trip in ms
+ * @property {number|null} confidence      0..1 overall confidence, if provided
+ * @property {string|null} errorMessage    non-null on OCR failure paths
+ * @property {number|null} httpStatus      proxy HTTP response code (null on network error)
+ * @property {any}         raw             untouched provider response body
  */
 
 // ============================================================
@@ -245,30 +543,72 @@ function trimAfterKnownFields(s) {
     .trim();
 }
 
+/** Strip leading 법인/공백 markers (㈜, 주식회사, 유한회사) captured together with the trade name. */
+function stripCorporateMarker(name) {
+  return String(name || "")
+    .replace(/^(?:㈜|㈐|㈔|주\s*식\s*회\s*사|유\s*한\s*회\s*사)\s*/i, "")
+    .replace(/\s*(?:㈜|주\s*식\s*회\s*사|유\s*한\s*회\s*사)\s*$/i, "")
+    .trim();
+}
+
 function detectSupplier(text) {
   const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
   const head = lines.slice(0, 20);
   const headText = head.join("\n");
 
-  // 상호 — labelled first, then any line ending in a business suffix.
+  // 상호 — labelled first, then any line ending in a business suffix,
+  // finally first-line fallback for brand names that carry no suffix
+  // (e.g. `허브아일랜드`). Every stage passes through `stripCorporateMarker`
+  // so a captured `㈜ 담양원예` or `주식회사 XX` collapses to the trade name.
   let name = "";
   const bizKey = headText.match(BIZ_KEYWORD_RE);
   if (bizKey) {
-    name = trimAfterKnownFields(bizKey[1].replace(/\s+/g, " ").trim());
+    name = stripCorporateMarker(
+      trimAfterKnownFields(bizKey[1].replace(/\s+/g, " ").trim())
+    );
   }
   if (!name) {
     for (const l of head) {
       if (BIZ_SUFFIX_KEYWORDS.some(k => l.includes(k))) {
         if (PHONE_TEST_RE.test(l)) continue;
-        if (HEADER_LINE_RE.test(l)) continue;
-        const candidate = trimAfterKnownFields(
-          l.replace(/[·]+/g, " ").replace(/\s+/g, " ").trim()
+        // Fragmented OCR (`공 급 자 남 양 수 목 원`) normalizes to
+        // `공급자남양수목원` — the label is glued to the value. Strip the
+        // known label prefix before the header-line reject; otherwise the
+        // whole line looks like a plain "공급자" header and gets skipped.
+        const stripped = l.replace(
+          /^(?:상\s*호|업체명|공급자|공급업체|사업자명)[ \t:.\-–]*/i, ""
+        );
+        if (HEADER_LINE_RE.test(stripped)) continue;
+        const candidate = stripCorporateMarker(
+          trimAfterKnownFields(
+            stripped.replace(/[·]+/g, " ").replace(/\s+/g, " ").trim()
+          )
         );
         if (candidate.length >= 2 && candidate.length <= 30) {
           name = candidate;
           break;
         }
       }
+    }
+  }
+  if (!name) {
+    // First-line fallback — brand names without a business suffix
+    // (e.g. `허브아일랜드 대량 납품 견적서`). Take the first Hangul-only
+    // token from the first substantial line, skipping doc titles, phones,
+    // dates, addresses, and known noise words / column headers.
+    for (const l of head) {
+      if (HEADER_LINE_RE.test(l)) continue;
+      if (PHONE_TEST_RE.test(l)) continue;
+      if (DATE_LINE_RE.test(l)) continue;
+      if (ADDRESS_LINE_RE.test(l)) continue;
+      if (REGION_HINT_RE.test(l)) continue;
+      const tokens = l.split(/\s+/);
+      const cand = tokens.find(t =>
+        /^[가-힣]{2,20}$/.test(t) &&
+        !NOISE_NAMES.has(t) &&
+        !COLUMN_HEADER_WORDS.has(t)
+      );
+      if (cand) { name = cand; break; }
     }
   }
 

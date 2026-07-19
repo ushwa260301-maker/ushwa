@@ -1,0 +1,18 @@
+{
+  "id": "06-spec-letter-swap",
+  "description": "Tesseract 특유의 R O → R0 오탐 · l → 1 오탐",
+  "ocr": "제주라벤더팜\n주소: 제주특별자치도 서귀포시 남원읍\n연락처: 010-2233-4455\n\n2025-07-18\n\n왕벚나무  RO   주  1  45,000\n산수유    R l   주  2  22,000\n라벤더    3분   포트 10 3,500",
+  "expect": {
+    "supplier": {
+      "name": "제주라벤더팜",
+      "region": "제주",
+      "contact": "010-2233-4455"
+    },
+    "invoiceDate": "2025-07-18",
+    "rows": [
+      { "name": "왕벚나무", "spec": "R0", "unitPrice": 45000 },
+      { "name": "산수유",   "spec": "R1", "unitPrice": 22000 },
+      { "name": "라벤더",   "spec": "3분", "unitPrice": 3500 }
+    ]
+  }
+}

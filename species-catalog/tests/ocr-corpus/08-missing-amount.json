@@ -1,0 +1,17 @@
+{
+  "id": "08-missing-amount",
+  "description": "수량과 단가만 있고 금액 컬럼 없음 · 소량 견적 스타일",
+  "ocr": "구례산수유마을조합\n전남 구례군 산동면\n061-782-3456\n\n2025년 3월 5일\n\n산수유    R6    주     1주   35,000\n산수유    R8    주     1주   55,000",
+  "expect": {
+    "invoiceDate": "2025-03-05",
+    "supplier": {
+      "name": "구례산수유마을조합",
+      "region": "전남 구례군",
+      "contact": "061-782-3456"
+    },
+    "rows": [
+      { "name": "산수유", "spec": "R6", "unitPrice": 35000 },
+      { "name": "산수유", "spec": "R8", "unitPrice": 55000 }
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "id": "18-mokryeon-single",
+  "description": "품목 1건 · 매우 짧은 명세서 · 노이즈 많음",
+  "ocr": "천리포수목원\n\n Business Registration No. 123-45-67890\n\n주소: 충남 태안군 소원면 천리포1길 187\nTEL: 041-672-9982\nFAX: 041-672-9983\n\n일자: 2025년 09월 22일\n번호: TR-2025-0922-A01\n\n품목       규격    단위 수량 단가     금액\n목련       R6     주   1   38,000   38,000",
+  "expect": {
+    "invoiceDate": "2025-09-22",
+    "invoiceNumber": "TR-2025-0922-A01",
+    "supplier": {
+      "name": "천리포수목원",
+      "region": "충남 태안군",
+      "contact": "041-672-9982"
+    },
+    "rows": [
+      { "name": "목련", "spec": "R6", "unitPrice": 38000 }
+    ]
+  }
+}
