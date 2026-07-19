@@ -31,6 +31,16 @@ const PDFJS_SRC       = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pd
 const PDFJS_WORKER_SRC = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.worker.min.mjs";
 
 // ============================================================
+// Watchdog thresholds — when analyzeInvoice() stalls silently the wizard
+// used to hang at "분석 중" forever. Each stage now has an idle watchdog:
+// if `onProgress` doesn't fire for IDLE_TIMEOUT_MS the outer analyzer
+// rejects with the last-known stage so the UI can surface it.
+// ============================================================
+
+const IDLE_TIMEOUT_MS = 15_000;       // no progress for 15s → timeout (user spec)
+const CDN_LOAD_TIMEOUT_MS = 15_000;   // <script>/import() must resolve within 15s
+
+// ============================================================
 // Regex constants — 거래명세서 layouts vary a lot, hence the length.
 // ============================================================
 
@@ -125,97 +135,72 @@ export async function analyzeInvoice(file, opts = {}) {
   if (!file) throw new Error("파일이 선택되지 않았습니다.");
 
   const mode = getOcrMode(opts);
+  console.info("[vision] analyzeInvoice ▶ mode=", mode, "· file=", file?.name, file?.type, file?.size);
   if (mode === "mock") return analyzeInvoiceMock(file);
   if (mode === "fail") throw makeCannedError();
 
-  const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : () => {};
+  const rawOnProgress = typeof opts.onProgress === "function" ? opts.onProgress : () => {};
   const requestedAt = new Date().toISOString();
   const t0 = Date.now();
 
-  try {
-    // Step 1 — Prepare an image source (canvas for PDF, blob for image).
-    let source;
-    if (isPdf(file)) {
-      onProgress({ stage: "pdf",     percent: 5, message: "PDF 첫 페이지 렌더링 중…" });
-      source = await pdfToCanvas(file);
-    } else if (isImage(file)) {
-      source = file;
-    } else {
-      throw new Error("지원하지 않는 파일 형식입니다. JPG · PNG · PDF 만 지원합니다.");
+  // ---------- Stage tracking + idle watchdog ----------
+  //
+  // The wizard used to hang at Step 2 whenever any awaited step below
+  // silently stalled (CDN never fires onload/onerror, Tesseract worker
+  // hangs after `loading language traineddata`, pdf.js worker stuck).
+  // We now:
+  //   1. Track `currentStage` in the outer closure so we can name it.
+  //   2. Race the whole flow against an IDLE watchdog — every progress
+  //      event resets the timer; if IDLE_TIMEOUT_MS ms pass with no
+  //      activity we reject with a stage-tagged error.
+  //   3. Log every stage transition to the console so user can see
+  //      exactly where a hang would have happened.
+  let currentStage = "init";
+  let currentMessage = "";
+  const onProgress = (p) => {
+    if (p && p.stage) currentStage = p.stage;
+    if (p && p.message) currentMessage = p.message;
+    console.info("[vision] progress ·", currentStage, "·", p?.percent ?? "-", "·", currentMessage);
+    resetWatchdog();
+    try { rawOnProgress(p); } catch (cbErr) {
+      console.warn("[vision] onProgress callback threw:", cbErr);
     }
+  };
 
-    // Step 2 — Load Tesseract on-demand from CDN.
-    onProgress({ stage: "loading", percent: 10, message: "Tesseract.js 로드 중…" });
-    const Tesseract = await loadTesseract();
-    onProgress({ stage: "loaded",  percent: 15, message: "언어팩(kor+eng) 준비 중…" });
+  let watchdogTimer = null;
+  let watchdogRejector = null;
+  const watchdogPromise = new Promise((_res, rej) => { watchdogRejector = rej; });
+  function resetWatchdog() {
+    if (watchdogTimer) clearTimeout(watchdogTimer);
+    watchdogTimer = setTimeout(() => {
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      const err = new Error(
+        `OCR 분석이 ${IDLE_TIMEOUT_MS / 1000}초 동안 응답이 없어 중단되었습니다. ` +
+        `멈춘 단계: "${currentStage}"` +
+        (currentMessage ? ` (${currentMessage})` : "") +
+        ` · 총 ${elapsed}초 경과`
+      );
+      err._stalledStage = currentStage;
+      console.error("[vision] watchdog ✗ idle timeout at stage:", currentStage, "·", currentMessage);
+      watchdogRejector(err);
+    }, IDLE_TIMEOUT_MS);
+  }
+  resetWatchdog();
 
-    // Step 3 — Recognize.
-    const worker = await Tesseract.createWorker(["kor", "eng"], 1, {
-      logger: m => {
-        if (m.status === "recognizing text") {
-          onProgress({
-            stage:   "recognizing",
-            percent: 15 + Math.round((m.progress || 0) * 80),
-            message: `OCR 진행 중 · ${Math.round((m.progress || 0) * 100)}%`
-          });
-        } else if (m.status) {
-          onProgress({ stage: m.status, percent: null, message: m.status });
-        }
-      }
-    });
-    const { data } = await worker.recognize(source);
-    await worker.terminate();
-    onProgress({ stage: "postprocess", percent: 96, message: "텍스트 정규화 · 파싱 중…" });
-
-    // Step 4 — Normalize raw text + parse.
-    const rawText   = data.text || "";
-    const normText  = normalizeOcrText(rawText);
-    const parsed    = parseInvoiceText(normText);
-
-    // Step 5 — Build AnalyzeResult (identical shape to Mock/Vision).
-    const latencyMs = Date.now() - t0;
-    onProgress({ stage: "done", percent: 100, message: "완료" });
-
-    return {
-      ok: true,
-      mock: false,
-      reason: "",
-      invoiceDate:   extractInvoiceDate(normText),
-      invoiceNumber: extractInvoiceNumber(normText),
-      supplier:      parsed.supplier,
-      rows:          parsed.rows.map(r => ({
-        name:      r.name,
-        spec:      r.spec || "",
-        unit:      r.unit || "주",
-        quantity:  1,
-        unitPrice: Number(r.price) || 0,
-        amount:    Number(r.price) || 0
-      })),
-      meta: {
-        filename: file.name || "",
-        size:     file.size || 0,
-        type:     file.type || "",
-        model:    "tesseract-5"
-      },
-      _debug: {
-        provider:     "tesseract",
-        model:        "tesseract-5 (kor+eng)",
-        requestedAt,
-        latencyMs,
-        confidence:   typeof data.confidence === "number" ? data.confidence / 100 : null,
-        errorMessage: null,
-        httpStatus:   null,   // local OCR — no HTTP round-trip
-        raw: {
-          text:          rawText,
-          normalized:    normText,
-          tesseractConfidence: data.confidence ?? null,
-          lineCount:     Array.isArray(data.lines) ? data.lines.length : 0,
-          wordCount:     Array.isArray(data.words) ? data.words.length : 0
-        }
-      }
-    };
+  try {
+    const result = await Promise.race([
+      runOcrPipeline(file, onProgress, () => currentStage, requestedAt, t0),
+      watchdogPromise
+    ]);
+    if (watchdogTimer) clearTimeout(watchdogTimer);
+    console.info("[vision] analyzeInvoice ✓ resolved · latencyMs=",
+                 Date.now() - t0, "· rows=", result?.rows?.length);
+    return result;
   } catch (err) {
+    if (watchdogTimer) clearTimeout(watchdogTimer);
+    console.error("[vision] analyzeInvoice ✗ rejected at stage:", currentStage, "·", err?.message);
     const errOut = new Error(err?.message || String(err));
+    errOut._stalledStage = err?._stalledStage || currentStage;
     errOut._debug = {
       provider:     "tesseract",
       model:        "tesseract-5 (kor+eng)",
@@ -224,10 +209,114 @@ export async function analyzeInvoice(file, opts = {}) {
       confidence:   null,
       errorMessage: errOut.message,
       httpStatus:   null,
+      stalledStage: errOut._stalledStage,
       raw:          null
     };
     throw errOut;
   }
+}
+
+/** The actual OCR pipeline, extracted so `analyzeInvoice()` can race it
+ *  against the idle watchdog. Every stage boundary calls `onProgress()`
+ *  which both surfaces to the wizard UI and resets the watchdog timer. */
+async function runOcrPipeline(file, onProgress, getStage, requestedAt, t0) {
+  // Step 1 — Prepare an image source (canvas for PDF, blob for image).
+  let source;
+  if (isPdf(file)) {
+    onProgress({ stage: "pdf", percent: 5, message: "PDF 첫 페이지 렌더링 중…" });
+    source = await pdfToCanvas(file);
+    onProgress({ stage: "pdf-ready", percent: 8, message: "PDF 렌더링 완료" });
+  } else if (isImage(file)) {
+    source = file;
+  } else {
+    throw new Error("지원하지 않는 파일 형식입니다. JPG · PNG · PDF 만 지원합니다.");
+  }
+
+  // Step 2 — Load Tesseract on-demand from CDN (with CDN-load timeout).
+  onProgress({ stage: "loading-tesseract", percent: 10, message: "Tesseract.js 로드 중…" });
+  const Tesseract = await loadTesseract();
+  onProgress({ stage: "loaded-tesseract", percent: 15, message: "언어팩(kor+eng) 준비 중…" });
+
+  // Step 3 — Create worker + recognize. Tesseract fires its logger with
+  // status changes ("loading language traineddata", "recognizing text", …)
+  // which we forward as progress so the watchdog stays alive.
+  let worker;
+  try {
+    worker = await Tesseract.createWorker(["kor", "eng"], 1, {
+      logger: m => {
+        if (!m || !m.status) return;
+        if (m.status === "recognizing text") {
+          onProgress({
+            stage:   "recognizing",
+            percent: 15 + Math.round((m.progress || 0) * 80),
+            message: `OCR 진행 중 · ${Math.round((m.progress || 0) * 100)}%`
+          });
+        } else {
+          onProgress({ stage: m.status, percent: null, message: m.status });
+        }
+      }
+    });
+  } catch (err) {
+    throw new Error(`Tesseract worker 생성 실패 (stage=${getStage()}): ${err?.message || err}`);
+  }
+
+  let data;
+  try {
+    ({ data } = await worker.recognize(source));
+  } catch (err) {
+    try { await worker.terminate(); } catch { /* ignore secondary error */ }
+    throw new Error(`OCR 인식 실패 (stage=${getStage()}): ${err?.message || err}`);
+  }
+  try { await worker.terminate(); } catch { /* ignore — recognize already succeeded */ }
+  onProgress({ stage: "postprocess", percent: 96, message: "텍스트 정규화 · 파싱 중…" });
+
+  // Step 4 — Normalize raw text + parse.
+  const rawText   = data.text || "";
+  const normText  = normalizeOcrText(rawText);
+  const parsed    = parseInvoiceText(normText);
+
+  // Step 5 — Build AnalyzeResult (identical shape to Mock/Vision).
+  const latencyMs = Date.now() - t0;
+  onProgress({ stage: "done", percent: 100, message: "완료" });
+
+  return {
+    ok: true,
+    mock: false,
+    reason: "",
+    invoiceDate:   extractInvoiceDate(normText),
+    invoiceNumber: extractInvoiceNumber(normText),
+    supplier:      parsed.supplier,
+    rows:          parsed.rows.map(r => ({
+      name:      r.name,
+      spec:      r.spec || "",
+      unit:      r.unit || "주",
+      quantity:  1,
+      unitPrice: Number(r.price) || 0,
+      amount:    Number(r.price) || 0
+    })),
+    meta: {
+      filename: file.name || "",
+      size:     file.size || 0,
+      type:     file.type || "",
+      model:    "tesseract-5"
+    },
+    _debug: {
+      provider:     "tesseract",
+      model:        "tesseract-5 (kor+eng)",
+      requestedAt,
+      latencyMs,
+      confidence:   typeof data.confidence === "number" ? data.confidence / 100 : null,
+      errorMessage: null,
+      httpStatus:   null,   // local OCR — no HTTP round-trip
+      raw: {
+        text:          rawText,
+        normalized:    normText,
+        tesseractConfidence: data.confidence ?? null,
+        lineCount:     Array.isArray(data.lines) ? data.lines.length : 0,
+        wordCount:     Array.isArray(data.words) ? data.words.length : 0
+      }
+    }
+  };
 }
 
 // ============================================================
@@ -274,12 +363,32 @@ let pdfjsPromise     = null;
 function loadTesseract() {
   if (typeof window !== "undefined" && window.Tesseract) return Promise.resolve(window.Tesseract);
   if (tesseractPromise) return tesseractPromise;
+  // Race the <script> load against a hard timeout so a silent CDN stall
+  // (neither onload nor onerror ever fires) can't hang the whole wizard.
   tesseractPromise = new Promise((resolve, reject) => {
     const s = document.createElement("script");
     s.src   = TESSERACT_SRC;
     s.async = true;
-    s.onload  = () => resolve(window.Tesseract);
-    s.onerror = () => reject(new Error(`Tesseract.js CDN 로드 실패 (${TESSERACT_SRC}) — 네트워크를 확인하세요.`));
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      tesseractPromise = null;
+      const err = new Error(`Tesseract.js CDN 로드 시간초과 (${CDN_LOAD_TIMEOUT_MS / 1000}초) — ${TESSERACT_SRC}`);
+      console.error("[vision] loadTesseract ✗ timeout:", TESSERACT_SRC);
+      reject(err);
+    }, CDN_LOAD_TIMEOUT_MS);
+    s.onload  = () => {
+      if (done) return; done = true; clearTimeout(timer);
+      console.info("[vision] loadTesseract ✓ loaded");
+      resolve(window.Tesseract);
+    };
+    s.onerror = () => {
+      if (done) return; done = true; clearTimeout(timer);
+      tesseractPromise = null;
+      console.error("[vision] loadTesseract ✗ onerror:", TESSERACT_SRC);
+      reject(new Error(`Tesseract.js CDN 로드 실패 (${TESSERACT_SRC}) — 네트워크를 확인하세요.`));
+    };
     document.head.appendChild(s);
   });
   return tesseractPromise;
@@ -287,12 +396,22 @@ function loadTesseract() {
 
 async function loadPdfjs() {
   if (pdfjsPromise) return pdfjsPromise;
-  pdfjsPromise = import(/* webpackIgnore: true */ PDFJS_SRC).then(mod => {
-    const pdfjs = mod.default || mod;
-    if (pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
-    return pdfjs;
-  }).catch(err => {
+  // Race dynamic import against the CDN timeout — a stuck module load
+  // otherwise sits forever without ever entering .then() / .catch().
+  pdfjsPromise = Promise.race([
+    import(/* webpackIgnore: true */ PDFJS_SRC).then(mod => {
+      const pdfjs = mod.default || mod;
+      if (pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+      console.info("[vision] loadPdfjs ✓ loaded");
+      return pdfjs;
+    }),
+    new Promise((_r, rej) => setTimeout(
+      () => rej(new Error(`pdf.js CDN 로드 시간초과 (${CDN_LOAD_TIMEOUT_MS / 1000}초) — ${PDFJS_SRC}`)),
+      CDN_LOAD_TIMEOUT_MS
+    ))
+  ]).catch(err => {
     pdfjsPromise = null;
+    console.error("[vision] loadPdfjs ✗", err?.message || err);
     throw new Error(`pdf.js CDN 로드 실패 — ${err?.message || err}`);
   });
   return pdfjsPromise;
