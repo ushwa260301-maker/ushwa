@@ -829,6 +829,21 @@ function trimAfterKnownFields(s) {
     .trim();
 }
 
+/**
+ * When a candidate 상호 line is pipe-delimited (`Sly o| 대림원예 |성명|문명석…`),
+ * keep only the cell that carries a business suffix. OCR renders the table's
+ * label/value cells as `|`-separated (or fullwidth `ㅣ`／`｜`) segments, so the
+ * leading label-cell garbage and the trailing 성명/금액 cells otherwise leak
+ * into the trade name. Returns the input unchanged when there is no pipe
+ * separator or no suffix-bearing cell to prefer.
+ */
+function pickBizSuffixCell(s) {
+  if (!/[|ㅣ｜]/.test(s)) return s;
+  const cells = s.split(/[|ㅣ｜]/).map(c => c.trim()).filter(Boolean);
+  const hit = cells.find(c => BIZ_SUFFIX_KEYWORDS.some(k => c.includes(k)));
+  return hit || s;
+}
+
 /** Strip leading 법인/공백 markers (㈜, 주식회사, 유한회사) captured together with the trade name. */
 function stripCorporateMarker(name) {
   return String(name || "")
@@ -867,7 +882,7 @@ function detectSupplier(text) {
         if (HEADER_LINE_RE.test(stripped)) continue;
         const candidate = stripCorporateMarker(
           trimAfterKnownFields(
-            stripped.replace(/[·]+/g, " ").replace(/\s+/g, " ").trim()
+            pickBizSuffixCell(stripped).replace(/[·]+/g, " ").replace(/\s+/g, " ").trim()
           )
         );
         if (candidate.length >= 2 && candidate.length <= 30) {

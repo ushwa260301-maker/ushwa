@@ -1,0 +1,36 @@
+{
+  "id": "24-daerim-hwayangmok-handwritten",
+  "description": "대림원예가든센터 · 손글씨 필기 명세서(회양목 100주 · 단가 2,000 · 공급대가 200,000) · 나무결 배경 · 하단 표(품명/수량/단가/금액) 셀 전부 OCR 실패 · 상단 인쇄 헤더(상호/주소/사업번호)는 부분 인식 · 손글씨 작성일 미인식",
+  "ocr": "a        2207 ~ 7b           :\n거래명세표\n베레. IEA | 투(        귀하\nodd] 468-16-01017 oo\nSly o| 대림원예가든센터 |성명|문명석외18680)\nBAYH 서울특별시 서초구 힌인롱1길 21(내곡종)\n사[입. 태| 도매및 소매업 ㅣ종목| Hass\n작성년월일 | 공급대가종액 | 비고 .\n Es\nRil 금액을 영수 (청구) 합니다. _   Sr]\nB  품 명  단가 ㅣ공급대가(금액)\n도타 그\n2] i   i       omm—\n3]       {+ 기\n기 11 10 |\n:                 BE as\n의 ve\n[EI fm pee\n—                          8\n계좌번호 안Ｌ\ner |                     3 3\naX . OHA\nof aT «to Ad\n",
+  "expect": {
+    "invoiceDate": "2025-06-30",
+    "supplier": {
+      "name": "대림원예가든센터",
+      "region": "서초구"
+    }
+  },
+  "coverage": {
+    "rows": false,
+    "reason": "손글씨 품목 표(회양목 · 수량 100 · 단가 2,000 · 공급대가 200,000) 전셀이 OCR raw 에 부재. 하단 셀은 '도타 그' · '2] i i omm—' · '기 11 10 |' 등 잡음만 인식됨 · best fuzzy sim << 0.60. 손글씨 작성일 '2025.6.30' 및 상단 필기 번호 '3904-7152' 도 raw 부재(각각 '', '2207 ~ 7b'). 이미지 전처리/Tesseract 층 개선 없이는 회복 불가 → parser 회귀에서 제외. 이미지 파이프라인 개선 후 별도 재검증 예정."
+  },
+  "changeLog": [
+    {
+      "field": "invoiceDate",
+      "before": "2026-06-30",
+      "after": "2025-06-30",
+      "reason": "실물 명세서 작성년월일 '2025. 6. 30' 확인 · Debug Panel userEdit 의 '2026-06-30' 은 사용자 입력 연도 오기(誤記) 정정. OCR raw 에는 작성일 digit run 부재 → OCR 계층 실패로 parser 회복 불가."
+    },
+    {
+      "field": "rows[0].unitPrice",
+      "before": 200000,
+      "after": 2000,
+      "reason": "실물 명세서 단가 칸 '2,000' 확인(수량 100 × 단가 2,000 = 공급대가 200,000). Debug Panel userEdit 의 unitPrice=200000 은 공급대가(금액)를 단가 칸에 잘못 입력한 오기 정정. rows 는 coverage.rows=false 로 회귀 제외이나 ground truth 로 기록."
+    },
+    {
+      "field": "supplier.name",
+      "before": "",
+      "after": "대림원예가든센터",
+      "reason": "OCR raw 에 '대림원예가든센터' 온전히 존재 → 인식 가능 필드. 배포 파서가 못 잡으면 Parser 계층 문제로 분류(fixture 21 과 동일 상호·동일 원인)."
+    }
+  ]
+}
