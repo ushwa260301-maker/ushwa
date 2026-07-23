@@ -26,6 +26,7 @@ import { initAttachmentStore, putAttachment, deleteAttachmentsForInvoice } from 
 import { matchSpecies } from "./matcher.js";
 import { initDebugFlag } from "./debugFlag.js";
 import { initDebugPanel } from "./debugPanel.js";
+import { initAuthGate } from "./auth.js";
 import { nextId } from "./utils.js";
 
 // ============================================================
@@ -666,6 +667,11 @@ async function init() {
   // Debug flag first so <html class="debug-mode"> is set before any DOM
   // element with .debug-only decides its visibility.
   initDebugFlag();
+
+  // Login gate — blocks until signed in when Supabase is configured.
+  // With cloud unconfigured this resolves immediately and the app behaves
+  // exactly as before (LocalStorage only, no gate shown).
+  await initAuthGate();
 
   cacheElements();
 
