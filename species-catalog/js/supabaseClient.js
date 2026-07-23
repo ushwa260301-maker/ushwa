@@ -22,8 +22,9 @@
  * 미설정 상태에서는 네트워크 요청이 한 번도 발생하지 않는다.
  */
 
-const SUPABASE_URL      = "";   // 예: "https://xxxx.supabase.co"
-const SUPABASE_ANON_KEY = "";   // Supabase → Settings → API → anon public
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "./supabaseConfig.js";
+
+const SUPABASE_ANON_KEY = SUPABASE_PUBLISHABLE_KEY;   // supabase-js v2 는 publishable key 를 anon 자리에 그대로 받음
 
 const SUPABASE_SDK_SRC =
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";

@@ -695,6 +695,14 @@ async function init() {
   // exactly as before (LocalStorage only, no gate shown).
   await initAuthGate();
 
+  // Cloud 연결 셀프테스트 — ?cloudtest=1 일 때만 (지연 import · 평상시 0비용).
+  try {
+    const { isCloudTestRequested, runCloudSelfTest } = await import("./cloudSelfTest.js");
+    if (isCloudTestRequested()) runCloudSelfTest({ toast });
+  } catch (err) {
+    console.warn("[app] cloudSelfTest load skipped:", err?.message || err);
+  }
+
   cacheElements();
 
   // Load persisted data; fall back to fetched seed on first visit.
