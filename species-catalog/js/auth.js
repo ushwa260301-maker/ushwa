@@ -40,14 +40,29 @@ export async function initAuthGate() {
     return null;
   }
 
-  const supabase = await getSupabase();
+  // SDK 로드 실패(CDN 장애·차단)가 앱 부팅 전체를 죽이면 안 된다.
+  // 실패 시 게이트를 '재시도' 상태로 띄운 채 대기 — init() 은 게이트에
+  // 가려진 채 멈추므로 사용자가 네트워크를 고친 뒤 재시도할 수 있다.
+  let supabase;
+  try {
+    supabase = await getSupabase();
+  } catch (err) {
+    console.error("[auth] SDK load failed — gate stays in retry state:", err?.message || err);
+    showGate();
+    setGateMessage("Supabase SDK 로드 실패 — 네트워크 확인 후 새로고침 하세요.");
+    return new Promise(resolve => { gateResolve = resolve; });
+  }
 
   // OAuth redirect 복귀 포함 — 현재 세션 확인.
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session) {
-    await handleSignedIn(supabase, session);
-    watchAuthChanges(supabase);
-    return sessionUser;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      await handleSignedIn(supabase, session);
+      watchAuthChanges(supabase);
+      return sessionUser;
+    }
+  } catch (err) {
+    console.warn("[auth] getSession failed:", err?.message || err);
   }
 
   // 미로그인 — 게이트를 띄우고 로그인 완료까지 대기.

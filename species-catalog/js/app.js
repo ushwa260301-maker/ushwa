@@ -692,8 +692,13 @@ async function init() {
 
   // Login gate — blocks until signed in when Supabase is configured.
   // With cloud unconfigured this resolves immediately and the app behaves
-  // exactly as before (LocalStorage only, no gate shown).
-  await initAuthGate();
+  // exactly as before (LocalStorage only, no gate shown). A gate/SDK
+  // failure must never brick the whole app boot, so it is caught here.
+  try {
+    await initAuthGate();
+  } catch (err) {
+    console.error("[app] auth gate error (continuing boot):", err?.message || err);
+  }
 
   // Cloud 연결 셀프테스트 — ?cloudtest=1 일 때만 (지연 import · 평상시 0비용).
   try {
