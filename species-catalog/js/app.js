@@ -27,7 +27,7 @@ import { matchSpecies } from "./matcher.js";
 import { initDebugFlag } from "./debugFlag.js";
 import { initDebugPanel } from "./debugPanel.js";
 import { initAuthGate } from "./auth.js";
-import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, fetchAll } from "./cloudStore.js";
+import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSaveSpecies, fetchAll } from "./cloudStore.js";
 import { nextId } from "./utils.js";
 
 // ============================================================
@@ -52,7 +52,7 @@ import { nextId } from "./utils.js";
  * This keeps the modal's UX identical while shifting the storage to the
  * new normalized model.
  */
-function saveSpecies(payload, id) {
+async function saveSpecies(payload, id) {
   const meta = extractSpeciesMeta(payload);
   let speciesId = id;
   if (id) {
@@ -83,6 +83,12 @@ function saveSpecies(payload, id) {
   state.data.invoiceItems.push(...synthesized.items);
 
   persistAndRerender();
+
+  // Cloud sync (T6 Phase 2) — 수종 기본 정보만 upsert. 로컬에서 재합성된
+  // invoice 는 Cloud 재구성하지 않는다(구매 데이터는 invoice CRUD 로 유지 ·
+  // 승인 범위). 실패 시 사용자에게 표면화.
+  const savedSpecies = state.data.species.find(s => s.id === speciesId);
+  if (savedSpecies) reportSync(await mirrorSaveSpecies(savedSpecies), "수종 저장");
 }
 
 /** Delete a species and cascade to its invoices/items. */
@@ -94,6 +100,10 @@ function deleteSpecies(id) {
   purgeInvoiceRecordsFor(id);
   toast("삭제되었습니다");
   persistAndRerender();
+  // TODO(T6 Phase 2+): Cloud species 삭제는 제외됨. Cloud
+  // invoice_items.species_id → species 는 cascade 가 아니고, 로컬 삭제는
+  // 연관 invoice/items 도 purge 하므로, FK 및 invoice 관계 삭제 정책을
+  // 확정한 뒤 별도 Phase 에서 Cloud 반영한다. 현재는 로컬만 삭제.
 }
 
 // ============================================================
@@ -439,13 +449,13 @@ async function saveInvoice(header, items, extras = {}) {
 
   persistAndRerender();
 
-  // Cloud dual-write mirror — fire-and-forget. Local save above is the
-  // authority in T4; a cloud failure only logs a warning.
+  // Cloud dual-write mirror (T6 Phase 2) — 로컬 저장은 위에서 완료됨.
+  // 이제 mirror 결과를 await 해 실패를 사용자에게 표면화한다(로컬은 안전).
   {
     const itemRows = state.data.invoiceItems.filter(it => it.invoiceId === invoice.id);
     const refIds   = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
     const refSpecies = state.data.species.filter(s => refIds.has(s.id));
-    mirrorSaveInvoice(invoice, itemRows, refSpecies);
+    reportSync(await mirrorSaveInvoice(invoice, itemRows, refSpecies), "거래명세서 저장");
   }
 
   toast(`거래명세서 ${invoice.id} 저장 완료 (품목 ${resolved.length}건)`);
@@ -472,7 +482,7 @@ async function saveInvoice(header, items, extras = {}) {
  * @param {{invoiceDate,invoiceNumber,supplier,supplierPhone,supplierAddress}} header
  * @param {Array<{id?:string, speciesId?:string, speciesName:string, spec:string, unit:string, quantity:number, unitPrice:number, amount:number}>} items
  */
-function updateInvoice(invoiceId, header, items) {
+async function updateInvoice(invoiceId, header, items) {
   const inv = state.data.invoices.find(i => i.id === invoiceId);
   if (!inv) { toast("거래를 찾을 수 없습니다"); return; }
 
@@ -543,13 +553,14 @@ function updateInvoice(invoiceId, header, items) {
   persistAndRerender();
   refreshHistoryModal();
 
-  // Cloud dual-write mirror — fire-and-forget (version lookup + optimistic
-  // update inside cloudStore; backfills via save when not yet mirrored).
+  // Cloud dual-write mirror (T6 Phase 2) — 동기 로컬 변경은 위에서 완료.
+  // version lookup + optimistic update (미러 전이면 save 로 백필) 결과를
+  // await 해 실패를 표면화한다.
   {
     const itemRows = state.data.invoiceItems.filter(it => it.invoiceId === invoiceId);
     const refIds   = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
     const refSpecies = state.data.species.filter(s => refIds.has(s.id));
-    mirrorUpdateInvoice(inv, itemRows, refSpecies);
+    reportSync(await mirrorUpdateInvoice(inv, itemRows, refSpecies), "거래 수정");
   }
 }
 
@@ -576,7 +587,7 @@ function getSavedInvoiceSnapshot(invoiceId) {
  * it may still have items from other invoices; if it becomes empty its
  * stats simply go to zero (the card still renders).
  */
-function deleteInvoice(invoiceId) {
+async function deleteInvoice(invoiceId) {
   state.data.invoices     = state.data.invoices.filter(i => i.id !== invoiceId);
   state.data.invoiceItems = state.data.invoiceItems.filter(it => it.invoiceId !== invoiceId);
   persistAndRerender();
@@ -584,8 +595,8 @@ function deleteInvoice(invoiceId) {
   // Cascade to IndexedDB — best-effort, fire and forget.
   deleteAttachmentsForInvoice(invoiceId).catch(err =>
     console.warn("[deleteInvoice] attachment cleanup failed:", err));
-  // Cloud dual-write mirror — fire-and-forget.
-  mirrorDeleteInvoice(invoiceId);
+  // Cloud dual-write mirror (T6 Phase 2) — await 해 실패를 표면화.
+  reportSync(await mirrorDeleteInvoice(invoiceId), "거래 삭제");
 }
 
 /** Save to storage, rebuild filter chips (in case master lists changed), rerender. */
@@ -593,6 +604,16 @@ function persistAndRerender() {
   storage.save(state.data);
   refreshFilterUi(rerender);
   rerender();
+}
+
+/**
+ * T6 Phase 2 — mirror 결과를 사용자에게 표면화.
+ * skipped(=Cloud 미설정, LocalStorage 단독 모드)는 정상이므로 조용히 무시.
+ * 실제 실패(네트워크/RLS/version 등)만 toast 로 알린다. 로컬 저장은 이미 완료됨.
+ */
+function reportSync(result, label) {
+  if (!result || result.ok || result.skipped) return;
+  toast(`${label} 클라우드 동기화 실패 — 로컬에는 저장됨`);
 }
 
 // ============================================================

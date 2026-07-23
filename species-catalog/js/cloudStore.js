@@ -144,7 +144,7 @@ function speciesToRpc(sp) {
  *                  rpc 의 on conflict do nothing 이 기존 행을 보호)
  */
 export async function mirrorSaveInvoice(invoice, items, referencedSpecies = []) {
-  if (!isCloudConfigured()) return null;
+  if (!isCloudConfigured()) return { ok: false, skipped: true };
   try {
     const supabase = await getSupabase();
     const { data, error } = await supabase.rpc("save_invoice_tx", {
@@ -154,10 +154,10 @@ export async function mirrorSaveInvoice(invoice, items, referencedSpecies = []) 
     });
     if (error) throw error;
     console.info("[cloud] saveInvoice mirrored:", data?.invoiceId || invoice.id);
-    return data;
+    return { ok: true, data };
   } catch (err) {
     console.warn("[cloud] saveInvoice mirror failed:", err?.message || err);
-    return null;
+    return { ok: false, error: err?.message || String(err) };
   }
 }
 
@@ -166,7 +166,7 @@ export async function mirrorSaveInvoice(invoice, items, referencedSpecies = []) 
  * update_invoice_tx 호출. Cloud 에 행이 없으면(아직 미러 전) save 로 백필.
  */
 export async function mirrorUpdateInvoice(invoice, items, referencedSpecies = []) {
-  if (!isCloudConfigured()) return null;
+  if (!isCloudConfigured()) return { ok: false, skipped: true };
   try {
     const supabase = await getSupabase();
 
@@ -196,16 +196,16 @@ export async function mirrorUpdateInvoice(invoice, items, referencedSpecies = []
     });
     if (error) throw error;
     console.info("[cloud] updateInvoice mirrored:", invoice.id, "v" + data?.version);
-    return data;
+    return { ok: true, data };
   } catch (err) {
     console.warn("[cloud] updateInvoice mirror failed:", err?.message || err);
-    return null;
+    return { ok: false, error: err?.message || String(err) };
   }
 }
 
-/** deleteInvoice 미러 — Cloud 에 없으면(NOT_FOUND) 조용히 무시. */
+/** deleteInvoice 미러 — Cloud 에 없으면(NOT_FOUND) 이미 삭제된 것으로 보고 성공. */
 export async function mirrorDeleteInvoice(invoiceId) {
-  if (!isCloudConfigured()) return null;
+  if (!isCloudConfigured()) return { ok: false, skipped: true };
   try {
     const supabase = await getSupabase();
     const { error } = await supabase.rpc("delete_invoice_tx", {
@@ -213,10 +213,34 @@ export async function mirrorDeleteInvoice(invoiceId) {
     });
     if (error && !/NOT_FOUND/.test(error.message || "")) throw error;
     console.info("[cloud] deleteInvoice mirrored:", invoiceId);
-    return true;
+    return { ok: true };
   } catch (err) {
     console.warn("[cloud] deleteInvoice mirror failed:", err?.message || err);
-    return null;
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/**
+ * saveSpecies 미러 (T6 Phase 2) — 수종 기본 정보만 Cloud 에 upsert.
+ * species 테이블은 RLS 로 authenticated upsert 허용. 합성 invoice 는
+ * Cloud 재구성하지 않는다(구매 데이터는 invoice CRUD 로 유지 · 승인 범위).
+ *
+ * @param {object} species  앱 shape Species (id 포함)
+ * @returns {Promise<{ok:boolean, skipped?:boolean, error?:string}>}
+ */
+export async function mirrorSaveSpecies(species) {
+  if (!isCloudConfigured()) return { ok: false, skipped: true };
+  try {
+    const supabase = await getSupabase();
+    const { error } = await supabase
+      .from("species")
+      .upsert(speciesToDb(species), { onConflict: "id" });
+    if (error) throw error;
+    console.info("[cloud] saveSpecies mirrored:", species.id);
+    return { ok: true };
+  } catch (err) {
+    console.warn("[cloud] saveSpecies mirror failed:", err?.message || err);
+    return { ok: false, error: err?.message || String(err) };
   }
 }
 
