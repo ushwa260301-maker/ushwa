@@ -27,7 +27,8 @@ import { matchSpecies } from "./matcher.js";
 import { initDebugFlag } from "./debugFlag.js";
 import { initDebugPanel } from "./debugPanel.js";
 import { initAuthGate } from "./auth.js";
-import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSaveSpecies, fetchAll } from "./cloudStore.js";
+import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSaveSpecies, mirrorDeleteSpecies, fetchAll } from "./cloudStore.js";
+import { addPending, removePending, listPending, hasPending, setLastSync } from "./syncManager.js";
 import { nextId } from "./utils.js";
 
 // ============================================================
@@ -88,22 +89,36 @@ async function saveSpecies(payload, id) {
   // invoice 는 Cloud 재구성하지 않는다(구매 데이터는 invoice CRUD 로 유지 ·
   // 승인 범위). 실패 시 사용자에게 표면화.
   const savedSpecies = state.data.species.find(s => s.id === speciesId);
-  if (savedSpecies) reportSync(await mirrorSaveSpecies(savedSpecies), "수종 저장");
+  if (savedSpecies) reportSync(await mirrorSaveSpecies(savedSpecies), "species", speciesId, "수종 저장");
 }
 
-/** Delete a species and cascade to its invoices/items. */
-function deleteSpecies(id) {
+/**
+ * Delete a species (T6 Phase 3 · 정책 iii).
+ * 참조 거래(invoice_items)가 있으면 삭제를 거부한다 — invoice/invoiceItems 는
+ * 거래 이력이므로 보존한다(기존 purge 동작 제거). 참조가 없을 때만 삭제하고
+ * Cloud 에도 반영한다(FK 가 서버측 백스톱).
+ */
+async function deleteSpecies(id) {
   const sp = state.data.species.find(s => s.id === id);
   if (!sp) return;
+
+  // 정책 (iii): 참조 거래가 있으면 거부 (거래 이력 보존).
+  const referenced = state.data.invoiceItems.some(it => it.speciesId === id);
+  if (referenced) {
+    toast(`「${sp.name}」은(는) 거래 이력이 있어 삭제할 수 없습니다`);
+    return;
+  }
+
   if (!confirm(`「${sp.name}」을(를) 삭제하시겠습니까?`)) return;
   state.data.species = state.data.species.filter(s => s.id !== id);
-  purgeInvoiceRecordsFor(id);
+  // 참조가 없으므로 purge 할 invoice/items 없음.
   toast("삭제되었습니다");
   persistAndRerender();
-  // TODO(T6 Phase 2+): Cloud species 삭제는 제외됨. Cloud
-  // invoice_items.species_id → species 는 cascade 가 아니고, 로컬 삭제는
-  // 연관 invoice/items 도 purge 하므로, FK 및 invoice 관계 삭제 정책을
-  // 확정한 뒤 별도 Phase 에서 Cloud 반영한다. 현재는 로컬만 삭제.
+
+  // Cloud 반영 (T6 Phase 3) — await + pending 관리. 성공 시 잔여 pending 정리.
+  const delRes = await mirrorDeleteSpecies(id);
+  reportSync(delRes, "speciesDelete", id, "수종 삭제");
+  if (delRes && delRes.ok) removePending("species", id);
 }
 
 // ============================================================
@@ -455,7 +470,7 @@ async function saveInvoice(header, items, extras = {}) {
     const itemRows = state.data.invoiceItems.filter(it => it.invoiceId === invoice.id);
     const refIds   = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
     const refSpecies = state.data.species.filter(s => refIds.has(s.id));
-    reportSync(await mirrorSaveInvoice(invoice, itemRows, refSpecies), "거래명세서 저장");
+    reportSync(await mirrorSaveInvoice(invoice, itemRows, refSpecies), "invoice", invoice.id, "거래명세서 저장");
   }
 
   toast(`거래명세서 ${invoice.id} 저장 완료 (품목 ${resolved.length}건)`);
@@ -560,7 +575,7 @@ async function updateInvoice(invoiceId, header, items) {
     const itemRows = state.data.invoiceItems.filter(it => it.invoiceId === invoiceId);
     const refIds   = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
     const refSpecies = state.data.species.filter(s => refIds.has(s.id));
-    reportSync(await mirrorUpdateInvoice(inv, itemRows, refSpecies), "거래 수정");
+    reportSync(await mirrorUpdateInvoice(inv, itemRows, refSpecies), "invoice", invoiceId, "거래 수정");
   }
 }
 
@@ -595,8 +610,10 @@ async function deleteInvoice(invoiceId) {
   // Cascade to IndexedDB — best-effort, fire and forget.
   deleteAttachmentsForInvoice(invoiceId).catch(err =>
     console.warn("[deleteInvoice] attachment cleanup failed:", err));
-  // Cloud dual-write mirror (T6 Phase 2) — await 해 실패를 표면화.
-  reportSync(await mirrorDeleteInvoice(invoiceId), "거래 삭제");
+  // Cloud dual-write mirror (T6 Phase 3) — await + pending 관리.
+  const delRes = await mirrorDeleteInvoice(invoiceId);
+  reportSync(delRes, "invoiceDelete", invoiceId, "거래 삭제");
+  if (delRes && delRes.ok) removePending("invoice", invoiceId);   // 삭제되었으니 잔여 pending 정리
 }
 
 /** Save to storage, rebuild filter chips (in case master lists changed), rerender. */
@@ -607,13 +624,54 @@ function persistAndRerender() {
 }
 
 /**
- * T6 Phase 2 — mirror 결과를 사용자에게 표면화.
- * skipped(=Cloud 미설정, LocalStorage 단독 모드)는 정상이므로 조용히 무시.
- * 실제 실패(네트워크/RLS/version 등)만 toast 로 알린다. 로컬 저장은 이미 완료됨.
+ * T6 Phase 2/3 — mirror 결과를 사용자에게 표면화하고 sync 상태를 기록.
+ * skipped(=Cloud 미설정, LocalStorage 단독 모드)는 정상 → 조용히 무시.
+ * 성공 → pending 해제. 실패(네트워크/RLS/version 등) → pending 기록 + toast.
+ * pending 은 다음 로드 시 flushPendingWrites 로 재시도되어 유실을 막는다.
  */
-function reportSync(result, label) {
-  if (!result || result.ok || result.skipped) return;
-  toast(`${label} 클라우드 동기화 실패 — 로컬에는 저장됨`);
+function reportSync(result, kind, id, label) {
+  if (!result || result.skipped) return;
+  if (result.ok) { removePending(kind, id); return; }
+  addPending(kind, id);
+  toast(`${label} 클라우드 동기화 실패 — 로컬에는 저장됨 (다음 접속 시 자동 재시도)`);
+}
+
+/**
+ * T6 Phase 3 — 미동기(pending) 쓰기를 현재 로컬 상태에서 Cloud 로 재시도.
+ * 성공 항목은 pending 에서 제거. 모든 mirror 가 멱등이라 반복 안전.
+ * 실패(오프라인/미설정) 시 즉시 중단하고 pending 을 남겨 로컬을 보호한다.
+ * @param {object} localData  storage.load() 결과 (재-mirror 원본)
+ * @returns {Promise<{tried:number, remaining:number}>}
+ */
+async function flushPendingWrites(localData) {
+  const pend = listPending();
+  if (!pend.length) return { tried: 0, remaining: 0 };
+  console.info("[sync] pending 재시도:", pend.length, "건");
+  for (const e of pend) {
+    let res = null;
+    if (e.kind === "invoiceDelete") {
+      res = await mirrorDeleteInvoice(e.id);
+    } else if (e.kind === "speciesDelete") {
+      res = await mirrorDeleteSpecies(e.id);
+    } else if (e.kind === "invoice") {
+      const inv = (localData?.invoices || []).find(i => i.id === e.id);
+      if (!inv) { removePending("invoice", e.id); continue; }   // 로컬에 없으면 폐기
+      const itemRows   = (localData.invoiceItems || []).filter(it => it.invoiceId === e.id);
+      const refIds     = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
+      const refSpecies = (localData.species || []).filter(s => refIds.has(s.id));
+      res = await mirrorUpdateInvoice(inv, itemRows, refSpecies);
+    } else if (e.kind === "species") {
+      const sp = (localData?.species || []).find(s => s.id === e.id);
+      if (!sp) { removePending("species", e.id); continue; }
+      res = await mirrorSaveSpecies(sp);
+    } else {
+      removePending(e.kind, e.id);   // 알 수 없는 종류 → 폐기
+      continue;
+    }
+    if (res && res.ok) removePending(e.kind, e.id);
+    else break;   // 실패(오프라인/미설정) → 나머지도 실패 예상 · pending 유지·중단
+  }
+  return { tried: pend.length, remaining: listPending().length };
 }
 
 // ============================================================
@@ -645,6 +703,17 @@ function isCloudUsable(cloud) {
  */
 async function loadCloudFirst(localData) {
   try {
+    // T6 Phase 3 — 미동기 쓰기가 있으면 먼저 Cloud 로 flush 시도.
+    // flush 후에도 pending 이 남으면(오프라인 등) Cloud 채택을 보류해,
+    // 아직 반영 안 된 로컬 변경이 Cloud 값에 덮여 사라지는 것을 막는다.
+    if (hasPending()) {
+      await flushPendingWrites(localData);
+      if (hasPending()) {
+        console.info("[app] data source: LOCAL_CACHE (pending 보호 — 미동기 변경 유지)");
+        return localData;
+      }
+    }
+
     const cloud = await fetchAll();               // 미설정 → null
     if (isCloudUsable(cloud)) {
       const merged = {
@@ -655,6 +724,7 @@ async function loadCloudFirst(localData) {
         invoiceItems: cloud.invoiceItems
       };
       storage.save(merged);                        // 오프라인 대비 캐시 갱신
+      setLastSync();
       console.info("[app] data source: CLOUD");
       return merged;
     }

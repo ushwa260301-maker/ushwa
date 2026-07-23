@@ -244,6 +244,30 @@ export async function mirrorSaveSpecies(species) {
   }
 }
 
+/**
+ * deleteSpecies 미러 (T6 Phase 3) — 참조 없는 수종만 삭제.
+ * Cloud `invoice_items.species_id → species` 는 cascade 가 아니므로,
+ * Cloud 측 참조가 있으면 DB(FK)가 삭제를 거부한다(정책 iii 서버 백스톱).
+ * 앱은 삭제 전 로컬 참조를 먼저 확인하지만, Cloud 측 참조가 있으면 여기서
+ * FK 오류가 표면화된다.
+ *
+ * @param {string} speciesId
+ * @returns {Promise<{ok:boolean, skipped?:boolean, error?:string}>}
+ */
+export async function mirrorDeleteSpecies(speciesId) {
+  if (!isCloudConfigured()) return { ok: false, skipped: true };
+  try {
+    const supabase = await getSupabase();
+    const { error } = await supabase.from("species").delete().eq("id", speciesId);
+    if (error) throw error;
+    console.info("[cloud] deleteSpecies mirrored:", speciesId);
+    return { ok: true };
+  } catch (err) {
+    console.warn("[cloud] deleteSpecies mirror failed:", err?.message || err);
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
 // ============================================================
 // 읽기 — fetchAll (T6 읽기 전환에서 사용 · T4 에서는 미사용)
 // ============================================================
