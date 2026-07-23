@@ -27,7 +27,7 @@ import { matchSpecies } from "./matcher.js";
 import { initDebugFlag } from "./debugFlag.js";
 import { initDebugPanel } from "./debugPanel.js";
 import { initAuthGate } from "./auth.js";
-import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice } from "./cloudStore.js";
+import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, fetchAll } from "./cloudStore.js";
 import { nextId } from "./utils.js";
 
 // ============================================================
@@ -595,6 +595,55 @@ function persistAndRerender() {
   rerender();
 }
 
+// ============================================================
+// T6 Phase 1 — 읽기 경로 Cloud 우선 (읽기만; 쓰기·폴백 무변경)
+// ============================================================
+
+/**
+ * Cloud fetchAll() 결과가 "사용 가능"한지 엄격 판정.
+ * 아래는 모두 실패(=로컬 캐시 사용)로 본다:
+ *   · undefined/null (미설정·미로그인·fetchAll 내부 실패)
+ *   · species/invoices/invoiceItems 중 하나라도 배열이 아님
+ *   · 세 배열이 모두 비어 있음 (빈 Cloud 오검출 방지)
+ */
+function isCloudUsable(cloud) {
+  if (!cloud) return false;
+  const { species, invoices, invoiceItems } = cloud;
+  if (!Array.isArray(species) || !Array.isArray(invoices) || !Array.isArray(invoiceItems)) return false;
+  if (species.length === 0 && invoices.length === 0 && invoiceItems.length === 0) return false;
+  return true;
+}
+
+/**
+ * 읽기 경로 Cloud 우선. 성공 시 Cloud 도메인 데이터 채택 + 로컬 meta 보존 +
+ * LocalStorage 캐시 갱신. 실패/네트워크/미로그인/권한/빈결과 → localData 그대로.
+ * fetchAll 은 미설정 시 null 을 반환하고, 실패 시 throw 하므로 try/catch 로 폴백.
+ *
+ * @param {object|null} localData  storage.load() 결과 (폴백 원본 · meta 출처)
+ * @returns {Promise<object>}
+ */
+async function loadCloudFirst(localData) {
+  try {
+    const cloud = await fetchAll();               // 미설정 → null
+    if (isCloudUsable(cloud)) {
+      const merged = {
+        categories:   localData?.categories || [],   // meta 는 로컬 보존 (Cloud 에 없음)
+        colors:       localData?.colors || [],
+        species:      cloud.species,
+        invoices:     cloud.invoices,
+        invoiceItems: cloud.invoiceItems
+      };
+      storage.save(merged);                        // 오프라인 대비 캐시 갱신
+      console.info("[app] data source: CLOUD");
+      return merged;
+    }
+  } catch (err) {
+    console.warn("[app] cloud read failed:", err?.message || err);
+  }
+  console.info("[app] data source: LOCAL_CACHE");
+  return localData;
+}
+
 const cardHandlers = {
   onEdit: id => openModal(id),
   onDelete: id => deleteSpecies(id),
@@ -729,7 +778,7 @@ async function init() {
 
   cacheElements();
 
-  // Load persisted data; fall back to fetched seed on first visit.
+  // Load persisted data (LocalStorage cache); fall back to fetched seed on first visit.
   let data = storage.load();
   if (!data) {
     try {
@@ -741,6 +790,12 @@ async function init() {
       data = { categories: [], colors: [], species: [] };
     }
   }
+
+  // T6 Phase 1 — 읽기 경로 Cloud 우선. 성공 시 Cloud 채택 + 캐시 갱신,
+  // 실패/빈결과/미로그인/오프라인 → 위 LocalStorage(data) 유지.
+  // storage.load() 는 위에서 그대로 폴백으로 존속한다 (제거하지 않음).
+  data = await loadCloudFirst(data);
+
   state.data = data;
 
   initModal({
