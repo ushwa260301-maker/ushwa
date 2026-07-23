@@ -837,6 +837,32 @@ function stripCorporateMarker(name) {
     .trim();
 }
 
+/**
+ * Prefer parenthesized business name when the captured candidate follows the
+ * Korean receipt convention `<personName>(<businessName>)` or
+ * `예금주: <name>(<business>)`. Only fires when the parenthesized inner text
+ * itself contains one of the generic BIZ_SUFFIX_KEYWORDS, so we never guess
+ * — we only unwrap when the inner text is unambiguously a business name.
+ *
+ * Generalizable — no hardcoded company/person/account holder. Safe for any
+ * candidate lacking parens or with inner text that has no suffix keyword.
+ *
+ * Examples:
+ *   "예금주: 문명석(서울원예가든센터)" → "서울원예가든센터" (inner has 원예)
+ *   "홍길동(대림원예)"                   → "대림원예"        (inner has 원예)
+ *   "김철수(개인)"                        → 원래 값          (inner has no suffix)
+ *   "천리포수목원"                        → 원래 값          (no parens)
+ */
+function preferParenthesizedBusinessName(name) {
+  const s = String(name || "");
+  const m = s.match(/\(([^)]+)\)/);
+  if (!m) return name;
+  const inner = m[1].trim();
+  if (!inner) return name;
+  if (BIZ_SUFFIX_KEYWORDS.some(k => inner.includes(k))) return inner;
+  return name;
+}
+
 function detectSupplier(text) {
   const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
   const head = lines.slice(0, 20);
@@ -849,9 +875,9 @@ function detectSupplier(text) {
   let name = "";
   const bizKey = headText.match(BIZ_KEYWORD_RE);
   if (bizKey) {
-    name = stripCorporateMarker(
+    name = preferParenthesizedBusinessName(stripCorporateMarker(
       trimAfterKnownFields(bizKey[1].replace(/\s+/g, " ").trim())
-    );
+    ));
   }
   if (!name) {
     for (const l of head) {
@@ -865,11 +891,11 @@ function detectSupplier(text) {
           /^(?:상\s*호|업체명|공급자|공급업체|사업자명)[ \t:.\-–]*/i, ""
         );
         if (HEADER_LINE_RE.test(stripped)) continue;
-        const candidate = stripCorporateMarker(
+        const candidate = preferParenthesizedBusinessName(stripCorporateMarker(
           trimAfterKnownFields(
             stripped.replace(/[·]+/g, " ").replace(/\s+/g, " ").trim()
           )
-        );
+        ));
         if (candidate.length >= 2 && candidate.length <= 30) {
           name = candidate;
           break;

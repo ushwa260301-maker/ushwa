@@ -1,0 +1,43 @@
+{
+  "id": "24-parens-account-holder-supplier",
+  "description": "서울원예가든센터 · 1.27 MB iPhone JPEG · Tesseract confidence 72% · 헤더 상단부 OCR 손실 · 하단 인쇄부(계좌/예금주/문의전화) 인식 성공 · 상호가 '예금주: 이름(상호)' 관용 표기로 raw 에 존재 · Parser 가 label+이름+괄호 통째로 잡음",
+  "ocr": "거래명세표\n\nNort) er    귀하\n 129 60- coT95 8%\n하산 | msoptenn [seu Rad\n\n서울특별시 서초구 헌인릉1길 Tm. =e\n\n도레 me |9| mien |\n작성년월일    공급대가총액     비고\n2024. 6.70  \\ 9 $ Efe\n\n위 금액을\"영수 (청구) 합니다.\n\n수량ㅣ 단가     공급대가(금액)\n\n그&00으\n[  X  60>\nefor\n\n0 00>\n\n계좌 : 농협 351-1376-9158-53\n예금주: 문명석(서울원예가든센터)\n문의전화. 010-5329-5933\n\nbe\nPUES\n",
+  "expect": {
+    "invoiceDate": "2026-06-10",
+    "supplier": {
+      "name": "서울원예가든센터",
+      "region": "서초구",
+      "contact": "010-5329-5933"
+    }
+  },
+  "coverage": {
+    "rows": false,
+    "reason": "손글씨 표 6행(설유화/병아리꽃/바이텍스/매튼부시/송학/휴케라) Tesseract raw 에 부재. Rows OCR 3-Strike triggered (fixtures 21·22·23·24) → Parser 층 수정 금지, OCR Engine/전처리 층 대상. 별도 iteration."
+  },
+  "changeLog": [
+    {
+      "field": "supplier.name",
+      "before": null,
+      "after": "서울원예가든센터",
+      "reason": "OCR raw 하단 line 16 에 '예금주: 문명석(서울원예가든센터)' exact 존재. Parser 가 예금주 라벨 + 성명 + 괄호 통째로 캡처. 한국식 명세서 '예금주:이름(상호)' 관용 표기 처리 필요."
+    },
+    {
+      "field": "invoiceDate",
+      "before": null,
+      "after": "2026-06-10",
+      "reason": "이미지 상 '2026. 6.10.' 확인. OCR raw '2024. 6.70' → digit projection sim 0.625 < 0.85 → Parser 수정 금지 (contract). OCR 층 문제로 분류."
+    },
+    {
+      "field": "supplier.contact",
+      "before": null,
+      "after": "010-5329-5933",
+      "reason": "OCR raw 하단 line 17 에 exact 존재. 현재 파서 이미 정답 반환."
+    },
+    {
+      "field": "supplier.region",
+      "before": null,
+      "after": "서초구",
+      "reason": "OCR raw line 5 에 '서울특별시 서초구 헌인릉1길' 존재. 현재 파서 이미 substring 매치."
+    }
+  ]
+}
