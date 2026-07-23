@@ -56,6 +56,29 @@
 - Migration · 데이터 이전 · Cloud SoT 전환 · Dual-Write 제거
 - 신규 기능 개발 · 리팩토링
 
+## 미래 제안 (Sprint 밖 · 구현하지 않음 · 기록 전용)
+
+> Decision Priority(Business>Product>Data>Architecture>Sprint>Code)에 따라
+> 도출한 Sprint 밖 아이디어. **구현하지 않는다.** 7/7 PASS 이후 검토 대상.
+> (대화의 `## 프로젝트 제안`·`## Business Proposal` 을 영속 기록.)
+
+### 데이터·아키텍처 제안
+- **필드 단위 OCR Confidence** — `ocr_corrections.field_confidence jsonb`.
+  어느 필드가 약한지 정량화 → OCR 개선 최우선 근거 (T9 배선 시).
+- **engine_version 기록 배선** — 파싱 결과의 엔진 버전 저장 → 시간에 따른
+  A/B 개선 측정 가능 (현재 컬럼 존재하나 항상 '').
+- **Supplier Alias 매핑** — `supplier_aliases(alias_norm, supplier_id)`.
+  OCR 훼손 업체명 중복 방지·데이터 무결성. **하드코딩 금지, 데이터로만.**
+- **수정↔이미지 영역(bbox) 연결** — `ocr_corrections.attachment_id` +
+  `regions jsonb`. 영역 단위 학습·자동 재파싱 (T8 이후).
+
+### Business 제안 (수익모델·대상 규모는 VISION `[확인 필요]`)
+- **수종별 실거래 시세 데이터 자산** — `price_history` 기반. 자가신고가
+  아닌 실거래 시세 → 복제 난이도 높은 해자.
+- **공급업체 네트워크** — 실거래로 검증된 활성 공급업체 → 발주·견적 매칭 토대.
+- **견적/발주 자동화** — 수종+시세+공급업체 결합 시 성립. 다음 모듈 후보.
+- **획득 루프** — 무료 OCR = 획득 훅, `ocr_corrections` = 해자. freemium 후보.
+
 ## 명시적으로 확정되지 않은 것 `[확인 필요]`
 
 - 7/7 PASS 이후 T5~T10 의 세부 순서 조정 여부 [확인 필요]
