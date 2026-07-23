@@ -27,6 +27,7 @@ import { matchSpecies } from "./matcher.js";
 import { initDebugFlag } from "./debugFlag.js";
 import { initDebugPanel } from "./debugPanel.js";
 import { initAuthGate } from "./auth.js";
+import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice } from "./cloudStore.js";
 import { nextId } from "./utils.js";
 
 // ============================================================
@@ -437,6 +438,16 @@ async function saveInvoice(header, items, extras = {}) {
   }
 
   persistAndRerender();
+
+  // Cloud dual-write mirror — fire-and-forget. Local save above is the
+  // authority in T4; a cloud failure only logs a warning.
+  {
+    const itemRows = state.data.invoiceItems.filter(it => it.invoiceId === invoice.id);
+    const refIds   = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
+    const refSpecies = state.data.species.filter(s => refIds.has(s.id));
+    mirrorSaveInvoice(invoice, itemRows, refSpecies);
+  }
+
   toast(`거래명세서 ${invoice.id} 저장 완료 (품목 ${resolved.length}건)`);
   return { invoiceId: invoice.id, newSpecies, reusedSpecies };
 }
@@ -531,6 +542,15 @@ function updateInvoice(invoiceId, header, items) {
 
   persistAndRerender();
   refreshHistoryModal();
+
+  // Cloud dual-write mirror — fire-and-forget (version lookup + optimistic
+  // update inside cloudStore; backfills via save when not yet mirrored).
+  {
+    const itemRows = state.data.invoiceItems.filter(it => it.invoiceId === invoiceId);
+    const refIds   = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
+    const refSpecies = state.data.species.filter(s => refIds.has(s.id));
+    mirrorUpdateInvoice(inv, itemRows, refSpecies);
+  }
 }
 
 /**
@@ -564,6 +584,8 @@ function deleteInvoice(invoiceId) {
   // Cascade to IndexedDB — best-effort, fire and forget.
   deleteAttachmentsForInvoice(invoiceId).catch(err =>
     console.warn("[deleteInvoice] attachment cleanup failed:", err));
+  // Cloud dual-write mirror — fire-and-forget.
+  mirrorDeleteInvoice(invoiceId);
 }
 
 /** Save to storage, rebuild filter chips (in case master lists changed), rerender. */
