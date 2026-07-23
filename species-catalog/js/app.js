@@ -709,6 +709,24 @@ async function init() {
     console.warn("[app] cloudSelfTest load skipped:", err?.message || err);
   }
 
+  // 데이터 이전(T5) — ?migrate=1 일 때만 (지연 import · 평상시 0비용).
+  // 자동 실행은 DRY-RUN(쓰기 없음)뿐. 실제 이전은 콘솔에서 명시 호출:
+  //   await window.speciesMigration.runMigration({ dryRun: false })
+  try {
+    const migration = await import("./migration.js");
+    if (migration.isMigrationRequested()) {
+      window.speciesMigration = migration;
+      const rec = await migration.runMigration({ dryRun: true });
+      console.info(
+        "[app] 데이터 이전 DRY-RUN 완료 — 실제 이전은 콘솔에서:\n" +
+        "  await window.speciesMigration.runMigration({ dryRun: false })",
+        rec
+      );
+    }
+  } catch (err) {
+    console.warn("[app] migration load skipped:", err?.message || err);
+  }
+
   cacheElements();
 
   // Load persisted data; fall back to fetched seed on first visit.

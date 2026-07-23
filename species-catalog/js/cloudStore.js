@@ -47,6 +47,10 @@ function speciesFromDb(row) {
   };
 }
 
+// speciesToDb / invoiceToRpc / itemToRpc 는 migration.js(T5)도 재사용한다
+// (동일 매핑 단일 소스 유지). export 는 additive — 기존 동작 불변.
+export { speciesToDb };
+
 function invoiceFromDb(row, attachmentByInvoice) {
   const inv = {
     id:              row.id,
@@ -87,7 +91,8 @@ function itemFromDb(row) {
 }
 
 // rpc.sql 의 save_invoice_tx / update_invoice_tx 가 읽는 camelCase 키.
-function invoiceToRpc(inv) {
+// export: migration.js(T5) 재사용 — additive, 동작 불변.
+export function invoiceToRpc(inv) {
   return {
     id:              inv.id || "",
     invoiceDate:     inv.invoiceDate,
@@ -98,7 +103,7 @@ function invoiceToRpc(inv) {
   };
 }
 
-function itemToRpc(it) {
+export function itemToRpc(it) {
   return {
     id:          it.id || "",
     speciesId:   it.speciesId || "",
