@@ -124,26 +124,60 @@ export async function runCloudSelfTest(ctx = {}) {
     return finish(results, ctx);
   }
 
-  // 7. read + cleanup
+  // 7. read — 저장분이 5개 테이블에 실제로 생성됐는지 종합 검증.
+  //    사용자 요구 3(users)·6(invoices)·7(invoice_items)·8(suppliers)·
+  //    9(audit_log)를 이 한 단계에서 전부 확인한다.
   try {
-    const { data: rows, error } = await supabase
-      .from("invoices").select("id, invoice_number, supplier").eq("id", invoiceId);
-    if (error) throw error;
-    const found = rows?.length === 1 && rows[0].invoice_number === marker;
-    push("7 read", found, found ? `조회 성공 · ${rows[0].supplier}` : "저장분 조회 불일치");
+    const inv = await supabase
+      .from("invoices").select("id, invoice_number, supplier, supplier_id, uploaded_by")
+      .eq("id", invoiceId).maybeSingle();
+    if (inv.error) throw inv.error;
+    if (!inv.data || inv.data.invoice_number !== marker) {
+      push("7 read", false, "invoices 저장분 조회 불일치");
+      return await cleanupAndFinish(supabase, invoiceId, results, ctx);
+    }
+
+    const items = await supabase
+      .from("invoice_items").select("id", { count: "exact", head: true })
+      .eq("invoice_id", invoiceId);
+    const sup = await supabase
+      .from("suppliers").select("id, name").eq("id", inv.data.supplier_id).maybeSingle();
+    const usr = await supabase
+      .from("users").select("id").eq("id", inv.data.uploaded_by).maybeSingle();
+    const audit = await supabase
+      .from("audit_log").select("id", { count: "exact", head: true })
+      .eq("table_name", "invoices").eq("row_id", invoiceId);
+
+    const checks = {
+      invoices:      !!inv.data,
+      invoice_items: (items.count ?? 0) >= 1,
+      suppliers:     !!sup.data,
+      users:         !!usr.data,
+      audit_log:     (audit.count ?? 0) >= 1
+    };
+    const allOk = Object.values(checks).every(Boolean);
+    const detail = Object.entries(checks)
+      .map(([k, v]) => `${v ? "✓" : "✗"}${k}`).join(" · ");
+    push("7 read", allOk, detail +
+      (checks.audit_log ? "" : "  (audit_log 0건 — triggers.sql 적용 확인)"));
   } catch (err) {
-    push("7 read", false, `조회 실패: ${err?.message || err}`);
-  } finally {
-    // 테스트 잔류물 정리 — 실패해도 보고만.
+    push("7 read", false, `종합 검증 실패: ${err?.message || err}`);
+  }
+
+  return await cleanupAndFinish(supabase, invoiceId, results, ctx);
+}
+
+/** 테스트 잔류물(거래 1건)을 삭제하고 결과를 리포트한다. */
+async function cleanupAndFinish(supabase, invoiceId, results, ctx) {
+  if (invoiceId) {
     try {
       const { error } = await supabase.rpc("delete_invoice_tx", { p_invoice_id: invoiceId });
       if (error) throw error;
-      console.info(`[cloudtest] cleanup ✓ ${invoiceId} 삭제됨`);
+      console.info(`[cloudtest] cleanup ✓ ${invoiceId} 삭제됨 (audit_log 에 DELETE 이력은 정상 잔류)`);
     } catch (err) {
-      console.warn(`[cloudtest] cleanup 실패 (수동 삭제 필요: ${invoiceId}):`, err?.message || err);
+      console.warn(`[cloudtest] cleanup 실패 (Dashboard 수동 삭제 필요: ${invoiceId}):`, err?.message || err);
     }
   }
-
   return finish(results, ctx);
 }
 

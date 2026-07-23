@@ -79,7 +79,9 @@ export async function signInWithGoogle() {
   if (!supabase) return;
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo: window.location.origin + window.location.pathname }
+    // href(전체 URL) 로 복귀 — pathname 만 쓰면 ?cloudtest=1 등 쿼리가
+    // 유실되어 로그인 후 셀프테스트가 재실행되지 않는다.
+    options: { redirectTo: window.location.href }
   });
   if (error) {
     console.error("[auth] signIn failed:", error.message);
