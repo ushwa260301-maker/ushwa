@@ -35,8 +35,10 @@ export function currentUser() {
  * @returns {Promise<object|null>}
  */
 export async function initAuthGate() {
+  console.info("[auth] initAuthGate() 진입");
   if (!isCloudConfigured()) {
-    console.info("[auth] cloud not configured — login gate skipped");
+    console.warn("[auth] cloud not configured — 게이트 SKIP (config 빈값 or 구버전 캐시). " +
+      "→ supabaseConfig.js 값 확인 · 브라우저 강력 새로고침(Cmd/Ctrl+Shift+R)");
     return null;
   }
 
@@ -57,10 +59,13 @@ export async function initAuthGate() {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
+      console.info("[auth] 기존 세션 발견 — 게이트 SKIP · 이미 로그인됨:", session.user?.email,
+        "→ 로그인 화면을 다시 보려면 헤더 프로필칩 클릭(로그아웃) 또는 localStorage 초기화");
       await handleSignedIn(supabase, session);
       watchAuthChanges(supabase);
       return sessionUser;
     }
+    console.info("[auth] 세션 없음 — 로그인 게이트 표시");
   } catch (err) {
     console.warn("[auth] getSession failed:", err?.message || err);
   }
@@ -154,7 +159,14 @@ async function handleSignedIn(supabase, session) {
 const GATE_ID = "authGateOverlay";
 
 function showGate() {
-  if (document.getElementById(GATE_ID)) return;
+  if (document.getElementById(GATE_ID)) {
+    console.info("[gate] 이미 표시됨 — 재생성 skip");
+    return;
+  }
+  if (!document.body) {
+    console.error("[gate] document.body 없음 — 게이트 삽입 불가");
+    return;
+  }
 
   const overlay = document.createElement("div");
   overlay.id = GATE_ID;

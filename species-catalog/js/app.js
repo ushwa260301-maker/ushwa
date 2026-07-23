@@ -686,6 +686,7 @@ function wireFilterRail() {
 // ============================================================
 
 async function init() {
+  console.info("[app] init() 시작 · readyState:", document.readyState);
   // Debug flag first so <html class="debug-mode"> is set before any DOM
   // element with .debug-only decides its visibility.
   initDebugFlag();

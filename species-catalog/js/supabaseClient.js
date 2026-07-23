@@ -31,7 +31,13 @@ const SUPABASE_SDK_SRC =
 
 /** Cloud 모드 여부 — 두 상수가 모두 채워졌을 때만 true. */
 export function isCloudConfigured() {
-  return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+  const ok = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+  console.info(
+    "[config] isCloudConfigured:", ok,
+    "· url:", SUPABASE_URL ? SUPABASE_URL : "(빈값)",
+    "· key:", SUPABASE_ANON_KEY ? SUPABASE_ANON_KEY.slice(0, 12) + "…" : "(빈값)"
+  );
+  return ok;
 }
 
 /** @type {Promise<object>|null} */
@@ -48,6 +54,7 @@ let clientPromise = null;
 export async function getSupabase() {
   if (!isCloudConfigured()) return null;
   if (clientPromise) return clientPromise;
+  console.info("[supabase] loading SDK from CDN:", SUPABASE_SDK_SRC);
   clientPromise = import(/* webpackIgnore: true */ SUPABASE_SDK_SRC)
     .then(mod => {
       const { createClient } = mod;
@@ -58,7 +65,7 @@ export async function getSupabase() {
           detectSessionInUrl: true    // OAuth redirect 복귀 처리
         }
       });
-      console.info("[supabase] client initialized");
+      console.info("[supabase] client initialized ✓");
       return client;
     })
     .catch(err => {
