@@ -6,13 +6,14 @@
 
 ## 현재 Sprint (확정)
 
-### Sprint: Cloud Self Test 7/7 PASS
+### Sprint: Cloud Self Test 7/7 PASS — ✅ 완료 (2026-07-23)
 
-**목표**: 실제 사용자 환경(브라우저)에서 Cloud Self Test 7단계를 모두
-통과시킨다. 이것이 통과하기 전에는 **Migration(T5)·신규 기능·리팩토링을
-절대 진행하지 않는다.**
+**목표(달성)**: 실제 사용자 환경(브라우저)에서 Cloud Self Test 7단계를
+모두 통과시킨다. → **7/7 PASS 확인**(사용자 PC 브라우저 `?cloudtest=1`).
+게이트 해제 — 다음 Sprint 는 **T5 migration.js**.
 
-**현재 하위 작업**: 로그인 게이트 미표시 원인 제거 → 그 다음 7/7 검증.
+**다음 하위 작업**: 운영 체크리스트(`docs/cloud-test-log.md`) 기준 점검 →
+T5(migration.js) 설계.
 
 **판단 기준**: 브라우저 `?cloudtest=1` 결과만. (`cloud-smoke.mjs` 는 참고용)
 
@@ -31,12 +32,12 @@
 
 | 단계 | 내용 | 상태 |
 |---|---|---|
-| T1 | Supabase 스키마 (schema/policies/triggers/rpc.sql) | ✅ 코드 작성 완료 · **대시보드 적용 [확인 필요]** |
+| T1 | Supabase 스키마 (schema/policies/triggers/rpc.sql) | ✅ 완료 · **대시보드 적용·동작 확인 (7/7)** |
 | T2 | supabaseClient.js | ✅ 완료 |
-| T3 | auth.js + 로그인 게이트 | ✅ 코드 완료 · **브라우저 실증 미완** |
-| T4 | cloudStore.js + dual-write 미러 | ✅ 코드 완료 · 실동작 미검증 |
-| **현재** | **Cloud Self Test 7/7 PASS** | 🔄 진행 중 |
-| T5 | migration.js (LocalStorage → Cloud 1회 승격) | ⛔ **7/7 PASS 전 금지** |
+| T3 | auth.js + 로그인 게이트 | ✅ 완료 · **브라우저 실증 완료 (7/7)** |
+| T4 | cloudStore.js + dual-write 미러 | ✅ 코드 완료 · **write/read 실증 (7/7)** |
+| **게이트** | **Cloud Self Test 7/7 PASS** | ✅ **PASS (2026-07-23)** |
+| T5 | migration.js (LocalStorage → Cloud 1회 승격) | ▶ **다음 (게이트 해제)** |
 | T6 | 읽기 전환 (Cloud = SoT) | 미착수 |
 | T7 | syncManager.js (Realtime · 충돌 · 오프라인 큐) | 미착수 |
 | T8 | attachmentStore 역할 전환 (Cloud Storage) | 미착수 |
@@ -51,10 +52,12 @@
 - 이 트랙은 Cloud 작업과 독립이며, vision.js/preprocess.js/matcher.js
   만 대상. (DEVELOPMENT_RULES.md 참조)
 
-## 절대 금지 (7/7 PASS 이전)
+## Sprint 게이트 — ✅ 통과 (7/7 PASS · 2026-07-23)
 
-- Migration · 데이터 이전 · Cloud SoT 전환 · Dual-Write 제거
-- 신규 기능 개발 · 리팩토링
+- 7/7 PASS 이전 금지였던 **Migration(T5)** 이 이제 **해제**됨 → 다음 착수 대상.
+- 단 여전히 **한 번에 한 Sprint 만**: T5 완료·검증 전까지 T6~T10·신규 기능·
+  대규모 리팩토링은 착수하지 않는다.
+- 회귀 안전장치는 계속 유지: 모든 변경은 OCR 229/240 통과.
 
 > Sprint 밖 아이디어는 여기 두지 않는다 → [IDEAS.md](./IDEAS.md).
 > ROADMAP 에는 실제 구현 예정 항목만 기록한다.

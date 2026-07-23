@@ -46,13 +46,29 @@
 
 -->
 
-_아직 실패 보고 없음 — 사용자 첫 `?cloudtest=1` 결과 대기 중._
+### [2026-07-23] Cloud Self Test — 7/7 PASS ✅
+- **결과**: 사용자 PC 브라우저 `?cloudtest=1` 기준 **1~7단계 전부 PASS**.
+- **의미**: env · reach · Google provider · session · `species` SELECT(schema)
+  · `save_invoice_tx` write · 5테이블(users·invoices·invoice_items·suppliers·
+  audit_log) read 검증 통과 → Supabase 스키마/정책/트리거/RPC 가 실제
+  대시보드에서 동작함을 실증.
+- **수정 파일**: 없음 (러너·스키마 코드 변경 없이 통과. 사용자가 대시보드에
+  SQL 4종 적용 + Google Provider 활성 후 달성).
+- **비고**: 판단 기준은 브라우저 결과(정본). 컨테이너는 egress 차단으로 재현
+  불가. 콘솔 `console.table(results)` 세부가 필요하면 이 항목 아래 첨부.
 
 ---
 
 ## 운영 체크리스트
 
-> Cloud Self Test 7/7 PASS 달성 후, 위 누적 기록을 근거로 이 섹션을 채운다.
-> (7/7 전에는 비워 둔다 — 실제 겪은 문제만 체크리스트화하기 위함)
+> 7/7 PASS(2026-07-23) 기준. 환경 변경 시 재점검용 상시 체크리스트.
 
-_7/7 PASS 후 작성 예정._
+- [x] Supabase 대시보드에 `schema → policies → triggers → rpc` 4종 적용
+- [x] Auth → Google Provider 활성
+- [x] Auth → Redirect URLs 에 실행 origin 등록
+- [x] anon 전면 차단 · authenticated 공용 R/W (RLS 동작)
+- [x] `save_invoice_tx` write · 5테이블 read · `audit_log` 자동 기록 동작
+- [ ] (다음) T5 `migration.js` — LocalStorage → Cloud 1회 승격 설계
+
+**재점검 트리거**: Supabase URL/Key 변경 · 스키마 변경 · 배포 도메인(Redirect
+URL) 추가 시 → `?cloudtest=1` 재실행하여 **7/7 유지** 확인.
