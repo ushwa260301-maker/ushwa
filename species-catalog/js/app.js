@@ -89,7 +89,11 @@ async function saveSpecies(payload, id) {
   // invoice 는 Cloud 재구성하지 않는다(구매 데이터는 invoice CRUD 로 유지 ·
   // 승인 범위). 실패 시 사용자에게 표면화.
   const savedSpecies = state.data.species.find(s => s.id === speciesId);
-  if (savedSpecies) reportSync(await mirrorSaveSpecies(savedSpecies), "species", speciesId, "수종 저장");
+  if (savedSpecies) {
+    // pending 선기록 — 미러 중 브라우저가 종료돼도 유실되지 않게 한다.
+    addPending("species", speciesId);
+    reportSync(await mirrorSaveSpecies(savedSpecies), "species", speciesId, "수종 저장");
+  }
 }
 
 /**
@@ -116,6 +120,8 @@ async function deleteSpecies(id) {
   persistAndRerender();
 
   // Cloud 반영 (T6 Phase 3) — await + pending 관리. 성공 시 잔여 pending 정리.
+  // pending 선기록 — 미러 중 브라우저가 종료돼도 유실되지 않게 한다.
+  addPending("speciesDelete", id);
   const delRes = await mirrorDeleteSpecies(id);
   reportSync(delRes, "speciesDelete", id, "수종 삭제");
   if (delRes && delRes.ok) removePending("species", id);
@@ -470,6 +476,8 @@ async function saveInvoice(header, items, extras = {}) {
     const itemRows = state.data.invoiceItems.filter(it => it.invoiceId === invoice.id);
     const refIds   = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
     const refSpecies = state.data.species.filter(s => refIds.has(s.id));
+    // pending 선기록 — 미러 중 브라우저가 종료돼도 유실되지 않게 한다.
+    addPending("invoice", invoice.id);
     reportSync(await mirrorSaveInvoice(invoice, itemRows, refSpecies), "invoice", invoice.id, "거래명세서 저장");
   }
 
@@ -575,6 +583,8 @@ async function updateInvoice(invoiceId, header, items) {
     const itemRows = state.data.invoiceItems.filter(it => it.invoiceId === invoiceId);
     const refIds   = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
     const refSpecies = state.data.species.filter(s => refIds.has(s.id));
+    // pending 선기록 — 미러 중 브라우저가 종료돼도 유실되지 않게 한다.
+    addPending("invoice", invoiceId);
     reportSync(await mirrorUpdateInvoice(inv, itemRows, refSpecies), "invoice", invoiceId, "거래 수정");
   }
 }
@@ -611,6 +621,8 @@ async function deleteInvoice(invoiceId) {
   deleteAttachmentsForInvoice(invoiceId).catch(err =>
     console.warn("[deleteInvoice] attachment cleanup failed:", err));
   // Cloud dual-write mirror (T6 Phase 3) — await + pending 관리.
+  // pending 선기록 — 미러 중 브라우저가 종료돼도 유실되지 않게 한다.
+  addPending("invoiceDelete", invoiceId);
   const delRes = await mirrorDeleteInvoice(invoiceId);
   reportSync(delRes, "invoiceDelete", invoiceId, "거래 삭제");
   if (delRes && delRes.ok) removePending("invoice", invoiceId);   // 삭제되었으니 잔여 pending 정리
@@ -625,12 +637,14 @@ function persistAndRerender() {
 
 /**
  * T6 Phase 2/3 — mirror 결과를 사용자에게 표면화하고 sync 상태를 기록.
- * skipped(=Cloud 미설정, LocalStorage 단독 모드)는 정상 → 조용히 무시.
- * 성공 → pending 해제. 실패(네트워크/RLS/version 등) → pending 기록 + toast.
- * pending 은 다음 로드 시 flushPendingWrites 로 재시도되어 유실을 막는다.
+ * 호출자는 미러 시도 "전"에 addPending 으로 선기록한다 — 미러 진행 중
+ * 브라우저가 종료돼도 pending 이 남아 다음 로드에서 재시도되기 때문이다.
+ * 여기서는 그 선기록을 결과에 따라 정리한다.
+ * skipped(=Cloud 미설정, LocalStorage 단독 모드) → 선기록 해제(조용히 무시).
+ * 성공 → pending 해제. 실패(네트워크/RLS/version 등) → pending 유지 + toast.
  */
 function reportSync(result, kind, id, label) {
-  if (!result || result.skipped) return;
+  if (!result || result.skipped) { removePending(kind, id); return; }
   if (result.ok) { removePending(kind, id); return; }
   addPending(kind, id);
   toast(`${label} 클라우드 동기화 실패 — 로컬에는 저장됨 (다음 접속 시 자동 재시도)`);
