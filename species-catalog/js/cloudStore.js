@@ -17,6 +17,9 @@
 
 import { getSupabase, isCloudConfigured } from "./supabaseClient.js";
 
+/** 첨부 원본이 올라가는 Storage 버킷 이름 (supabase/storage.sql 로 생성). */
+const ATTACHMENT_BUCKET = "attachments";
+
 // ============================================================
 // Shape 변환 — 앱(camelCase) ↔ DB(snake_case)
 // ============================================================
@@ -242,6 +245,63 @@ export async function mirrorSaveSpecies(species) {
     console.warn("[cloud] saveSpecies mirror failed:", err?.message || err);
     return { ok: false, error: err?.message || String(err) };
   }
+}
+
+/**
+ * saveAttachment 미러 (T8) — 원본 파일을 Storage 에 올리고 attachments 메타를
+ * INSERT 한다. IndexedDB 경로는 그대로 두고 Cloud 사본만 추가하는 것이므로,
+ * 실패해도 로컬 blob·invoice 저장에는 영향이 없다(never throw).
+ *
+ * · Cloud attachments.id 는 IndexedDB 와 동일한 att-<hex> 를 사용한다 —
+ *   Cloud-first read 이후에도 뷰어가 같은 id 로 로컬 blob 을 찾기 때문.
+ * · storage_path 는 사용자 파일명을 쓰지 않고 확장자만 취한다(sanitize).
+ *     attachments/<invoiceId>/<attachmentId>.<ext>
+ *   원본 파일명은 attachments.filename 컬럼에만 보관한다.
+ *
+ * @param {object} meta  putAttachment() 반환 메타 (id·filename·mimeType·size)
+ * @param {string} invoiceId
+ * @param {File|Blob} file 원본 파일
+ * @returns {Promise<{ok:boolean, skipped?:boolean, error?:string}>}
+ */
+export async function mirrorSaveAttachment(meta, invoiceId, file) {
+  if (!isCloudConfigured()) return { ok: false, skipped: true };
+  if (!meta?.id || !invoiceId || !file) {
+    return { ok: false, error: "attachment 정보 부족" };
+  }
+  try {
+    const supabase = await getSupabase();
+    const path = buildStoragePath(invoiceId, meta.id, meta.filename);
+
+    const { error: upErr } = await supabase
+      .storage.from(ATTACHMENT_BUCKET)
+      .upload(path, file, { contentType: meta.mimeType || "application/octet-stream", upsert: true });
+    if (upErr) throw upErr;
+
+    // 메타는 UPDATE 정책이 없으므로(불변) 이미 있으면 그대로 성공 처리.
+    const { error: insErr } = await supabase.from("attachments").insert({
+      id:             meta.id,
+      invoice_id:     invoiceId,
+      filename:       meta.filename || "",
+      mime_type:      meta.mimeType || "application/octet-stream",
+      size_bytes:     Number(meta.size) || 0,
+      storage_path:   path,
+      thumbnail_path: ""
+    });
+    if (insErr && !/duplicate key|already exists/i.test(insErr.message || "")) throw insErr;
+
+    console.info("[cloud] saveAttachment mirrored:", meta.id, path);
+    return { ok: true };
+  } catch (err) {
+    console.warn("[cloud] saveAttachment mirror failed:", err?.message || err);
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/** 사용자 파일명을 경로에 쓰지 않는다 — 확장자만 취해 조립. */
+function buildStoragePath(invoiceId, attachmentId, filename) {
+  const m = /\.([A-Za-z0-9]{1,8})$/.exec(filename || "");
+  const ext = m ? m[1].toLowerCase() : "bin";
+  return `${invoiceId}/${attachmentId}.${ext}`;
 }
 
 /**

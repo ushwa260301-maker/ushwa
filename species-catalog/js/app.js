@@ -22,12 +22,12 @@ import { initInvoiceModal, openInvoiceModal, reanalyzeCurrent } from "./invoiceM
 import { initHistoryModal, openHistoryModal, refreshHistoryModal } from "./historyModal.js";
 import { initTransactionDetailModal, openTransactionDetailModal } from "./transactionDetailModal.js";
 import { initAttachmentViewer, openAttachmentViewer } from "./attachmentViewer.js";
-import { initAttachmentStore, putAttachment, deleteAttachmentsForInvoice } from "./attachmentStore.js";
+import { initAttachmentStore, putAttachment, getAttachment, deleteAttachmentsForInvoice } from "./attachmentStore.js";
 import { matchSpecies } from "./matcher.js";
 import { initDebugFlag } from "./debugFlag.js";
 import { initDebugPanel } from "./debugPanel.js";
 import { initAuthGate } from "./auth.js";
-import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSaveSpecies, mirrorDeleteSpecies, fetchAll } from "./cloudStore.js";
+import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSaveSpecies, mirrorDeleteSpecies, mirrorSaveAttachment, fetchAll } from "./cloudStore.js";
 import { addPending, removePending, listPending, hasPending, setLastSync } from "./syncManager.js";
 import { nextId } from "./utils.js";
 
@@ -481,6 +481,15 @@ async function saveInvoice(header, items, extras = {}) {
     reportSync(await mirrorSaveInvoice(invoice, itemRows, refSpecies), "invoice", invoice.id, "거래명세서 저장");
   }
 
+  // 첨부 Cloud 미러 (T8) — attachments.invoice_id 가 invoices 를 참조하므로
+  // 반드시 invoice 미러 이후에 수행한다. 실패해도 IndexedDB 원본과 invoice
+  // 저장은 그대로 유지되고, pending 으로 다음 실행에서 재시도된다.
+  if (invoice.attachment && extras && extras.file) {
+    addPending("attachment", invoice.attachment.id);
+    reportSync(await mirrorSaveAttachment(invoice.attachment, invoice.id, extras.file),
+               "attachment", invoice.attachment.id, "첨부 파일 업로드");
+  }
+
   toast(`거래명세서 ${invoice.id} 저장 완료 (품목 ${resolved.length}건)`);
   return { invoiceId: invoice.id, newSpecies, reusedSpecies };
 }
@@ -674,6 +683,17 @@ async function flushPendingWrites(localData) {
       const refIds     = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
       const refSpecies = (localData.species || []).filter(s => refIds.has(s.id));
       res = await mirrorUpdateInvoice(inv, itemRows, refSpecies);
+    } else if (e.kind === "attachment") {
+      // 원본 blob 은 IndexedDB 에 있다 — 거기서 되읽어 업로드를 재시도한다.
+      const rec = await getAttachment(e.id);
+      if (!rec?.blob) {
+        console.error("[sync] attachment 재시도 불가 — IndexedDB 원본 없음:", e.id);
+        removePending("attachment", e.id);   // 복구 불가 → 폐기
+        continue;
+      }
+      res = await mirrorSaveAttachment(
+        { id: rec.id, filename: rec.filename, mimeType: rec.mimeType, size: rec.size },
+        rec.invoiceId, rec.blob);
     } else if (e.kind === "species") {
       const sp = (localData?.species || []).find(s => s.id === e.id);
       if (!sp) { removePending("species", e.id); continue; }
