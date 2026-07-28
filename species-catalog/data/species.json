@@ -303,6 +303,343 @@
         }
       ],
       "notes": "이른 봄 잎보다 꽃이 먼저 개화."
+    },
+    {
+      "id": "sp-013",
+      "name": "가우라(분홍)",
+      "latin": "Gaura lindheimeri",
+      "category": "",
+      "bloomMonths": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "colors": [],
+      "suppliers": [],
+      "notes": "",
+      "scientific_name": "Gaura lindheimeri",
+      "flowering_start": 4,
+      "flowering_end": 11,
+      "height": "60~100cm",
+      "landscape_use": "둔치/화단",
+      "light": "양지",
+      "market_size": "8",
+      "plant_density": {
+        "min": 25,
+        "mid": 36,
+        "max": 49
+      },
+      "image_index": 1,
+      "page": 110
+    },
+    {
+      "id": "sp-014",
+      "name": "가우라(흰색)",
+      "latin": "Gaura lindheimeri",
+      "category": "",
+      "bloomMonths": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "colors": [],
+      "suppliers": [],
+      "notes": "",
+      "scientific_name": "Gaura lindheimeri",
+      "flowering_start": 4,
+      "flowering_end": 11,
+      "height": "60~100cm",
+      "landscape_use": "둔치/화단",
+      "light": "양지",
+      "market_size": "8",
+      "plant_density": {
+        "min": 25,
+        "mid": 36,
+        "max": 49
+      },
+      "image_index": 2,
+      "page": 110
+    },
+    {
+      "id": "sp-015",
+      "name": "각시원추리",
+      "latin": "Hemerocallis dumortieri",
+      "category": "",
+      "bloomMonths": [
+        6,
+        7
+      ],
+      "colors": [],
+      "suppliers": [],
+      "notes": "",
+      "scientific_name": "Hemerocallis dumortieri",
+      "flowering_start": 6,
+      "flowering_end": 7,
+      "height": "50cm",
+      "landscape_use": "둔치/나무밑",
+      "light": "양지/반음지",
+      "market_size": "8/2~3분얼",
+      "plant_density": {
+        "min": 25,
+        "mid": 36,
+        "max": 49
+      },
+      "image_index": 3,
+      "page": 110
+    },
+    {
+      "id": "sp-016",
+      "name": "갈대",
+      "latin": "Phragmites communis",
+      "category": "",
+      "bloomMonths": [
+        9
+      ],
+      "colors": [],
+      "suppliers": [],
+      "notes": "",
+      "scientific_name": "Phragmites communis",
+      "flowering_start": 9,
+      "flowering_end": 9,
+      "height": "1~3m",
+      "landscape_use": "수변/둔치",
+      "light": "양지",
+      "market_size": "8",
+      "plant_density": {
+        "min": 25,
+        "mid": 36,
+        "max": 49
+      },
+      "image_index": 4,
+      "page": 110
+    },
+    {
+      "id": "sp-017",
+      "name": "감국",
+      "latin": "Chrysanthemum boreale makinoi",
+      "category": "",
+      "bloomMonths": [
+        9,
+        10
+      ],
+      "colors": [],
+      "suppliers": [],
+      "notes": "",
+      "scientific_name": "Chrysanthemum boreale makinoi",
+      "flowering_start": 9,
+      "flowering_end": 10,
+      "height": "60~90cm",
+      "landscape_use": "둔치/화단",
+      "light": "양지",
+      "market_size": "8",
+      "plant_density": {
+        "min": 25,
+        "mid": 36,
+        "max": 49
+      },
+      "image_index": 5,
+      "page": 110
+    },
+    {
+      "id": "sp-018",
+      "name": "개미취",
+      "latin": "Aster tataricus",
+      "category": "",
+      "bloomMonths": [
+        7,
+        8,
+        9,
+        10
+      ],
+      "colors": [],
+      "suppliers": [],
+      "notes": "",
+      "scientific_name": "Aster tataricus",
+      "flowering_start": 7,
+      "flowering_end": 10,
+      "height": "1~1.5m",
+      "landscape_use": "둔치/화단",
+      "light": "양지/반음지",
+      "market_size": "8",
+      "plant_density": {
+        "min": 25,
+        "mid": 36,
+        "max": 49
+      },
+      "image_index": 6,
+      "page": 110
+    },
+    {
+      "id": "sp-019",
+      "name": "갯버들",
+      "latin": "Salix gracilistyla",
+      "category": "",
+      "bloomMonths": [
+        3,
+        4,
+        5
+      ],
+      "colors": [],
+      "suppliers": [],
+      "notes": "",
+      "scientific_name": "Salix gracilistyla",
+      "flowering_start": 3,
+      "flowering_end": 5,
+      "height": "1~2m",
+      "landscape_use": "수변",
+      "light": "양지",
+      "market_size": "H 0.4~",
+      "plant_density": {
+        "min": 15,
+        "mid": 20,
+        "max": 25
+      },
+      "image_index": 7,
+      "page": 111
+    },
+    {
+      "id": "sp-020",
+      "name": "거미줄바위솔",
+      "latin": "Sempervivum arachnoideum",
+      "category": "",
+      "bloomMonths": [
+        5,
+        6
+      ],
+      "colors": [],
+      "suppliers": [],
+      "notes": "",
+      "scientific_name": "Sempervivum arachnoideum",
+      "flowering_start": 5,
+      "flowering_end": 6,
+      "height": "10cm",
+      "landscape_use": "옥상/돌틈/화단",
+      "light": "양지",
+      "market_size": "8",
+      "plant_density": {
+        "min": 36,
+        "mid": 49,
+        "max": 64
+      },
+      "image_index": 8,
+      "page": 111
+    },
+    {
+      "id": "sp-021",
+      "name": "거미줄바위솔(연화바위솔)",
+      "latin": "Orostachys japonicus",
+      "category": "",
+      "bloomMonths": [
+        8,
+        9
+      ],
+      "colors": [],
+      "suppliers": [],
+      "notes": "",
+      "scientific_name": "Orostachys japonicus",
+      "flowering_start": 8,
+      "flowering_end": 9,
+      "height": "10cm",
+      "landscape_use": "옥상/돌틈/화단",
+      "light": "양지",
+      "market_size": "8",
+      "plant_density": {
+        "min": 36,
+        "mid": 49,
+        "max": 64
+      },
+      "image_index": 9,
+      "page": 111
+    },
+    {
+      "id": "sp-022",
+      "name": "고비",
+      "latin": "Osmunda japonica",
+      "category": "",
+      "bloomMonths": [],
+      "colors": [],
+      "suppliers": [],
+      "notes": "",
+      "scientific_name": "Osmunda japonica",
+      "flowering_start": null,
+      "flowering_end": null,
+      "height": "60~100cm",
+      "landscape_use": "나무그늘",
+      "light": "음지/반음지",
+      "market_size": "10, 15",
+      "plant_density": {
+        "min": 9,
+        "mid": 12,
+        "max": 15
+      },
+      "image_index": 10,
+      "page": 111
+    },
+    {
+      "id": "sp-023",
+      "name": "골풀",
+      "latin": "Juncus effusus",
+      "category": "",
+      "bloomMonths": [
+        5,
+        6,
+        7
+      ],
+      "colors": [],
+      "suppliers": [],
+      "notes": "",
+      "scientific_name": "Juncus effusus",
+      "flowering_start": 5,
+      "flowering_end": 7,
+      "height": "50~100cm",
+      "landscape_use": "수변/둔치",
+      "light": "양지/습지",
+      "market_size": "8",
+      "plant_density": {
+        "min": 16,
+        "mid": 25,
+        "max": 36
+      },
+      "image_index": 11,
+      "page": 111
+    },
+    {
+      "id": "sp-024",
+      "name": "곰취",
+      "latin": "Ligularia fischeri",
+      "category": "",
+      "bloomMonths": [
+        7,
+        8,
+        9
+      ],
+      "colors": [],
+      "suppliers": [],
+      "notes": "",
+      "scientific_name": "Ligularia fischeri",
+      "flowering_start": 7,
+      "flowering_end": 9,
+      "height": "1~2m",
+      "landscape_use": "화단/뒷뜰",
+      "light": "양지/음지",
+      "market_size": "10",
+      "plant_density": {
+        "min": 20,
+        "mid": 25,
+        "max": 30
+      },
+      "image_index": 12,
+      "page": 111
     }
   ],
   "invoices": [
