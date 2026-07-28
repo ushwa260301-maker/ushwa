@@ -111,6 +111,35 @@ AI 학습 데이터     parsed ↔ edited 쌍 + engine_version → 다음 OCR �
 > 핵심: **`parsed_fields ↔ user_edited_fields` 쌍**이 "AI 가 어디서 틀렸나"의
 > 정답 데이터다. `engine_version` 으로 엔진 버전별 정확도 추이를 산출한다.
 
+## 3-1. 도감 데이터 (Plant Guide) — Species 확장 필드
+
+조경 식물 도감을 OCR 로 추출해 Species 로 반영하기 위한 **추가 필드 계약**.
+기존 Species 필드(`name·latin·category·bloomMonths·colors·suppliers·notes`)는
+그대로 두고 **없는 필드만 추가**한다. 저장 위치: `data/plant-guide/*.json`
+(페이지 단위 파일 · 1페이지 = 1 JSON).
+
+| 필드 | 예 | 설명 |
+|---|---|---|
+| `scientific_name` | `Gaura lindheimeri` | 학명. 앱 필드 `latin` 과 동일 값(미러) |
+| `flowering_start` / `flowering_end` | `4` / `11` | 개화기. 앱 필드 `bloomMonths` 로 전개 가능 |
+| `height` | `60~100cm` | 크기 원문 |
+| `landscape_use` | `둔치/화단` | 식재위치 |
+| `light` | `양지/반음지` | 음양성 |
+| `market_size` | `8` · `H 0.4~` · `8/2~3분얼` | 유통규격(cm/분얼) 원문 |
+| `plant_density` | `{min:25, mid:36, max:49}` | 식재본수(㎡/본) 최소/중간/최대 |
+| `image_index` | `1` | 도감 원본 이미지 연결 번호(번호만 저장) |
+| `page` | `110` | 도감 페이지 |
+
+**저장하지 않는 원본 항목**: 식용 · 약용 · 민간요법 · 뿌리 정보 · 사용부위 ·
+기타 설명 — 프로젝트 목적과 무관하므로 OCR 에 있어도 버린다.
+
+**id 는 파일에 넣지 않는다** — 기존 시드가 `sp-001…` 을 사용하므로 충돌을
+피하기 위해 반영 시점에 앱이 할당한다.
+
+> ⚠️ **현재 한계**: `cloudStore.js` 의 `speciesFromDb()` 는 8개 필드만 복원하므로,
+> Cloud-first read 가 로컬 species 를 덮으면 위 확장 필드가 사라진다.
+> Cloud 반영은 별도 승인이 필요한 범위이며 지금은 로컬(LocalStorage) 한정이다.
+
 ## 4. Planned Data Model (Sprint 밖 · **구현하지 않음**)
 
 > 향후 "대한민국 최고의 조경 AI 플랫폼" 으로 확장 시 저장될 데이터.
