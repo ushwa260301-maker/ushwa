@@ -89,6 +89,7 @@
         <div class="toolbar-left">
           <button id="addBtn" class="btn-primary" type="button">+ 수종 추가</button>
           <button id="addInvoiceBtn" class="btn-primary" type="button">+ 거래명세서 등록</button>
+          <button id="openGuideBtn" class="btn-secondary" type="button" title="조경 식물 도감 검색 (참고 데이터)">도감 검색</button>
         </div>
         <div class="toolbar-right">
           <button id="exportBtn" class="btn-secondary" type="button">내보내기</button>
@@ -776,7 +777,45 @@
 
   <div id="toast" class="toast" hidden></div>
 
+  <!-- Plant Guide — 참고 데이터 조회 전용 모달. Species/Invoice 상태와 무관하다. -->
+  <div id="plantGuideModal" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="plantGuideTitle">
+    <div class="modal-backdrop" data-close-guide></div>
+    <div class="modal-panel history-panel">
+      <header class="modal-head">
+        <h2 id="plantGuideTitle">도감 검색 <small id="pgCount" class="hist-species-id"></small></h2>
+        <button class="icon-btn" type="button" aria-label="닫기" data-close-guide>&#x2715;</button>
+      </header>
+
+      <div class="modal-body">
+        <div class="field">
+          <label for="pgQuery">검색어 (국명 · 학명)</label>
+          <input type="text" id="pgQuery" placeholder="예) 갈대 · 가우라 · Osmunda" autocomplete="off" />
+        </div>
+
+        <p id="pgStatus" class="muted"></p>
+
+        <div id="pgResults" class="hist-stats" aria-label="도감 검색 결과"></div>
+
+        <div id="pgDetail" hidden>
+          <h3 id="pgDetailName"></h3>
+          <div class="hist-stats" aria-label="도감 상세">
+            <div class="hist-stat"><dt>학명</dt><dd id="pgdLatin">—</dd></div>
+            <div class="hist-stat"><dt>개화기</dt><dd id="pgdBloom">—</dd></div>
+            <div class="hist-stat"><dt>크기</dt><dd id="pgdHeight">—</dd></div>
+            <div class="hist-stat"><dt>광조건</dt><dd id="pgdLight">—</dd></div>
+            <div class="hist-stat"><dt>식재위치</dt><dd id="pgdUse">—</dd></div>
+            <div class="hist-stat"><dt>유통규격</dt><dd id="pgdMarket">—</dd></div>
+            <div class="hist-stat"><dt>식재밀도(㎡/본)</dt><dd id="pgdDensity">—</dd></div>
+            <div class="hist-stat"><dt>도감 페이지</dt><dd id="pgdPage">—</dd></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ES modules — served as /js/app.js on any static host -->
   <script type="module" src="js/app.js"></script>
+  <!-- Plant Guide 는 app.js 를 경유하지 않는다 — 운영 데이터와 완전 분리된 조회 전용 모듈. -->
+  <script type="module" src="js/plantGuideModal.js"></script>
 </body>
 </html>
