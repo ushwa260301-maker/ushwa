@@ -21,6 +21,48 @@
 실제 강제는 반드시 **RLS/RPC(서버측)** 로 한다 — 정적 사이트라 클라이언트
 코드는 신뢰할 수 없다.
 
+### 0-1. role 무결성 (T12.5 · 로컬 Postgres 16 실증 완료)
+
+`users_update_self`(`policies.sql:34`)가 자기 행 UPDATE 를 허용하는데 `role`
+컬럼을 보호하는 장치가 없어, 로그인 사용자가 스스로 관리자가 될 수 있었다.
+로컬 Postgres 16 에 `schema.sql` · `triggers.sql` · `policies.sql` 원본을
+적용한 뒤 재현한 결과 `update public.users set role='admin' where id=auth.uid()`
+가 **`UPDATE 1` 로 성공**했다.
+
+→ `supabase/2026-07-28_protect_user_role.sql` 로 차단한다 (추가 전용).
+
+| 경로 | role 변경 | 근거 |
+|---|---|---|
+| 앱 (최종 사용자 JWT 있음) | **거부** — `42501` | `fn_protect_user_role()` |
+| SQL Editor · service_role (`auth.uid()` null) | 허용 | 관리자 지정 수단 |
+
+`role` 은 앱의 어떤 경로로도 바뀌지 않는다 — **admin 계정도 예외가 아니다.**
+관리자 지정은 Supabase SQL Editor 단일 경로로 일원화된다.
+
+### 0-2. 권한 모델 확정 (T12.5)
+
+`user` · `admin` 2단계를 유지한다. 3단계 이상은 지금 근거가 없다 — 실제
+운영자가 소수이고, 단계를 늘리면 RLS 표현식이 복잡해져 검증 비용만 커진다.
+
+| 대상 | user | admin | 강제 지점 |
+|---|---|---|---|
+| Species · Invoice · InvoiceItem · Supplier 읽기 | ✅ | ✅ | `policies.sql` `to authenticated` |
+| 위 데이터 생성·수정 | ✅ | ✅ | 동일 — **공용 데이터 원칙, 소유권 없음** |
+| Invoice 삭제 | ✅ | ✅ | `invoices_delete` |
+| Species 삭제 | 참조 없을 때만 | 동일 | `app.js` deleteSpecies 정책(T6 Phase 3) |
+| `ocr_corrections` · `fixtures` | INSERT만 | INSERT만 | UPDATE/DELETE 정책 부재 |
+| `audit_log` 조회 | ✅ (현행) | ✅ | `audit_select` — **좁힐지 §7-1** |
+| `users.role` 변경 | ❌ | ❌ | `trg_protect_user_role` |
+| **OCR 검수 판정** | ❌ | ✅ | 미구현 — 추가 RLS 필요 |
+| **Species 병합** | ❌ | ✅ | 미구현 — 추가 RLS 필요 |
+| **도감 승격 승인** | ❌ | ✅ | 미구현 — 추가 RLS 필요 |
+
+**설계 원칙**: 운영 데이터의 일상 CRUD 는 전원 공용(현행 유지)이고,
+`admin` 은 **비가역·판정 성격의 행위**(검수 판정 · 병합 · 승인)에만 쓴다.
+따라서 admin 전용 기능을 만들 때는 화면을 가리는 것으로 끝내지 말고
+**해당 동작마다 admin 조건 RLS 정책을 추가**해야 한다. 아직 그런 정책은
+하나도 없으므로, 현재 `admin` 은 **읽기 화면 구분자 이상의 의미가 없다.**
+
 ## 1. 관리자 모드 구조
 
 ```
@@ -164,6 +206,7 @@ LocalStorage 에만 저장 —
 | `ocr_corrections` · `fixtures` | INSERT-ONLY 라 행 자체가 이력 → 의도적으로 트리거 미부착(`triggers.sql:69-71`) |
 | LocalStorage 단독 변경 | Cloud 미러 실패 시 서버에 기록이 남지 않음 |
 | 도감(Plant Guide) | 정적 파일 · 런타임 변경 없음 |
+| ~~`users`~~ | **해소됨** — `2026-07-28_protect_user_role.sql` 이 `fn_audit()` 재사용해 트리거 부착. role 변경·로그인 이력이 `audit_log` 에 남는다 |
 
 ## 4. Promotion 구현 전 최종 검토
 
@@ -215,8 +258,7 @@ Species Manager 의 병합은 가장 비가역적이라 감사 로그가 먼저 
 2. OCR 검수 판정 저장 방식 (A: 새 correction 행 / B: 신규 테이블 / C: 저장 안 함)
 3. Species 병합 정책 — `invoice_items.species_id` 재지정 허용 여부
 4. Admin 진입 방식 — 별도 화면 vs 기존 UI 내 조건부 노출
-5. **`users.role` 자가 승격 차단 여부** — `users_update_self`(policies.sql:34)가
-   자기 행 UPDATE 를 허용하고 `role` 컬럼을 보호하는 정책·트리거가 없다.
-   즉 로그인 사용자가 스스로 `role='admin'` 으로 바꿀 수 있다.
-   T12 구현 중 확인된 사실이며, 관리자 화면이 **쓰기 기능**을 갖기 전에
-   반드시 결론이 필요하다 (예: role 변경을 막는 트리거 추가).
+5. ~~**`users.role` 자가 승격 차단 여부**~~ — **T12.5 에서 해결안 확정.**
+   `supabase/2026-07-28_protect_user_role.sql` 작성 완료, 로컬 Postgres 16
+   에서 취약점 재현 → 차단 → 로그인 경로 무영향까지 검증(§0-1).
+   **잔여 작업은 사용자 Supabase 에 적용하는 것뿐이다.**
