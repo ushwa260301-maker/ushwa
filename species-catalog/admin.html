@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="관리자 운영 화면 — 변경 이력 조회(읽기 전용)" />
+  <title>관리자 · Species Catalog</title>
+
+  <!-- 기존 스타일 재사용 — 관리자 전용 CSS 는 추가하지 않는다 -->
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/card.css" />
+  <link rel="stylesheet" href="css/modal.css" />
+</head>
+<body>
+
+  <header class="masthead">
+    <div class="masthead-inner">
+      <h1>관리자</h1>
+      <p class="muted" id="admWho">권한 확인 중…</p>
+      <a href="index.html" class="btn-secondary">← 앱으로</a>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- 권한 없음 안내 -->
+    <section id="admDenied" hidden>
+      <div class="hist-stats">
+        <div class="hist-stat">
+          <dt>접근 불가</dt>
+          <dd id="admDeniedMsg">관리자 권한이 필요합니다.</dd>
+        </div>
+      </div>
+    </section>
+
+    <!-- 관리자 본문 -->
+    <section id="admMain" hidden>
+
+      <nav class="toolbar">
+        <div class="toolbar-left">
+          <button id="navDashboard" class="btn-primary" type="button">Dashboard</button>
+          <button id="navAudit" class="btn-secondary" type="button">Audit Log</button>
+        </div>
+        <div class="toolbar-right">
+          <span class="muted">OCR 검수 · 수종 관리 · 도감 승인 — 준비중</span>
+        </div>
+      </nav>
+
+      <!-- Dashboard -->
+      <section id="paneDashboard">
+        <h2>Dashboard</h2>
+        <div class="hist-stats">
+          <div class="hist-stat"><dt>로그인 계정</dt><dd id="dashUser">—</dd></div>
+          <div class="hist-stat"><dt>권한</dt><dd id="dashRole">—</dd></div>
+          <div class="hist-stat"><dt>변경 이력(최근 조회)</dt><dd id="dashAuditCount">—</dd></div>
+        </div>
+        <p class="muted">
+          이 화면은 <strong>읽기 전용</strong>입니다. 데이터를 수정하지 않습니다.
+        </p>
+        <div class="hist-stats" aria-label="준비중 메뉴">
+          <div class="hist-stat"><dt>OCR 검수</dt><dd>준비중 — 학습 데이터 배선(T9) 필요</dd></div>
+          <div class="hist-stat"><dt>수종 관리</dt><dd>준비중 — 병합은 비가역, 감사 화면 선행</dd></div>
+          <div class="hist-stat"><dt>도감 승인</dt><dd>준비중 — 승격 구현 승인 대기</dd></div>
+        </div>
+      </section>
+
+      <!-- Audit Log -->
+      <section id="paneAudit" hidden>
+        <h2>Audit Log <small class="muted">(읽기 전용)</small></h2>
+
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <label class="field">
+              <span>테이블</span>
+              <select id="fTable">
+                <option value="">전체</option>
+                <option value="species">species</option>
+                <option value="suppliers">suppliers</option>
+                <option value="invoices">invoices</option>
+                <option value="invoice_items">invoice_items</option>
+                <option value="attachments">attachments</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>변경자</span>
+              <select id="fUser"><option value="">전체</option></select>
+            </label>
+            <label class="field">
+              <span>시작</span>
+              <input type="date" id="fFrom" />
+            </label>
+            <label class="field">
+              <span>종료</span>
+              <input type="date" id="fTo" />
+            </label>
+          </div>
+          <div class="toolbar-right">
+            <button id="auditSearch" class="btn-primary" type="button">조회</button>
+          </div>
+        </div>
+
+        <p id="auditStatus" class="muted">조회를 눌러 주세요.</p>
+
+        <table class="hist-table">
+          <thead>
+            <tr>
+              <th>시각</th><th>테이블</th><th>액션</th><th>row_id</th><th>변경자</th>
+            </tr>
+          </thead>
+          <tbody id="auditRows"></tbody>
+        </table>
+
+        <div id="auditDetail" hidden>
+          <h3>상세 <small id="adTitle" class="muted"></small></h3>
+          <div class="hist-stats">
+            <div class="hist-stat"><dt>before_data</dt><dd><pre id="adBefore" class="dbg-json"></pre></dd></div>
+            <div class="hist-stat"><dt>after_data</dt><dd><pre id="adAfter" class="dbg-json"></pre></dd></div>
+          </div>
+        </div>
+      </section>
+
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>
