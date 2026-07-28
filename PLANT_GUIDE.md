@@ -304,6 +304,46 @@ guide 항목 (pg-110-01)
 - **원칙**: 검증기는 **읽기만** 한다. 자동 수정·자동 보정을 하지 않는다
   (원문 보존 원칙).
 
+## 5-4. `guide_id` Cloud 손실 지점 (실제 코드 확인 · 변경하지 않음)
+
+승격 링크 `species.guide_id` 는 **로컬에서는 살아남지만 Cloud 왕복에서 사라진다.**
+Cloud 스키마 변경은 이번 범위가 아니므로 **손실 지점만 기록**한다.
+
+### 손실 경로
+
+```
+승격 → species.guide_id 기록 (LocalStorage 보존 ✓)
+   │
+   ├── mirrorSaveSpecies → speciesToDb(cloudStore.js:24-35)
+   │        컬럼 8개만 전송 → guide_id 전송 안 됨          ← 손실 ①
+   │
+   └── 다음 로드 → loadCloudFirst → fetchAll
+            speciesFromDb(cloudStore.js:40-51)
+            8개 필드만 복원 → guide_id 없는 객체 생성
+            → storage.save(merged) 로 로컬을 덮음          ← 손실 ② (비가역)
+```
+
+| 지점 | 파일:라인 | 현상 |
+|---|---|---|
+| ① 쓰기 | `cloudStore.js:24-35` `speciesToDb` | `id·name·latin·category·bloom_months·colors·suppliers·notes` 만 전송 |
+| ② 읽기 | `cloudStore.js:40-51` `speciesFromDb` | 같은 8개만 복원 — `guide_id` 미포함 |
+| ③ 스키마 | `supabase/schema.sql:53-66` `species` | `guide_id` 컬럼 **없음** |
+| ④ RPC | `supabase/rpc.sql` `save_invoice_tx` species upsert | 동일 8개 컬럼만 |
+
+### 결론
+
+- **현 상태**: `guide_id` 는 **로컬 전용 링크**다. Cloud 를 쓰는 환경에서는
+  Cloud-first read 가 로컬을 덮는 순간 링크가 끊긴다.
+- **영향 범위**: 링크만 끊긴다. Species 본체·거래·도감 원본은 **손상되지 않는다**
+  (도감은 정적 파일이라 `guide_id` 없이도 이름으로 재연결 가능).
+- **Cloud 반영에 필요한 것** (모두 **별도 승인 대상**):
+  1. `species` 테이블에 `guide_id text` 컬럼 추가 — **신규 migration SQL**
+     (`schema.sql` 직접 수정 금지 원칙 유지)
+  2. `speciesToDb` / `speciesFromDb` 에 필드 1개씩 추가
+  3. `save_invoice_tx` 의 species upsert 컬럼 추가
+- **그 전까지의 운용 지침**: 승격은 로컬 기준으로만 신뢰하고, Cloud 동기화
+  환경에서는 `guide_id` 소실을 정상 동작으로 간주한다.
+
 ## 6. 추가할 파일 (현재 구조 기준)
 
 | 경로 | 계층 | 역할 |
