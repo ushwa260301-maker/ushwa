@@ -204,6 +204,106 @@ guide 항목 (pg-110-01)
 - `matcher.js` — **수정 없음**(import 만)
 - Cloud/OCR/Invoice/Sync — **무변경**
 
+## 5-2. Promotion 설계 검증 결과 (실제 코드 기준 · 구현 전)
+
+`saveSpecies`(app.js:56-97) 를 실제로 읽고 검증했다. **설계 수정이 필요한
+사실 1건을 발견**했다.
+
+### ⚠️ 발견: `saveSpecies` 를 그대로 쓰면 `guide_id` 가 사라진다
+
+- `app.js:138-148` `extractSpeciesMeta()` 는 **7개 필드만**
+  (`name·latin·category·bloomMonths·colors·suppliers·notes`) 반환한다.
+- 신규 생성 경로는 `state.data.species.push({ id, ...meta })`(app.js:66) 이므로
+  payload 에 `guide_id` 를 넣어도 **meta 단계에서 탈락**한다.
+  (수정 경로 `app.js:61` 은 기존 객체를 spread 하므로 이미 있는 값은 보존된다)
+
+**대응 3안**
+
+| 안 | 방식 | 영향 | 평가 |
+|---|---|---|---|
+| A | 승격 전용 경로에서 `saveSpecies` 호출 후 `guide_id` 를 별도 대입 | `extractSpeciesMeta` 무수정 · 저장 2회 | 단순하나 중간 상태 발생 |
+| B | `extractSpeciesMeta` 에 `guide_id` 패스스루 1줄 추가 | Species 코드 1줄 변경 | **권장** — 저장 1회 · 부작용 없음 |
+| C | 승격이 species 배열에 직접 push | 저장 경로 이원화 | 비권장(규칙 위반) |
+
+→ **권장 B** (`guide_id: payload.guide_id || undefined` 1줄). 구현 시 승인 필요.
+
+### `saveSpecies` 부작용 검증 — 승격 입력에서는 안전
+
+`saveSpecies` 는 species 저장 외에 2가지를 더 한다:
+
+| 부작용 | 승격 시 동작 | 근거 |
+|---|---|---|
+| `purgeInvoiceRecordsFor(speciesId)` | **no-op** — 신규 id 라 참조 레코드 0 | app.js:72 |
+| `synthesizeInvoicesForSpecies(...)` | **생성 0건** — `prices=[]`·`counts=0` 이면 두 분기(`total>0 && prices.length`, `prices.length`) 모두 false | app.js:185·223 |
+| `mirrorSaveSpecies` | Cloud upsert 1회 (정상) | app.js:95 |
+
+→ 승격 payload 에 `prices`/`purchaseCounts` 를 **넣지 않으면** Invoice·InvoiceItem
+에 아무 영향이 없다. **이것이 승격 호출의 필수 조건이다.**
+
+### 중복 검사 기준 (확정)
+
+| 단계 | 판정 | 처리 |
+|---|---|---|
+| 1 | `name` 완전 일치 | **신규 생성 금지** → 기존 Species 에 연결 제안 |
+| 2 | `calculateSimilarity ≥ 0.85` | 후보 목록 제시 → 사용자가 [연결]/[새로 등록] 선택 |
+| 3 | 그 외 | 신규 생성 진행 |
+
+- 비교 대상은 `normalizeSpeciesName()` 정규화 후 값 (matcher.js 재사용 · 수정 없음)
+- 임계값 0.85 는 기존 Parser 수정 규칙과 동일 기준을 따른다
+
+### `guide_id` 저장 위치 (확정)
+
+- **위치**: `Species` 레코드의 최상위 스칼라 1개 (`species.guide_id = "pg-110-01"`)
+- **경로**: LocalStorage(v2 species 컬렉션)에 그대로 직렬화됨
+- ⚠️ **Cloud 한계**: `cloudStore.speciesFromDb()` 는 8개 필드만 복원하므로
+  **Cloud-first read 가 로컬을 덮으면 `guide_id` 가 소실**된다.
+  Cloud 반영은 `species` 테이블 컬럼 추가가 필요하며 **별도 승인 대상**이다.
+  승인 전에는 `guide_id` 를 **로컬 전용 링크**로 간주한다.
+
+### Rollback 가능 여부 (확정)
+
+| 시나리오 | 가능 여부 | 방법 |
+|---|---|---|
+| 승격 직후 취소 | **가능** | `deleteSpecies(id)` — 승격 species 는 거래 이력이 0 이라 T6 Phase3 의 "참조 있으면 거부" 정책에 걸리지 않음 |
+| Cloud 반영분 | **가능** | `mirrorDeleteSpecies` 가 Cloud 행도 삭제 |
+| 거래 등록 이후 | **불가** | 거래 이력 보존 정책상 삭제 거부 — 정상 동작 |
+| 도감 원본 | **영향 없음** | 도감은 읽기 전용이라 승격/취소로 변하지 않음 |
+
+## 5-3. Plant Guide Validator 설계 (구현 전)
+
+도감이 수천 종으로 커질 때 **잘못된 참고 데이터가 조용히 섞이는 것**을 막는
+검증기. OCR 코퍼스 러너(`tests/ocr-accuracy.mjs`)와 같은 성격의 CLI 로 둔다.
+
+**위치(안)**: `species-catalog/tests/guide-validate.mjs` — Node 실행,
+앱 코드와 분리, 실패 시 `exit 1`.
+
+### 검사 항목
+
+| # | 대상 | 검사 | 실패 등급 |
+|---|---|---|---|
+| 1 | index.json | `schema` 값 존재·지원 버전 | **ERROR** |
+| 2 | index.json | `files[]` 의 파일이 실제로 존재 | **ERROR** |
+| 3 | index.json | `count` 가 실제 레코드 수와 일치 | **ERROR** |
+| 4 | page JSON | `species` 가 배열 | **ERROR** |
+| 5 | record | 필수 필드 존재: `name` | **ERROR** |
+| 6 | record | `id` **전역 중복 없음** (파일 간 포함) | **ERROR** |
+| 7 | record | `id` 가 `pg-` 네임스페이스 | **ERROR** |
+| 8 | record | `page` 가 정수 · 파일 `pages[]` 에 포함 | **ERROR** |
+| 9 | record | `flowering_start/end` 가 1~12 또는 null · start ≤ end | **ERROR** |
+| 10 | record | `plant_density` 가 `{min,mid,max}` 정수 · min ≤ mid ≤ max | **ERROR** |
+| 11 | record | 금지 필드 부재(`usage`·`root_type`·구매 관련) | **ERROR** |
+| 12 | record | `scientific_name` 비어 있음 | WARN |
+| 13 | record | `height`·`market_size`·`light`·`landscape_use` 비어 있음 | WARN |
+| 14 | record | `image_index` 가 파일 내에서 유일 | WARN |
+| 15 | source 추적 | 파일에 `source`·`extractedAt` 존재 | WARN |
+
+- **bloomMonths 형식**: 도감 page JSON 은 `flowering_start/end` 가 정본이며
+  `bloomMonths` 는 **Species 승격 시 파생**된다. page JSON 에 `bloomMonths` 가
+  있으면 `[start…end]` 와 일치하는지 검사(WARN) — 불일치는 추출 오류 신호.
+- **출력**: 파일별 ERROR/WARN 요약 + 총계. ERROR ≥ 1 이면 exit 1.
+- **원칙**: 검증기는 **읽기만** 한다. 자동 수정·자동 보정을 하지 않는다
+  (원문 보존 원칙).
+
 ## 6. 추가할 파일 (현재 구조 기준)
 
 | 경로 | 계층 | 역할 |
