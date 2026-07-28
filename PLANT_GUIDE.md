@@ -137,6 +137,73 @@ Species 신규 생성 (guide_id 연결)
 - Species 신규 생성은 기존 저장 경로(`app.js`)를 그대로 사용한다 — 별도 저장
   로직을 만들지 않는다.
 
+## 5-1. Promotion (승격) 상세 설계 — **구현 전 · 설계 확정본**
+
+> 도감 항목을 운영 Species 로 등록하는 유일한 경로. **자동 생성은 금지**이며
+> 반드시 사람의 명시적 요청 + 승인을 거친다.
+
+### 상태 전이
+
+```
+guide 항목 (pg-110-01)
+   │  [이 수종 등록] 클릭
+   ▼
+① 중복 검사 (자동 · 저장 없음)
+   │   exact  : 기존 Species.name 완전 일치
+   │   similar: matcher.calculateSimilarity ≥ 0.85
+   ▼
+   ├── 완전 일치 → "기존 수종에 연결" 제안 (신규 생성 금지)
+   ├── 유사 후보 → 목록 제시 → 사용자가 [연결] 또는 [새로 등록] 선택
+   └── 없음     → ② 로 진행
+   ▼
+② 등록 요청 생성 (pending)
+   │   { guide_id, requested_by, requested_at, decision: "pending" }
+   ▼
+③ 관리자 승인 / 반려
+   │   승인 권한: users.role = 'admin' (schema.sql 기존 정의 재사용)
+   ├── 반려 → { decision:"rejected", reason }  · Species 변경 없음
+   └── 승인 ↓
+   ▼
+④ Species 생성 (기존 저장 경로 app.js 사용 · 신규 저장 로직 없음)
+   │   name ← guide.name
+   │   latin ← guide.scientific_name
+   │   bloomMonths ← [flowering_start … flowering_end]
+   │   guide_id ← guide.id            ← 스칼라 1개 (승인된 규약)
+   │   category ← 사용자 선택 (도감에 분류 없음 · 추측 금지)
+   │   colors/suppliers/notes ← 빈 값 (운영 데이터는 이후 사용자가 채움)
+   ▼
+⑤ 완료 — guide 레코드는 **불변**, 아무것도 기록하지 않는다
+```
+
+### 불변 규칙
+
+| 규칙 | 이유 |
+|---|---|
+| 도감 필드(height·light·landscape_use·market_size·plant_density·image_index·page)는 **복사하지 않음** | 단일 출처 유지 — `guide_id` 로 조회 |
+| 도감 파일은 **읽기 전용** | 정적 JSON · 승격 상태를 도감에 쓰지 않음 |
+| 자동 승격 **금지** | OCR·매칭이 임의로 운영 데이터를 만들지 않음 |
+| 이미 `guide_id` 가 있는 Species 에 재승격 **금지** | 중복 방지 |
+| 승격 실패/반려 시 Species **무변경** | 운영 데이터 보호 |
+
+### 저장 위치 `[확인 필요]`
+
+승격 요청·승인 이력을 어디에 둘지는 미확정이다.
+
+| 후보 | 장점 | 단점 |
+|---|---|---|
+| A. 저장하지 않음(즉시 등록) | 구현 최소 · 단일 사용자에 충분 | 승인 흐름·이력 없음 |
+| B. LocalStorage | Cloud 무변경 | 기기별 분리 · 협업 불가 |
+| C. Cloud 신규 테이블 `guide_promotions` | 이력 영구·공용 | **Cloud 스키마 변경 필요(별도 승인)** |
+
+**권장**: 현재 단계는 **A**(즉시 등록 + 중복 검사만), 다중 사용자 도입 시 **C**.
+
+### 구현 시 변경 예상 범위 (참고 · 아직 구현하지 않음)
+
+- `js/plantGuideModal.js` — 상세에 [이 수종 등록] 버튼 + 중복 검사 결과 표시
+- `js/app.js` — 승격 진입점 1개(기존 `saveSpecies` 재사용) · **Species 로직 변경 없음**
+- `matcher.js` — **수정 없음**(import 만)
+- Cloud/OCR/Invoice/Sync — **무변경**
+
 ## 6. 추가할 파일 (현재 구조 기준)
 
 | 경로 | 계층 | 역할 |
