@@ -215,3 +215,8 @@ Species Manager 의 병합은 가장 비가역적이라 감사 로그가 먼저 
 2. OCR 검수 판정 저장 방식 (A: 새 correction 행 / B: 신규 테이블 / C: 저장 안 함)
 3. Species 병합 정책 — `invoice_items.species_id` 재지정 허용 여부
 4. Admin 진입 방식 — 별도 화면 vs 기존 UI 내 조건부 노출
+5. **`users.role` 자가 승격 차단 여부** — `users_update_self`(policies.sql:34)가
+   자기 행 UPDATE 를 허용하고 `role` 컬럼을 보호하는 정책·트리거가 없다.
+   즉 로그인 사용자가 스스로 `role='admin'` 으로 바꿀 수 있다.
+   T12 구현 중 확인된 사실이며, 관리자 화면이 **쓰기 기능**을 갖기 전에
+   반드시 결론이 필요하다 (예: role 변경을 막는 트리거 추가).
