@@ -17,8 +17,8 @@ HEAD `16b8d36` · `origin/main` `d43c572` (0 ahead / 35 behind).
 
 | 조건 | 내용 | 상태 |
 |---|---|---|
-| 1 | Supabase Migration 적용 | ⛔ 미완료 — **사용자만 가능** |
-| 2 | OAuth 검증 (`?cloudtest=1` 7/7) | ⛔ 미완료 — **사용자만 가능** |
+| 1 | Supabase Migration 적용 | 🟡 부분 — 4개 하위 항목 중 **2개 확인** |
+| 2 | OAuth 검증 (`?cloudtest=1` 7/7) | 🟡 부분 — 로그인 흐름 확인 · **Production URL 등록 미확인** |
 | 3 | LocalStorage Migration 판단 | ⛔ 미완료 — **사용자만 가능** |
 | 4 | Public Artifact 개인정보 제거 | ⛔ 미완료 — **승인 시 대응 가능** |
 
@@ -40,13 +40,45 @@ Production Supabase SQL Editor 에서 **아래 순서로** 실행한다.
 
 ### 적용 후 필수 검증
 
-- [ ] `users.role` self escalation 재현 **실패** 확인
-      (로그인 상태 브라우저 콘솔에서 `update public.users set role='admin'`
-      → `42501` 거부)
-- [ ] 기존 로그인 upsert **성공** 확인 (로그아웃 → 재로그인 정상)
-- [ ] 관리자 지정 SQL **성공** 확인
+- [x] **`users.role` self escalation 재현 실패 확인** — 2026-07-29 사용자 실행.
+      로그인 상태에서 `users` 의 `role='admin'` UPDATE 시도
+      → `PATCH /rest/v1/users` **403 Forbidden** · `data: null`.
+      403 은 PostgreSQL `42501`(insufficient_privilege)의 PostgREST 표현으로,
+      판정 기준과 일치한다. **공격이 실제로 차단됐다.**
+- [x] **기존 로그인 upsert 성공 확인** — 2026-07-29 사용자 실행.
+      Google 로그인 → `auth.users` 생성 → `public.users` 생성 · 이메일 매핑 ·
+      `created_at` · `last_login_at` 값 확인 · `role='user'` 유지.
+      (이 결과로 `public.users` 가 `schema.sql` 대로 생성됐음도 확인됨 —
+       한때 컬럼 4개로 보고됐던 건은 목록 일부였던 것으로 종결)
+- [ ] 관리자 지정 SQL 성공 확인
       `update public.users set role='admin' where email='<관리자 이메일>';`
-- [ ] Storage anon 접근 **차단** 확인 (버킷 `public = false`)
+- [ ] Storage anon 접근 차단 확인 (버킷 `public = false`)
+
+### 남은 확인 사항 (조건 1 종결 전)
+
+1. **`2026-07-27_supplier_upsert_fix.sql` · `storage.sql` 적용 여부 미보고.**
+   1번 파일만 적용됐을 가능성이 있다. 확인:
+   ```sql
+   select prosrc like '%coalesce(excluded.name%' as supplier_fix_applied
+   from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+   where n.nspname='public' and proname='update_invoice_tx';
+
+   select id, public from storage.buckets where id='attachments';
+   ```
+2. **차단 주체가 무엇인지 미확정.** 403 은 차단됐다는 사실은 증명하지만
+   *무엇이* 막았는지는 식별하지 않는다. `fn_protect_user_role` 이 아니라
+   다른 원인(테이블 GRANT 등)일 수도 있다. 이것이 중요한 이유는
+   마이그레이션 **Part 2(`trg_audit_users`)** 때문이다 — Part 1 이 아닌 다른
+   요인이 막은 것이라면 role 변경 감사 기록은 여전히 없다. 확인:
+   ```sql
+   select proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+   where n.nspname='public' and proname='fn_protect_user_role';
+
+   select tgname from pg_trigger
+   where tgrelid='public.users'::regclass and not tgisinternal;
+   ```
+   또는 403 응답의 `message` 본문에
+   `users.role 은 애플리케이션에서 변경할 수 없습니다` 가 있으면 Part 1 확정.
 
 ### 참고 — 로컬 사전 검증 결과 (Production 검증을 대체하지 않음)
 
@@ -87,6 +119,11 @@ Google Cloud Console → OAuth 2.0 Client 의 Authorized redirect URI 에
 
 ### 검증
 
+- [x] **OAuth 제공자 + 사용자 프로비저닝 흐름** — 2026-07-29 사용자 실행.
+      Google → Supabase Auth → `auth.users` → `public.users` → `role='user'`
+      전 구간 정상. **단, 이는 localhost 가 Redirect 목록에 있다는 증거이지
+      Pages 주소가 등록됐다는 증거가 아니다.**
+- [ ] 위 Site URL / Redirect URLs **등록 완료**
 - [ ] `?cloudtest=1` 실행 → **7/7 PASS**
 - [ ] **4단계 `session` 성공 확인 전 merge 금지**
       (Redirect URL 미등록이면 정확히 여기서 멈춘다 — 이 단계가
