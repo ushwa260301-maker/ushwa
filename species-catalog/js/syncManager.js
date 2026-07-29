@@ -14,6 +14,7 @@
  *   species-catalog:sync:lastSync   ISO 문자열
  *
  * kind ∈ "invoice" | "invoiceDelete" | "species" | "speciesDelete"
+ *      | "attachment" | "ocrCorrection"
  */
 
 const PENDING_KEY  = "species-catalog:sync:pending";

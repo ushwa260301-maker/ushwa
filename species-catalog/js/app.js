@@ -27,7 +27,7 @@ import { matchSpecies } from "./matcher.js";
 import { initDebugFlag } from "./debugFlag.js";
 import { initDebugPanel } from "./debugPanel.js";
 import { initAuthGate } from "./auth.js";
-import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSaveSpecies, mirrorDeleteSpecies, mirrorSaveAttachment, fetchAll } from "./cloudStore.js";
+import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSaveSpecies, mirrorDeleteSpecies, mirrorSaveAttachment, mirrorSaveOcrCorrection, fetchAll } from "./cloudStore.js";
 import { addPending, removePending, listPending, hasPending, setLastSync } from "./syncManager.js";
 import { nextId } from "./utils.js";
 
@@ -490,6 +490,17 @@ async function saveInvoice(header, items, extras = {}) {
                "attachment", invoice.attachment.id, "첨부 파일 업로드");
   }
 
+  // OCR 학습 데이터 Cloud 미러 (T9) — ocr_corrections.invoice_id 가 invoices 를
+  // 참조하므로 invoice 미러 이후에 수행한다. 실패해도 거래 저장은 그대로
+  // 유지되고, pending 으로 다음 실행에서 재시도된다 (재시도 원본은 로컬
+  // invoice.analysis 이며, pending 이 남아 있는 동안은 Phase 3 가드가
+  // Cloud 채택을 보류해 그 원본이 덮이지 않는다).
+  if (extras && extras.analysis) {
+    addPending("ocrCorrection", invoice.id);
+    reportSync(await mirrorSaveOcrCorrection(invoice.id, extras.analysis, header, items),
+               "ocrCorrection", invoice.id, "OCR 학습 데이터 저장");
+  }
+
   toast(`거래명세서 ${invoice.id} 저장 완료 (품목 ${resolved.length}건)`);
   return { invoiceId: invoice.id, newSpecies, reusedSpecies };
 }
@@ -698,6 +709,22 @@ async function flushPendingWrites(localData) {
       const sp = (localData?.species || []).find(s => s.id === e.id);
       if (!sp) { removePending("species", e.id); continue; }
       res = await mirrorSaveSpecies(sp);
+    } else if (e.kind === "ocrCorrection") {
+      // 재시도 원본은 로컬 invoice.analysis 다 (Cloud 는 이 값을 복원하지 않음).
+      const inv = (localData?.invoices || []).find(i => i.id === e.id);
+      if (!inv?.analysis) {
+        console.error("[sync] ocrCorrection 재시도 불가 — 로컬 analysis 없음:", e.id);
+        removePending("ocrCorrection", e.id);   // 복구 불가 → 폐기
+        continue;
+      }
+      const itemRows = (localData.invoiceItems || []).filter(it => it.invoiceId === e.id);
+      res = await mirrorSaveOcrCorrection(e.id, inv.analysis, {
+        invoiceDate:     inv.invoiceDate,
+        invoiceNumber:   inv.invoiceNumber,
+        supplier:        inv.supplier,
+        supplierAddress: inv.supplierAddress,
+        supplierPhone:   inv.supplierPhone
+      }, itemRows);
     } else {
       removePending(e.kind, e.id);   // 알 수 없는 종류 → 폐기
       continue;
