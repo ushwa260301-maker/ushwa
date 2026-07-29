@@ -22,10 +22,13 @@ import { initInvoiceModal, openInvoiceModal, reanalyzeCurrent } from "./invoiceM
 import { initHistoryModal, openHistoryModal, refreshHistoryModal } from "./historyModal.js";
 import { initTransactionDetailModal, openTransactionDetailModal } from "./transactionDetailModal.js";
 import { initAttachmentViewer, openAttachmentViewer } from "./attachmentViewer.js";
-import { initAttachmentStore, putAttachment, deleteAttachmentsForInvoice } from "./attachmentStore.js";
+import { initAttachmentStore, putAttachment, getAttachment, deleteAttachmentsForInvoice } from "./attachmentStore.js";
 import { matchSpecies } from "./matcher.js";
 import { initDebugFlag } from "./debugFlag.js";
 import { initDebugPanel } from "./debugPanel.js";
+import { initAuthGate } from "./auth.js";
+import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSaveSpecies, mirrorDeleteSpecies, mirrorSaveAttachment, fetchAll } from "./cloudStore.js";
+import { addPending, removePending, listPending, hasPending, setLastSync } from "./syncManager.js";
 import { nextId } from "./utils.js";
 
 // ============================================================
@@ -50,7 +53,7 @@ import { nextId } from "./utils.js";
  * This keeps the modal's UX identical while shifting the storage to the
  * new normalized model.
  */
-function saveSpecies(payload, id) {
+async function saveSpecies(payload, id) {
   const meta = extractSpeciesMeta(payload);
   let speciesId = id;
   if (id) {
@@ -81,17 +84,47 @@ function saveSpecies(payload, id) {
   state.data.invoiceItems.push(...synthesized.items);
 
   persistAndRerender();
+
+  // Cloud sync (T6 Phase 2) — 수종 기본 정보만 upsert. 로컬에서 재합성된
+  // invoice 는 Cloud 재구성하지 않는다(구매 데이터는 invoice CRUD 로 유지 ·
+  // 승인 범위). 실패 시 사용자에게 표면화.
+  const savedSpecies = state.data.species.find(s => s.id === speciesId);
+  if (savedSpecies) {
+    // pending 선기록 — 미러 중 브라우저가 종료돼도 유실되지 않게 한다.
+    addPending("species", speciesId);
+    reportSync(await mirrorSaveSpecies(savedSpecies), "species", speciesId, "수종 저장");
+  }
 }
 
-/** Delete a species and cascade to its invoices/items. */
-function deleteSpecies(id) {
+/**
+ * Delete a species (T6 Phase 3 · 정책 iii).
+ * 참조 거래(invoice_items)가 있으면 삭제를 거부한다 — invoice/invoiceItems 는
+ * 거래 이력이므로 보존한다(기존 purge 동작 제거). 참조가 없을 때만 삭제하고
+ * Cloud 에도 반영한다(FK 가 서버측 백스톱).
+ */
+async function deleteSpecies(id) {
   const sp = state.data.species.find(s => s.id === id);
   if (!sp) return;
+
+  // 정책 (iii): 참조 거래가 있으면 거부 (거래 이력 보존).
+  const referenced = state.data.invoiceItems.some(it => it.speciesId === id);
+  if (referenced) {
+    toast(`「${sp.name}」은(는) 거래 이력이 있어 삭제할 수 없습니다`);
+    return;
+  }
+
   if (!confirm(`「${sp.name}」을(를) 삭제하시겠습니까?`)) return;
   state.data.species = state.data.species.filter(s => s.id !== id);
-  purgeInvoiceRecordsFor(id);
+  // 참조가 없으므로 purge 할 invoice/items 없음.
   toast("삭제되었습니다");
   persistAndRerender();
+
+  // Cloud 반영 (T6 Phase 3) — await + pending 관리. 성공 시 잔여 pending 정리.
+  // pending 선기록 — 미러 중 브라우저가 종료돼도 유실되지 않게 한다.
+  addPending("speciesDelete", id);
+  const delRes = await mirrorDeleteSpecies(id);
+  reportSync(delRes, "speciesDelete", id, "수종 삭제");
+  if (delRes && delRes.ok) removePending("species", id);
 }
 
 // ============================================================
@@ -436,6 +469,27 @@ async function saveInvoice(header, items, extras = {}) {
   }
 
   persistAndRerender();
+
+  // Cloud dual-write mirror (T6 Phase 2) — 로컬 저장은 위에서 완료됨.
+  // 이제 mirror 결과를 await 해 실패를 사용자에게 표면화한다(로컬은 안전).
+  {
+    const itemRows = state.data.invoiceItems.filter(it => it.invoiceId === invoice.id);
+    const refIds   = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
+    const refSpecies = state.data.species.filter(s => refIds.has(s.id));
+    // pending 선기록 — 미러 중 브라우저가 종료돼도 유실되지 않게 한다.
+    addPending("invoice", invoice.id);
+    reportSync(await mirrorSaveInvoice(invoice, itemRows, refSpecies), "invoice", invoice.id, "거래명세서 저장");
+  }
+
+  // 첨부 Cloud 미러 (T8) — attachments.invoice_id 가 invoices 를 참조하므로
+  // 반드시 invoice 미러 이후에 수행한다. 실패해도 IndexedDB 원본과 invoice
+  // 저장은 그대로 유지되고, pending 으로 다음 실행에서 재시도된다.
+  if (invoice.attachment && extras && extras.file) {
+    addPending("attachment", invoice.attachment.id);
+    reportSync(await mirrorSaveAttachment(invoice.attachment, invoice.id, extras.file),
+               "attachment", invoice.attachment.id, "첨부 파일 업로드");
+  }
+
   toast(`거래명세서 ${invoice.id} 저장 완료 (품목 ${resolved.length}건)`);
   return { invoiceId: invoice.id, newSpecies, reusedSpecies };
 }
@@ -460,7 +514,7 @@ async function saveInvoice(header, items, extras = {}) {
  * @param {{invoiceDate,invoiceNumber,supplier,supplierPhone,supplierAddress}} header
  * @param {Array<{id?:string, speciesId?:string, speciesName:string, spec:string, unit:string, quantity:number, unitPrice:number, amount:number}>} items
  */
-function updateInvoice(invoiceId, header, items) {
+async function updateInvoice(invoiceId, header, items) {
   const inv = state.data.invoices.find(i => i.id === invoiceId);
   if (!inv) { toast("거래를 찾을 수 없습니다"); return; }
 
@@ -530,6 +584,18 @@ function updateInvoice(invoiceId, header, items) {
 
   persistAndRerender();
   refreshHistoryModal();
+
+  // Cloud dual-write mirror (T6 Phase 2) — 동기 로컬 변경은 위에서 완료.
+  // version lookup + optimistic update (미러 전이면 save 로 백필) 결과를
+  // await 해 실패를 표면화한다.
+  {
+    const itemRows = state.data.invoiceItems.filter(it => it.invoiceId === invoiceId);
+    const refIds   = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
+    const refSpecies = state.data.species.filter(s => refIds.has(s.id));
+    // pending 선기록 — 미러 중 브라우저가 종료돼도 유실되지 않게 한다.
+    addPending("invoice", invoiceId);
+    reportSync(await mirrorUpdateInvoice(inv, itemRows, refSpecies), "invoice", invoiceId, "거래 수정");
+  }
 }
 
 /**
@@ -555,7 +621,7 @@ function getSavedInvoiceSnapshot(invoiceId) {
  * it may still have items from other invoices; if it becomes empty its
  * stats simply go to zero (the card still renders).
  */
-function deleteInvoice(invoiceId) {
+async function deleteInvoice(invoiceId) {
   state.data.invoices     = state.data.invoices.filter(i => i.id !== invoiceId);
   state.data.invoiceItems = state.data.invoiceItems.filter(it => it.invoiceId !== invoiceId);
   persistAndRerender();
@@ -563,6 +629,12 @@ function deleteInvoice(invoiceId) {
   // Cascade to IndexedDB — best-effort, fire and forget.
   deleteAttachmentsForInvoice(invoiceId).catch(err =>
     console.warn("[deleteInvoice] attachment cleanup failed:", err));
+  // Cloud dual-write mirror (T6 Phase 3) — await + pending 관리.
+  // pending 선기록 — 미러 중 브라우저가 종료돼도 유실되지 않게 한다.
+  addPending("invoiceDelete", invoiceId);
+  const delRes = await mirrorDeleteInvoice(invoiceId);
+  reportSync(delRes, "invoiceDelete", invoiceId, "거래 삭제");
+  if (delRes && delRes.ok) removePending("invoice", invoiceId);   // 삭제되었으니 잔여 pending 정리
 }
 
 /** Save to storage, rebuild filter chips (in case master lists changed), rerender. */
@@ -570,6 +642,131 @@ function persistAndRerender() {
   storage.save(state.data);
   refreshFilterUi(rerender);
   rerender();
+}
+
+/**
+ * T6 Phase 2/3 — mirror 결과를 사용자에게 표면화하고 sync 상태를 기록.
+ * 호출자는 미러 시도 "전"에 addPending 으로 선기록한다 — 미러 진행 중
+ * 브라우저가 종료돼도 pending 이 남아 다음 로드에서 재시도되기 때문이다.
+ * 여기서는 그 선기록을 결과에 따라 정리한다.
+ * skipped(=Cloud 미설정, LocalStorage 단독 모드) → 선기록 해제(조용히 무시).
+ * 성공 → pending 해제. 실패(네트워크/RLS/version 등) → pending 유지 + toast.
+ */
+function reportSync(result, kind, id, label) {
+  if (!result || result.skipped) { removePending(kind, id); return; }
+  if (result.ok) { removePending(kind, id); return; }
+  addPending(kind, id);
+  toast(`${label} 클라우드 동기화 실패 — 로컬에는 저장됨 (다음 접속 시 자동 재시도)`);
+}
+
+/**
+ * T6 Phase 3 — 미동기(pending) 쓰기를 현재 로컬 상태에서 Cloud 로 재시도.
+ * 성공 항목은 pending 에서 제거. 모든 mirror 가 멱등이라 반복 안전.
+ * 실패(오프라인/미설정) 시 즉시 중단하고 pending 을 남겨 로컬을 보호한다.
+ * @param {object} localData  storage.load() 결과 (재-mirror 원본)
+ * @returns {Promise<{tried:number, remaining:number}>}
+ */
+async function flushPendingWrites(localData) {
+  const pend = listPending();
+  if (!pend.length) return { tried: 0, remaining: 0 };
+  console.info("[sync] pending 재시도:", pend.length, "건");
+  for (const e of pend) {
+    let res = null;
+    if (e.kind === "invoiceDelete") {
+      res = await mirrorDeleteInvoice(e.id);
+    } else if (e.kind === "speciesDelete") {
+      res = await mirrorDeleteSpecies(e.id);
+    } else if (e.kind === "invoice") {
+      const inv = (localData?.invoices || []).find(i => i.id === e.id);
+      if (!inv) { removePending("invoice", e.id); continue; }   // 로컬에 없으면 폐기
+      const itemRows   = (localData.invoiceItems || []).filter(it => it.invoiceId === e.id);
+      const refIds     = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
+      const refSpecies = (localData.species || []).filter(s => refIds.has(s.id));
+      res = await mirrorUpdateInvoice(inv, itemRows, refSpecies);
+    } else if (e.kind === "attachment") {
+      // 원본 blob 은 IndexedDB 에 있다 — 거기서 되읽어 업로드를 재시도한다.
+      const rec = await getAttachment(e.id);
+      if (!rec?.blob) {
+        console.error("[sync] attachment 재시도 불가 — IndexedDB 원본 없음:", e.id);
+        removePending("attachment", e.id);   // 복구 불가 → 폐기
+        continue;
+      }
+      res = await mirrorSaveAttachment(
+        { id: rec.id, filename: rec.filename, mimeType: rec.mimeType, size: rec.size },
+        rec.invoiceId, rec.blob);
+    } else if (e.kind === "species") {
+      const sp = (localData?.species || []).find(s => s.id === e.id);
+      if (!sp) { removePending("species", e.id); continue; }
+      res = await mirrorSaveSpecies(sp);
+    } else {
+      removePending(e.kind, e.id);   // 알 수 없는 종류 → 폐기
+      continue;
+    }
+    if (res && res.ok) removePending(e.kind, e.id);
+    else break;   // 실패(오프라인/미설정) → 나머지도 실패 예상 · pending 유지·중단
+  }
+  return { tried: pend.length, remaining: listPending().length };
+}
+
+// ============================================================
+// T6 Phase 1 — 읽기 경로 Cloud 우선 (읽기만; 쓰기·폴백 무변경)
+// ============================================================
+
+/**
+ * Cloud fetchAll() 결과가 "사용 가능"한지 엄격 판정.
+ * 아래는 모두 실패(=로컬 캐시 사용)로 본다:
+ *   · undefined/null (미설정·미로그인·fetchAll 내부 실패)
+ *   · species/invoices/invoiceItems 중 하나라도 배열이 아님
+ *   · 세 배열이 모두 비어 있음 (빈 Cloud 오검출 방지)
+ */
+function isCloudUsable(cloud) {
+  if (!cloud) return false;
+  const { species, invoices, invoiceItems } = cloud;
+  if (!Array.isArray(species) || !Array.isArray(invoices) || !Array.isArray(invoiceItems)) return false;
+  if (species.length === 0 && invoices.length === 0 && invoiceItems.length === 0) return false;
+  return true;
+}
+
+/**
+ * 읽기 경로 Cloud 우선. 성공 시 Cloud 도메인 데이터 채택 + 로컬 meta 보존 +
+ * LocalStorage 캐시 갱신. 실패/네트워크/미로그인/권한/빈결과 → localData 그대로.
+ * fetchAll 은 미설정 시 null 을 반환하고, 실패 시 throw 하므로 try/catch 로 폴백.
+ *
+ * @param {object|null} localData  storage.load() 결과 (폴백 원본 · meta 출처)
+ * @returns {Promise<object>}
+ */
+async function loadCloudFirst(localData) {
+  try {
+    // T6 Phase 3 — 미동기 쓰기가 있으면 먼저 Cloud 로 flush 시도.
+    // flush 후에도 pending 이 남으면(오프라인 등) Cloud 채택을 보류해,
+    // 아직 반영 안 된 로컬 변경이 Cloud 값에 덮여 사라지는 것을 막는다.
+    if (hasPending()) {
+      await flushPendingWrites(localData);
+      if (hasPending()) {
+        console.info("[app] data source: LOCAL_CACHE (pending 보호 — 미동기 변경 유지)");
+        return localData;
+      }
+    }
+
+    const cloud = await fetchAll();               // 미설정 → null
+    if (isCloudUsable(cloud)) {
+      const merged = {
+        categories:   localData?.categories || [],   // meta 는 로컬 보존 (Cloud 에 없음)
+        colors:       localData?.colors || [],
+        species:      cloud.species,
+        invoices:     cloud.invoices,
+        invoiceItems: cloud.invoiceItems
+      };
+      storage.save(merged);                        // 오프라인 대비 캐시 갱신
+      setLastSync();
+      console.info("[app] data source: CLOUD");
+      return merged;
+    }
+  } catch (err) {
+    console.warn("[app] cloud read failed:", err?.message || err);
+  }
+  console.info("[app] data source: LOCAL_CACHE");
+  return localData;
 }
 
 const cardHandlers = {
@@ -663,13 +860,50 @@ function wireFilterRail() {
 // ============================================================
 
 async function init() {
+  console.info("[app] init() 시작 · readyState:", document.readyState);
   // Debug flag first so <html class="debug-mode"> is set before any DOM
   // element with .debug-only decides its visibility.
   initDebugFlag();
 
+  // Login gate — blocks until signed in when Supabase is configured.
+  // With cloud unconfigured this resolves immediately and the app behaves
+  // exactly as before (LocalStorage only, no gate shown). A gate/SDK
+  // failure must never brick the whole app boot, so it is caught here.
+  try {
+    await initAuthGate();
+  } catch (err) {
+    console.error("[app] auth gate error (continuing boot):", err?.message || err);
+  }
+
+  // Cloud 연결 셀프테스트 — ?cloudtest=1 일 때만 (지연 import · 평상시 0비용).
+  try {
+    const { isCloudTestRequested, runCloudSelfTest } = await import("./cloudSelfTest.js");
+    if (isCloudTestRequested()) runCloudSelfTest({ toast });
+  } catch (err) {
+    console.warn("[app] cloudSelfTest load skipped:", err?.message || err);
+  }
+
+  // 데이터 이전(T5) — ?migrate=1 일 때만 (지연 import · 평상시 0비용).
+  // 자동 실행은 DRY-RUN(쓰기 없음)뿐. 실제 이전은 콘솔에서 명시 호출:
+  //   await window.speciesMigration.runMigration({ dryRun: false })
+  try {
+    const migration = await import("./migration.js");
+    if (migration.isMigrationRequested()) {
+      window.speciesMigration = migration;
+      const rec = await migration.runMigration({ dryRun: true });
+      console.info(
+        "[app] 데이터 이전 DRY-RUN 완료 — 실제 이전은 콘솔에서:\n" +
+        "  await window.speciesMigration.runMigration({ dryRun: false })",
+        rec
+      );
+    }
+  } catch (err) {
+    console.warn("[app] migration load skipped:", err?.message || err);
+  }
+
   cacheElements();
 
-  // Load persisted data; fall back to fetched seed on first visit.
+  // Load persisted data (LocalStorage cache); fall back to fetched seed on first visit.
   let data = storage.load();
   if (!data) {
     try {
@@ -681,6 +915,12 @@ async function init() {
       data = { categories: [], colors: [], species: [] };
     }
   }
+
+  // T6 Phase 1 — 읽기 경로 Cloud 우선. 성공 시 Cloud 채택 + 캐시 갱신,
+  // 실패/빈결과/미로그인/오프라인 → 위 LocalStorage(data) 유지.
+  // storage.load() 는 위에서 그대로 폴백으로 존속한다 (제거하지 않음).
+  data = await loadCloudFirst(data);
+
   state.data = data;
 
   initModal({

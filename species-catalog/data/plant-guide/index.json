@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "description": "Plant Guide 매니페스트 — 도감 페이지 파일 목록. plantGuideStore 가 이 파일을 먼저 읽고 필요한 페이지만 지연 로드한다.",
+  "files": [
+    { "file": "page-110-111.json", "pages": [110, 111], "count": 12 }
+  ]
+}

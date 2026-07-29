@@ -1,11 +1,13 @@
-# Trigger: re-run after repo visibility + Pages Source enablement.
 name: Deploy species-catalog to GitHub Pages
 
+# main 전용. github-pages environment 의 보호 규칙이 기본 브랜치 외의
+# 배포를 거부하므로, feature 브랜치를 트리거에 두면 러너가 job 을 집기도
+# 전에 실패한다 (2026-07-18 ~ 07-28 사이 25회 연속 실패). 실패 알림만
+# 쌓이고 배포는 되지 않아, 진짜 문제를 가린다.
 on:
   push:
     branches:
       - main
-      - claude/plant-species-flowering-filter-7gww27
     paths:
       - 'species-catalog/**'
       - '.github/workflows/pages.yml'
@@ -36,6 +38,20 @@ jobs:
           # Auto-enable Pages on first run so the repo owner doesn't need to
           # click through Settings → Pages manually.
           enablement: true
+
+      # 공개 배포물에서 런타임에 불필요한 디렉터리를 뺀다. 러너의 체크아웃본
+      # 에만 적용되며 저장소 파일은 그대로다 (fixture 삭제·수정 금지 계약 유지).
+      #   tests/    — OCR 회귀 fixture. 21~24 는 실제 거래명세서 사진에서
+      #               만든 것이라 실명 상호 · 휴대폰번호 · 은행/계좌 정보가
+      #               들어 있다. 정적 파일은 로그인 게이트를 거치지 않으므로
+      #               배포하면 누구나 열람할 수 있다.
+      #   supabase/ — 스키마 · RLS 정책 · 마이그레이션. 콘솔에서 수동 적용
+      #               하는 파일이라 런타임에 쓰이지 않는다.
+      #   docs/     — 내부 검증 로그.
+      # 런타임 참조 전수 확인 결과 필요한 것은 css/ js/ data/ assets/ 와
+      # 루트 HTML 2개뿐이다 (HTML 의 src/href · JS 의 fetch 경로 기준).
+      - name: Strip non-runtime files from the artifact
+        run: rm -rf species-catalog/tests species-catalog/supabase species-catalog/docs
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
