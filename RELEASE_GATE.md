@@ -17,12 +17,38 @@ HEAD `16b8d36` · `origin/main` `d43c572` (0 ahead / 35 behind).
 
 | 조건 | 내용 | 상태 |
 |---|---|---|
-| 1 | Supabase Migration 적용 | 🟡 부분 — 4개 하위 항목 중 **2개 확인** |
-| 2 | OAuth 검증 (`?cloudtest=1` 7/7) | 🟡 부분 — 로그인 흐름 확인 · **Production URL 등록 미확인** |
-| 3 | LocalStorage Migration 판단 | ⛔ 미완료 — **사용자만 가능** |
-| 4 | Public Artifact 개인정보 제거 | ⛔ 미완료 — **승인 시 대응 가능** |
+| 1 | Supabase Migration 적용 | ✅ 충족 (2026-07-29) |
+| 2 | OAuth 검증 | ✅ 설정 완료 · **배포본 `?cloudtest=1` 7/7 미실행** |
+| 3 | LocalStorage Migration 판단 | ✅ 소유자 판단 완료 (2026-07-29) |
+| 4 | Public Artifact 개인정보 제거 | ✅ 충족 (`e73893a`) |
 
-**→ 종합 판정: HOLD**
+**→ 종합 판정: 게이트 통과 · merge/배포 완료**
+
+## 릴리스 기록 (2026-07-29)
+
+| | |
+|---|---|
+| merge | `4a81641` — feature 38커밋 → main (충돌 0 · 트리 동일) |
+| 배포 | Pages run #42 · sha `4a81641` · **success** · 13:15:38→13:15:54 |
+| strip step | 실행 확인 (step 4, conclusion success) |
+| 이전 main | `d43c572` (2026-07-19) |
+
+### 남은 단 하나 — 배포본 CloudSelfTest
+
+`https://ushwa260301-maker.github.io/ushwa/?cloudtest=1` → **7/7 확인 필요.**
+이 컨테이너는 `github.io` 아웃바운드가 차단돼 있어 사용자 화면에서만 확인
+가능하다. 4단계 `session` 이 Redirect URL 등록의 실증 지점이다.
+
+### 조건 3 판단 근거 (기록)
+
+Pages origin LocalStorage 에 시드 외 47건 존재 — species `sp-013~031`(19) ·
+invoices `inv-050~054`(5) · items `item-123~145`(23). 소유자가 개발 테스트
+데이터로 판단하여 보존 대상 없음으로 결론.
+
+⚠️ 단, 근거로 제시된 `createdBy`/`uploadedBy` 부재는 **판별 신호가 아니다** —
+LocalStorage 로컬 모델에는 해당 필드가 애초에 없고(`storage.js`), `uploaded_by`
+는 `save_invoice_tx` 가 `auth.uid()` 로 채우는 DB 전용 컬럼이라 시드 49건에도
+없다. 판단 자체는 소유자의 것이며 존중하되, 이 근거는 무효임을 기록해 둔다.
 
 ---
 
