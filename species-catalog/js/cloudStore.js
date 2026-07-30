@@ -297,6 +297,90 @@ export async function mirrorSaveAttachment(meta, invoiceId, file) {
   }
 }
 
+/**
+ * OCR 학습 데이터 미러 (T9) — `ocr_corrections` 에 1행 append.
+ *
+ * 왜 필요한가: OCR 결과(`invoice.analysis`)는 지금까지 로컬에만 있었다.
+ * `invoiceToRpc()` 가 보내지 않고 `invoiceFromDb()` 가 복원하지 않으므로,
+ * Cloud-first read 가 로컬 캐시를 갱신하는 순간 사라졌다. 이 함수가
+ * 그 데이터를 영구 저장소로 옮긴다 — OCR 은 "읽는" 기능이 아니라 학습
+ * 데이터를 만드는 엔진이라는 계약의 실제 배선이다.
+ *
+ * `ocr_corrections` 는 INSERT-ONLY 다(policies.sql: UPDATE/DELETE 정책
+ * 부재 = DB 레벨 거부). 따라서 이 호출은 기존 행을 절대 건드리지 않는다.
+ *
+ * 멱등성: `id` 가 `gen_random_uuid()` 기본값이라 재호출하면 중복 행이
+ * 생긴다. 그래서 삽입 전에 같은 invoice 의 행이 있는지 확인하고 있으면
+ * skip 한다. (스키마의 `version` 컬럼은 향후 "수정할 때마다 새 행" 용도로
+ * 남겨두고, T9 에서는 최초 1행만 기록한다.)
+ *
+ * FK 주의: `invoice_id → invoices(id)` 이므로 **invoice 미러 이후**에
+ * 호출해야 한다.
+ *
+ * @param {string} invoiceId
+ * @param {object} analysis  vision.js analyzeInvoice() 결과 (`_debug` 포함)
+ * @param {object} header    사용자가 수정한 거래 헤더
+ * @param {Array}  items     사용자가 수정한 품목 행
+ * @returns {Promise<{ok:boolean, skipped?:boolean, error?:string}>}
+ */
+export async function mirrorSaveOcrCorrection(invoiceId, analysis, header, items) {
+  if (!isCloudConfigured()) return { ok: false, skipped: true };
+  if (!invoiceId || !analysis) return { ok: false, skipped: true };
+  try {
+    const supabase = await getSupabase();
+
+    const { data: existing, error: selErr } = await supabase
+      .from("ocr_corrections").select("id").eq("invoice_id", invoiceId).limit(1);
+    if (selErr) throw selErr;
+    if (existing && existing.length) {
+      console.info("[cloud] saveOcrCorrection skipped — 이미 기록됨:", invoiceId);
+      return { ok: true, skipped: true };
+    }
+
+    const dbg = analysis._debug || {};
+    const { data: userData } = await supabase.auth.getUser();
+
+    const { error } = await supabase.from("ocr_corrections").insert({
+      invoice_id:      invoiceId,
+      version:         1,
+      raw_text:        dbg.raw?.text || "",
+      normalized_text: dbg.raw?.normalized || "",
+      parsed_fields: {
+        supplier:      analysis.supplier ?? null,
+        rows:          analysis.rows ?? [],
+        invoiceDate:   analysis.invoiceDate ?? "",
+        invoiceNumber: analysis.invoiceNumber ?? ""
+      },
+      user_edited_fields: { header, items },
+      debug_meta:         stripHeavyDebug(dbg),
+      engine_version:     dbg.model || "",
+      uploaded_by:        userData?.user?.id || null
+    });
+    if (error) throw error;
+
+    console.info("[cloud] saveOcrCorrection mirrored:", invoiceId,
+                 "· confidence=", dbg.confidence ?? "n/a",
+                 "· rawLen=", (dbg.raw?.text || "").length);
+    return { ok: true };
+  } catch (err) {
+    console.warn("[cloud] saveOcrCorrection mirror failed:", err?.message || err);
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/**
+ * debug_meta 에서 data URL 썸네일을 제거한다.
+ * `raw.originalImage` / `raw.preprocessedImage` 는 전처리 미리보기용
+ * base64 이미지라 jsonb 행을 수백 KB 로 불린다 — 학습에 필요한 값도
+ * 아니므로 저장하지 않는다. 원본 이미지는 Storage(attachments)에 있다.
+ */
+function stripHeavyDebug(dbg) {
+  const raw = { ...(dbg.raw || {}) };
+  delete raw.originalImage;
+  delete raw.preprocessedImage;
+  return { ...dbg, raw };
+}
+
 /** 사용자 파일명을 경로에 쓰지 않는다 — 확장자만 취해 조립. */
 function buildStoragePath(invoiceId, attachmentId, filename) {
   const m = /\.([A-Za-z0-9]{1,8})$/.exec(filename || "");
