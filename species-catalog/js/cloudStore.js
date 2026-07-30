@@ -272,10 +272,17 @@ export async function mirrorSaveAttachment(meta, invoiceId, file) {
     const supabase = await getSupabase();
     const path = buildStoragePath(invoiceId, meta.id, meta.filename);
 
+    // upsert 를 쓰지 않는다. storage.sql 이 "첨부 원본은 불변" 계약으로
+    // storage.objects 의 UPDATE 정책을 만들지 않으므로, upsert 는 객체가
+    // 이미 있을 때 UPDATE 경로로 들어가 RLS 에 막힌다. 그 조합은 실제로
+    // 발생했다 — 업로드는 성공했는데 아래 메타 insert 가 FK 로 실패하면,
+    // 이후 모든 재시도가 "new row violates row-level security policy" 로
+    // 영구 거부된다(2026-07-30 실환경). 순수 INSERT 로 올리고 "이미 존재"
+    // 만 성공으로 흘린다 — 바로 아래 메타 insert 와 동일한 패턴이다.
     const { error: upErr } = await supabase
       .storage.from(ATTACHMENT_BUCKET)
-      .upload(path, file, { contentType: meta.mimeType || "application/octet-stream", upsert: true });
-    if (upErr) throw upErr;
+      .upload(path, file, { contentType: meta.mimeType || "application/octet-stream" });
+    if (upErr && !isAlreadyExists(upErr)) throw upErr;
 
     // 메타는 UPDATE 정책이 없으므로(불변) 이미 있으면 그대로 성공 처리.
     const { error: insErr } = await supabase.from("attachments").insert({
@@ -379,6 +386,18 @@ function stripHeavyDebug(dbg) {
   delete raw.originalImage;
   delete raw.preprocessedImage;
   return { ...dbg, raw };
+}
+
+/**
+ * "이미 같은 경로/키가 있다" 계열 오류인지 — 첨부는 불변이므로 이 경우는
+ * 성공으로 간주한다(재시도 멱등성).
+ * Supabase Storage 는 중복 업로드에 409 + "The resource already exists" 를
+ * 돌려주지만 버전에 따라 문구가 "Duplicate" 로도 나오므로 상태코드도 함께 본다.
+ */
+function isAlreadyExists(err) {
+  if (!err) return false;
+  const msg = String(err.message || "");
+  return /already exists|duplicate/i.test(msg) || String(err.statusCode || "") === "409";
 }
 
 /** 사용자 파일명을 경로에 쓰지 않는다 — 확장자만 취해 조립. */

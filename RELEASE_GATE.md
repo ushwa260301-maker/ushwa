@@ -33,6 +33,56 @@ HEAD `16b8d36` · `origin/main` `d43c572` (0 ahead / 35 behind).
 | strip step | 실행 확인 (step 4, conclusion success) |
 | 이전 main | `d43c572` (2026-07-19) |
 
+## T9 — OCR 학습 데이터 배선 (2026-07-30 실환경 검증 완료)
+
+배포: merge `09a7c31` · Pages run #43 success (01:18:39).
+
+### 결과 — PASS
+
+로그인 → 실제 명세서(`0419 레베빌 대림.jpg` 0.58 MB) 등록 → OCR 실행
+(psm 6 62% → psm 4 72% 재시도 승격 · 5,094ms) → 필드 수정 → 저장.
+
+```
+[cloud] saveInvoice mirrored: inv-050
+[cloud] saveAttachment mirrored: att-53749dc73170 inv-050/att-53749dc73170.jpg
+[cloud] saveOcrCorrection mirrored: inv-050 · confidence= 0.72 · rawLen= 209
+[app] data source: CLOUD
+```
+
+`rawLen= 209` 은 디버그 스냅샷의 `_debug.raw.text` 길이와 일치 — 실제 OCR
+원문이 저장됐다. `data source: CLOUD` 는 pending 이 완전히 비었다는 신호다.
+
+첫 실제 학습 데이터의 내용: 소재지·전화는 OCR 자동 인식 성공, 상호·작성일·
+품목 3건은 사용자 수동 입력. 즉 이 1건이 "OCR 이 무엇을 놓쳤고 사람이 어떻게
+고쳤는가"의 쌍으로 남았다.
+
+### 검증 과정에서 드러난 결함 3건
+
+| # | 결함 | 상태 |
+|---|---|---|
+| 1 | `save_invoice_tx` 가 items 를 species 보다 먼저 insert → 신규 수종 포함 거래의 Cloud 저장 불가 (`invoice_items_species_id_fkey`) | **해결** — `2026-07-30_save_invoice_species_order_fix.sql` 적용 |
+| 2 | `cloudStore.js:277` 이 `upsert: true` 로 업로드하는데 `storage.sql` 은 "첨부 불변" 이유로 UPDATE 정책을 만들지 않음 → **업로드 성공 후 메타 실패** 조합에서 재시도가 영구 차단 | **미해결** — 고아 객체 수동 삭제로 우회. 재발 가능 |
+| 3 | `app.js:705-706` `flushPendingWrites` 가 첫 실패에서 `break` → 항목별 사유로 실패한 1건이 무관한 항목(이번엔 `ocrCorrection`)을 무기한 차단 | **미해결** |
+
+2번은 한 줄 변경(`upsert: true` 제거 + "이미 존재"를 성공 처리 — 바로 아래
+메타 insert 가 이미 쓰는 패턴)으로 해결되며, 계약("첨부 원본 불변")과도
+일치한다. UPDATE 정책 추가는 그 계약을 깨므로 권장하지 않는다.
+
+3번은 재시도 큐 설계 판단이 필요하다 — 항목별 실패는 `continue`, 전역 실패
+(오프라인·미설정)만 `break` 하는 방향.
+
+**둘 다 사용자 지시 대기 중이며 구현하지 않았다.**
+
+### Supabase 플랫폼 제약 (기록)
+
+`storage.objects` 직접 DELETE 는 `storage.protect_delete()` 트리거가 막는다.
+고아 객체 정리는 Storage API 로만 가능하다:
+```js
+await sb.storage.from('attachments').remove(['<path>']);
+```
+
+---
+
 ### 남은 단 하나 — 배포본 CloudSelfTest
 
 `https://ushwa260301-maker.github.io/ushwa/?cloudtest=1` → **7/7 확인 필요.**

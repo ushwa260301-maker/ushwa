@@ -681,6 +681,7 @@ async function flushPendingWrites(localData) {
   const pend = listPending();
   if (!pend.length) return { tried: 0, remaining: 0 };
   console.info("[sync] pending 재시도:", pend.length, "건");
+  const failures = [];
   for (const e of pend) {
     let res = null;
     if (e.kind === "invoiceDelete") {
@@ -729,10 +730,44 @@ async function flushPendingWrites(localData) {
       removePending(e.kind, e.id);   // 알 수 없는 종류 → 폐기
       continue;
     }
-    if (res && res.ok) removePending(e.kind, e.id);
-    else break;   // 실패(오프라인/미설정) → 나머지도 실패 예상 · pending 유지·중단
+
+    if (res && res.ok) { removePending(e.kind, e.id); continue; }
+
+    // 전역 장애(Cloud 미설정 · 오프라인 · 인증 만료)면 나머지도 실패가
+    // 확실하므로 즉시 중단한다 — 무의미한 요청을 쏟아내지 않는다.
+    if (isGlobalSyncFailure(res)) {
+      console.warn("[sync] 전역 장애로 재시도 중단:", res?.error || "(cloud 미설정)");
+      break;
+    }
+
+    // 항목별 실패(FK · RLS · 검증 등) — 이 항목만 pending 에 남기고 계속한다.
+    // 하나의 영구 실패가 뒤의 정상 항목을 막지 않게 한다 (2026-07-30 실환경:
+    // 첨부 업로드 1건이 ocrCorrection 재시도를 무기한 차단했다).
+    failures.push(`${e.kind}:${e.id} — ${res?.error || "unknown"}`);
   }
-  return { tried: pend.length, remaining: listPending().length };
+
+  if (failures.length) {
+    console.warn("[sync] 항목별 실패", failures.length, "건 (pending 유지):",
+                 failures.join(" | "));
+  }
+  return { tried: pend.length, remaining: listPending().length, failed: failures.length };
+}
+
+/**
+ * 전역 장애 판정 — true 면 남은 pending 재시도를 중단한다.
+ *
+ * 항목별 사유(FK 위반 · RLS 거부 · 중복 키 · 검증 실패)와 구분하는 것이
+ * 목적이다. 전자는 다음 항목을 시도할 가치가 있고, 후자는 없다.
+ *
+ * `skipped` 는 Cloud 미설정이므로 전역이다. 다만 호출자가 `res.ok` 를
+ * 먼저 보므로 `{ok:true, skipped:true}`(이미 기록됨 등)는 여기 오지 않는다.
+ */
+function isGlobalSyncFailure(res) {
+  if (!res) return true;              // 분기 미매칭 — 보수적으로 중단
+  if (res.skipped) return true;       // Cloud 미설정
+  const m = String(res.error || "");
+  return /SDK 로드 실패|Failed to fetch|NetworkError|Load failed|net::|ERR_INTERNET|timeout|fetch failed/i.test(m)
+      || /JWT|Unauthorized|not authenticated|invalid token|token is expired|401/i.test(m);
 }
 
 // ============================================================
