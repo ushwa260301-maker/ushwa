@@ -395,27 +395,66 @@ function syncReviewState() {
 // ============================================================
 
 /**
- * 거래처 목록을 지금까지 저장된 거래명세서에서 만든다.
+ * 거래처 목록.
  *
- * Supabase 의 `suppliers` 테이블을 직접 읽지 않는 이유 — `fetchAll()` 이
- * species / invoices / invoice_items / attachments 만 가져오고 suppliers 는
- * 안 가져온다. 새 네트워크 호출을 추가하는 것은 이번 범위 밖이고, 로컬
- * invoices 의 거래처 문자열이 곧 "사용자가 실제로 거래한 곳" 목록이라
- * 판정 근거로 충분하다.
+ * Cloud 읽기가 성공하면 `state.data.suppliers` 에 실제 `suppliers` 행(uuid
+ * 포함)이 들어 있다. alias 를 기록하려면 uuid 가 필요하므로 이쪽을 우선한다.
  *
- * `id` 는 정규화된 이름을 그대로 쓴다. Phase D 에서 alias 를 기록할 때
- * 실제 uuid 가 필요해지면 그때 `suppliers` 로드를 붙인다.
+ * Cloud 미설정·오프라인·미로그인이면 그 배열이 없다. 그때는 지금까지 저장된
+ * 거래명세서의 상호 문자열에서 목록을 만든다 — 매칭 표시는 계속 되지만
+ * uuid 가 없으므로 `_local: true` 로 표시해 alias 기록 대상에서 제외한다
+ * (없는 supplier_id 로 INSERT 하면 FK 위반이다).
  */
 function buildSupplierList() {
+  const cloud = state.data.suppliers;
+  if (Array.isArray(cloud) && cloud.length) {
+    return cloud
+      .filter(s => s?.id && s?.name)
+      .map(s => ({ id: s.id, name: s.name, norm_name: s.norm_name || normSupplierName(s.name) }));
+  }
   const seen = new Map();
   for (const inv of (state.data.invoices || [])) {
     const name = String(inv?.supplier || "").trim();
     if (!name) continue;
     const norm = normSupplierName(name);
     if (!norm || seen.has(norm)) continue;
-    seen.set(norm, { id: norm, name, norm_name: norm });
+    seen.set(norm, { id: norm, name, norm_name: norm, _local: true });
   }
   return [...seen.values()];
+}
+
+/** Cloud 에서 읽어둔 활성 alias. 없으면 빈 배열. */
+function currentAliases() {
+  const a = state.data.supplierAlias;
+  return Array.isArray(a) ? a : [];
+}
+
+/**
+ * 사용자가 후보 거래처를 고른 결과를 alias 로 기록한다.
+ *
+ * 기록하지 않는 경우 — 모두 의도적이다:
+ *   · aliasText 가 없음        사용자가 직접 타이핑한 값이다. OCR 오독이
+ *                              아니므로 alias 로 만들면 안 된다. alias 는
+ *                              "OCR 이 이렇게 읽으면 이 거래처" 라는 뜻이다.
+ *   · 정규화 결과가 같음        `대림 원예 가든` ↔ `대림원예가든` 처럼
+ *                              norm_name 이 이미 흡수하는 차이다. 불필요하다.
+ *   · 공급처에 uuid 가 없음     Cloud 미설정·오프라인 폴백 목록이다.
+ *                              없는 supplier_id 로 INSERT 하면 FK 위반이다.
+ *
+ * 실패해도 저장 흐름을 막지 않는다 — 사용자가 다시 고르면 재시도된다.
+ */
+function recordSupplierAlias(aliasText, supplier) {
+  if (!ctx.onSupplierAlias) return;
+  const text = String(aliasText || "").trim();
+  if (!text) return;
+  if (supplier._local || !supplier.id) {
+    console.info("[wizard] alias 기록 건너뜀 — 로컬 파생 거래처(uuid 없음):", supplier.name);
+    return;
+  }
+  if (normSupplierName(text) === normSupplierName(supplier.name)) return;
+
+  Promise.resolve(ctx.onSupplierAlias(text, supplier.id))
+    .catch(err => console.warn("[wizard] alias 기록 실패:", err?.message || err));
 }
 
 /**
@@ -426,7 +465,7 @@ function buildSupplierList() {
  */
 function applySupplierCandidates(candidates) {
   const suppliers = buildSupplierList();
-  const res = matchSupplierFromCandidates(candidates, suppliers, []);
+  const res = matchSupplierFromCandidates(candidates, suppliers, currentAliases());
 
   if (res.status === "match" && res.supplier) {
     els.invSupplier.value  = res.supplier.name;
@@ -442,7 +481,7 @@ function applySupplierCandidates(candidates) {
  */
 function refreshSupplierBadge() {
   const suppliers = buildSupplierList();
-  const res = matchSupplier(els.invSupplier.value, suppliers, []);
+  const res = matchSupplier(els.invSupplier.value, suppliers, currentAliases());
   session.supplierMatch = toSupplierState(res, session.supplierMatch?.source === "user" ? "user" : "auto");
   renderSupplierBadge(res, suppliers);
 }
@@ -544,6 +583,7 @@ function openSupplierPicker(anchor, res, suppliers) {
       setBadge(anchor, "match", `✓ ${cand.supplier.name}`, `사용자 선택 · 유사도 ${pct(cand.score)}`);
       detachSupplierPicker(anchor);
       closePicker();
+      recordSupplierAlias(res.pickedCandidate, cand.supplier);
       syncReviewState();
     });
     menu.appendChild(btn);
