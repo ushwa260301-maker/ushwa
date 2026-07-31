@@ -104,6 +104,7 @@ export function initInvoiceModal(deps) {
   els.itemCount        = document.getElementById("invItemCount");
   els.itemRows         = document.getElementById("invItemRows");
   els.addItem          = document.getElementById("invAddItem");
+  els.amountWarn       = document.getElementById("invAmountWarn");
   els.saveBtn          = document.getElementById("invSaveBtn");
   els.itemRowTpl       = document.getElementById("invoiceItemRowTemplate");
 
@@ -127,7 +128,7 @@ function wireEvents() {
   els.uploadNext.addEventListener("click", () => startAnalysis());
   els.retryBtn.addEventListener("click", () => startAnalysis());
   els.goReview.addEventListener("click", () => enterReview());
-  els.addItem.addEventListener("click", () => { appendItemRow({}); syncDebugPanel(); });
+  els.addItem.addEventListener("click", () => { appendItemRow({}); syncReviewState(); });
   els.saveBtn.addEventListener("click", () => { onSaveClicked().catch(err => {
     ctx.toast && ctx.toast("저장 실패: " + (err?.message || err));
   }); });
@@ -136,7 +137,7 @@ function wireEvents() {
   // Header field edits — keep session.header live and refresh debug panel.
   const bindHeader = (input, key) => input.addEventListener("input", () => {
     if (session.header) session.header[key] = input.value;
-    syncDebugPanel();
+    syncReviewState();
   });
   bindHeader(els.invDate,     "invoiceDate");
   bindHeader(els.invNumber,   "invoiceNumber");
@@ -191,6 +192,7 @@ function resetSession() {
 
   els.itemRows.innerHTML = "";
   els.itemCount.textContent = "0";
+  if (els.amountWarn) { els.amountWarn.hidden = true; els.amountWarn.innerHTML = ""; }
 
   els.invDate.value = "";
   els.invNumber.value = "";
@@ -352,22 +354,89 @@ function enterReview() {
   updateItemCount();
 
   goTo(3);
-  syncDebugPanel();
+  syncReviewState();
 }
 
 /**
- * Push the current wizard slice into the debug panel. Called by
- * `enterReview()` and by every input handler that could change the outcome
- * of `saveInvoice()` (name/spec/qty/price/amount edits, header changes,
- * row add/remove, species-picker selection).
+ * Step 3 의 단일 "상태 변경" 훅. `enterReview()` 와 `saveInvoice()` 결과를
+ * 바꿀 수 있는 모든 입력 핸들러(품목명/규격/수량/단가/금액 편집, 헤더 변경,
+ * 행 추가·삭제, 수종 선택)가 호출한다.
+ *   ① 금액 정합성 경고를 다시 그리고
+ *   ② 디버그 패널에 현재 세션을 밀어넣는다.
+ *
+ * 순서가 중요하다. 경고는 사용자에게 보여야 하는 값이고 디버그 패널은
+ * 개발자 전용이다. 디버그 패널이 던지면(초기화 전 호출 등) 뒤에 있는
+ * 코드가 실행되지 않으므로, 경고를 먼저 그린다.
  */
-function syncDebugPanel() {
+function syncReviewState() {
+  renderAmountWarnings();
   setDebugSession({
     analysis: session.analysis || null,
     header:   session.header   || null,
     items:    session.items    || [],
     file:     session.file     || null
   });
+}
+
+/**
+ * 수량 × 단가 ≠ 금액 인 품목을 찾는다. 순수 함수 — 부작용 없음.
+ *
+ * 저장 대상과 같은 조건(품목명·수량·단가가 모두 있는 행)만 본다.
+ * 저장되지 않을 행을 경고해도 사용자가 할 수 있는 일이 없기 때문이다.
+ *
+ * @param {Array<{name,quantity,unitPrice,amount}>} items
+ * @returns {Array<{name,quantity,unitPrice,computed,entered,diff}>}
+ */
+export function checkAmounts(items) {
+  return (items || [])
+    .filter(it => it?.name?.trim() && Number(it.unitPrice) > 0 && Number(it.quantity) > 0)
+    .map(it => {
+      const quantity  = Number(it.quantity)  || 0;
+      const unitPrice = Number(it.unitPrice) || 0;
+      const entered   = Number(it.amount)    || 0;
+      const computed  = quantity * unitPrice;
+      return { name: it.name.trim(), quantity, unitPrice, computed, entered, diff: entered - computed };
+    })
+    .filter(r => r.diff !== 0);
+}
+
+const won = n => Number(n).toLocaleString("ko-KR");
+
+/**
+ * 금액 경고를 렌더한다. **저장을 막지 않는다** — 명세서에 실제로 계산이
+ * 맞지 않게 적혀 있는 경우가 있고, 사용자가 금액을 직접 수정하면
+ * (`_amountEditedByUser`) 자동 재계산이 꺼지는 것도 의도된 동작이다.
+ * 경고는 그 불일치를 눈에 보이게만 한다.
+ */
+function renderAmountWarnings() {
+  if (!els.amountWarn) return;
+  const bad = checkAmounts(session.items);
+  if (!bad.length) {
+    els.amountWarn.hidden = true;
+    els.amountWarn.innerHTML = "";
+    return;
+  }
+  const rows = bad.map(r => `
+    <div class="amount-warn-row">
+      <div class="aw-name">${escapeHtml(r.name)}</div>
+      <dl class="aw-figures">
+        <div><dt>수량</dt><dd>${won(r.quantity)}</dd></div>
+        <div><dt>단가</dt><dd>${won(r.unitPrice)}</dd></div>
+        <div><dt>계산 금액</dt><dd>${won(r.computed)}</dd></div>
+        <div><dt>입력 금액</dt><dd>${won(r.entered)}</dd></div>
+        <div class="aw-diff"><dt>차이</dt><dd>${r.diff > 0 ? "+" : "−"}${won(Math.abs(r.diff))}</dd></div>
+      </dl>
+    </div>`).join("");
+  els.amountWarn.innerHTML =
+    `<div class="amount-warn-head">⚠ 금액 검증 필요 — ${bad.length}건</div>` +
+    rows +
+    `<div class="amount-warn-foot">저장은 그대로 진행됩니다. 명세서를 다시 확인해 주세요.</div>`;
+  els.amountWarn.hidden = false;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 function appendItemRow(source) {
@@ -406,32 +475,32 @@ function appendItemRow(source) {
   nameInp.addEventListener("input", () => {
     item.name = nameInp.value;
     updateBadgeForRow(item, badge);
-    syncDebugPanel();
+    syncReviewState();
   });
-  specInp.addEventListener("input", () => { item.spec = specInp.value; syncDebugPanel(); });
-  unitInp.addEventListener("input", () => { item.unit = unitInp.value; syncDebugPanel(); });
+  specInp.addEventListener("input", () => { item.spec = specInp.value; syncReviewState(); });
+  unitInp.addEventListener("input", () => { item.unit = unitInp.value; syncReviewState(); });
 
   qtyInp.addEventListener("input", () => {
     item.quantity = Number(qtyInp.value) || 0;
     if (!item._amountEditedByUser) recomputeAmount(item, amountInp);
-    syncDebugPanel();
+    syncReviewState();
   });
   priceInp.addEventListener("input", () => {
     item.unitPrice = Number(priceInp.value) || 0;
     if (!item._amountEditedByUser) recomputeAmount(item, amountInp);
-    syncDebugPanel();
+    syncReviewState();
   });
   amountInp.addEventListener("input", () => {
     item.amount = Number(amountInp.value) || 0;
     item._amountEditedByUser = true;
-    syncDebugPanel();
+    syncReviewState();
   });
 
   removeBtn.addEventListener("click", () => {
     rowEl.remove();
     session.items = session.items.filter(x => x !== item);
     updateItemCount();
-    syncDebugPanel();
+    syncReviewState();
   });
 
   updateBadgeForRow(item, badge);
@@ -581,7 +650,7 @@ function openPicker(anchor, item, result) {
         `사용자 선택 · 유사도 ${pct(cand.score)}`);
       detachPicker(anchor);
       closePicker();
-      syncDebugPanel();
+      syncReviewState();
     });
     menu.appendChild(btn);
   }
@@ -596,7 +665,7 @@ function openPicker(anchor, item, result) {
     setBadge(anchor, "new", "+ 새 수종", "사용자가 신규 등록 선택");
     detachPicker(anchor);
     closePicker();
-    syncDebugPanel();
+    syncReviewState();
   });
   menu.appendChild(newBtn);
 

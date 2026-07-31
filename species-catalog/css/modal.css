@@ -443,6 +443,62 @@
   font-family: var(--serif);
 }
 
+/* -------------- Step 3 · 금액 정합성 경고 --------------
+   저장을 막지 않는 표시 전용 블록. 오류(danger)가 아니라 확인 요청이므로
+   테두리만 danger 계열을 쓰고 배경은 은은하게 둔다. */
+.amount-warn {
+  margin-top: 10px;
+  border: 1px solid var(--danger);
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: var(--danger-soft);
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.amount-warn-head {
+  font-weight: 700;
+  color: var(--danger);
+  letter-spacing: 0.02em;
+  margin-bottom: 8px;
+}
+.amount-warn-row + .amount-warn-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--rule);
+}
+.aw-name {
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.aw-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+}
+.aw-figures > div { display: flex; gap: 6px; align-items: baseline; }
+.aw-figures dt {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.aw-figures dd {
+  margin: 0;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.aw-figures .aw-diff dd {
+  color: var(--danger);
+  font-weight: 700;
+}
+.amount-warn-foot {
+  margin-top: 8px;
+  color: var(--ink-2);
+  font-size: 11px;
+}
+
 /* -------------- Step 3 · Invoice item grid -------------- */
 .invoice-item-grid {
   border: 1px solid var(--rule);
