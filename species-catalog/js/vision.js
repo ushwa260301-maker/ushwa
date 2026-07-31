@@ -945,26 +945,40 @@ function detectSupplier(text) {
     contact = normalizePhone(mobile || phones[0] || "");
   }
 
-  // 사업장 소재지 — labelled, then a full 시/도+시/군/구+동/리/로/길 chain, then a short hint.
-  let region = "";
-  const addrKey = headText.match(ADDRESS_KEYWORD_RE);
-  if (addrKey) region = addrKey[1].replace(/\s+/g, " ").trim();
-  if (!region) {
-    const full = text.match(ADDRESS_LINE_RE);
-    if (full && full[0]) region = full[0].replace(/\s+/g, " ").trim();
-  }
-  if (!region) {
-    const short = text.match(REGION_HINT_RE);
-    if (short) region = short[0].trim();
-  }
-  region = region
+  // 사업장 소재지 — 라벨 캡처 → 시/도+시/군/구+동/리/로/길 체인 → 짧은 힌트 순.
+  //
+  // 라벨 분기는 라벨 오른쪽만 캡처한다. 2단 레이아웃(값이 라벨의 왼쪽이나 윗줄에
+  // 있는 양식)에서는 옆 칸의 전화번호 조각을 잡아오는데, 그 값이 비어 있지 않다는
+  // 이유로 나머지 후보를 건너뛰면 정답이 raw 에 있어도 영구히 놓친다.
+  // 그래서 세 후보를 모두 만들어 정제한 뒤, 주소로 성립하는 첫 번째를 쓴다.
+  const candidates = [
+    headText.match(ADDRESS_KEYWORD_RE)?.[1],
+    text.match(ADDRESS_LINE_RE)?.[0],
+    text.match(REGION_HINT_RE)?.[0]
+  ].map(cleanRegion);
+  const region = candidates.find(isUsableRegion) || "";
+
+  return { name, region, contact };
+}
+
+/** 주소 후보에서 전화번호와 뒤따르는 라벨 꼬리를 떼어내고 공백을 정규화한다. */
+function cleanRegion(candidate) {
+  return String(candidate ?? "")
     .replace(PHONE_RE_G, "")
     .split(/(?:상\s*호|성\s*명|대표자|사업자|전\s*화|TEL|FAX|팩스|핸\s*드\s*폰|휴\s*대(?:\s*폰|\s*전\s*화)|M\.\s*)/i)[0]
     .replace(/[·]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
 
-  return { name, region, contact };
+/**
+ * 주소로 성립하려면 한글이 최소 2자 남아 있어야 한다.
+ * 라벨 오른쪽에서 잘못 잡히는 값들(`Tel, Ea` · `| m(02)508-1` · `| @( H-P:`)은
+ * 실환경 3건 모두 한글이 0자였고, 실제 주소는 항상 한글을 포함한다.
+ * 훼손된 한글 주소는 통과시키되 기호·숫자 잔해만 남은 후보는 버리는 최소 조건이다.
+ */
+function isUsableRegion(s) {
+  return (s.match(/[가-힣]/g) || []).length >= 2;
 }
 
 /** Numbers with a 원 or `.-` suffix are always prices; bare ones need ≥100. */
