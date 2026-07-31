@@ -140,6 +140,58 @@ export function matchSupplier(raw, suppliers = [], aliases = [], opts = {}) {
     : { status: "possible", supplier: null,         candidates, score: top.score, via: "similarity", norm };
 }
 
+/**
+ * 여러 후보 문자열 중 가장 잘 맞는 하나를 고른다.
+ *
+ * `vision.js` 의 `supplier.nameCandidates` 를 받는다. 파서는 어느 토큰이
+ * 상호인지 판정하지 않고 전부 넘기므로, 여기서 공급처 목록을 기준으로
+ * 순위를 매긴다 — 이 모듈만이 그 판별 정보를 갖고 있다.
+ *
+ *   inv-058 후보 ["노는", "귀커래향", "서울", …]
+ *     "귀커래향" 0.889 match  ·  "노는" 0.000 new   → 귀커래향 채택
+ *
+ * 반환값에 어느 후보가 채택됐는지(`pickedCandidate`)를 넣는다. Phase C 에서
+ * alias 를 만들 때 `alias_text` 로 쓸 값이고, 사용자에게 "무엇을 무엇으로
+ * 읽었는지" 보여주려면 필요하다.
+ *
+ * 후보가 모두 new 면 첫 번째 후보를 pickedCandidate 로 돌려준다 — 매칭은
+ * 실패했어도 UI 가 입력란에 채워 넣을 최선의 문자열은 필요하기 때문이다.
+ *
+ * @param {string[]} candidates
+ * @param {Array<{id:string, name:string, norm_name?:string}>} suppliers
+ * @param {Array<{norm_alias:string, supplier_id:string, is_active?:boolean}>} aliases
+ * @param {{matchThreshold?:number, possibleThreshold?:number, topK?:number}} [opts]
+ * @returns {SupplierMatchResult & {pickedCandidate: string|null}}
+ */
+export function matchSupplierFromCandidates(candidates, suppliers = [], aliases = [], opts = {}) {
+  const list = (Array.isArray(candidates) ? candidates : []).filter(c => normSupplierName(c));
+  if (!list.length) {
+    return { status: "new", supplier: null, candidates: [], score: 0, via: null, norm: "",
+             pickedCandidate: null };
+  }
+
+  // 후보마다 판정한 뒤 가장 높은 점수를 고른다.
+  // 동점이면 앞선 후보(문서 위쪽)를 유지한다 — sort 는 안정 정렬이다.
+  const results = list.map(c => ({ candidate: c, result: matchSupplier(c, suppliers, aliases, opts) }));
+  const ranked = [...results].sort((a, b) => rankOf(b.result) - rankOf(a.result));
+  const best = ranked[0];
+
+  return best.result.status === "new"
+    ? { ...best.result, pickedCandidate: list[0] }   // 매칭 실패 — 첫 후보를 그대로 넘긴다
+    : { ...best.result, pickedCandidate: best.candidate };
+}
+
+/**
+ * 정렬 키. 점수만 쓰면 exact/alias(둘 다 score 1)와 유사도 1.0 이 뒤섞이므로
+ * 확정 경로에 가중치를 얹어 사람이 고른 결과가 항상 앞서게 한다.
+ */
+function rankOf(r) {
+  const bonus = (r.via === "exact" || r.via === "alias") ? 2
+              : r.via === "ambiguous-alias"              ? 1
+              : 0;
+  return bonus + r.score;
+}
+
 /** 정규화된 이름 기준으로 공급처를 점수 내림차순 정렬한다. */
 function rank(norm, suppliers) {
   return suppliers
