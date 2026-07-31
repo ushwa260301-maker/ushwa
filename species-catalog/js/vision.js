@@ -116,6 +116,8 @@ const META_LINE_RE = /^(?:금\s*액|아\s*래|위\s*와|계\s*산|일\s*금|합\
 // HEADER_LINE_RE·META_LINE_RE 는 `^` 앵커라서 OCR 이 줄 앞에 잡음을 붙이면
 // (`ma  일금일백육십이만원정 …`) 무력화되므로, 이 둘은 앵커 없이 줄 전체를 본다.
 // 은행명·업체명 같은 고유명사는 넣지 않는다 — 구조만 본다.
+// 거래명세서에서 `귀하`·`귀중` 는 받는 쪽을 가리키는 표식이다.
+const RECIPIENT_MARK_RE = /귀\s*하|귀\s*중/;
 const ACCOUNT_LIKE_RE = /(?<!\d)\d{2,6}(?:\s*-\s*\d{2,6}){2,}(?!\d)/;
 const KRW_AMOUNT_WORD_RE = /(?:일\s*금[가-힣\s]*|[일이삼사오육칠팔구십백천만억]{2,}\s*)원\s*정/;
 
@@ -891,6 +893,10 @@ function detectSupplier(text) {
     for (const l of head) {
       if (BIZ_SUFFIX_KEYWORDS.some(k => l.includes(k))) {
         if (PHONE_TEST_RE.test(l)) continue;
+        // `귀하`/`귀중` 는 받는 쪽 표식이다. 그 라인의 상호는 거래처이지
+        // 공급자가 아니므로 후보에서 뺀다. 실환경 inv-059 는 수신처 라인
+        // (`… 주식회사 수무 귀하`)이 `주식회사` 접미어에 걸려 상호로 채택됐다.
+        if (RECIPIENT_MARK_RE.test(l)) continue;
         // Fragmented OCR (`공 급 자 남 양 수 목 원`) normalizes to
         // `공급자남양수목원` — the label is glued to the value. Strip the
         // known label prefix before the header-line reject; otherwise the
