@@ -111,6 +111,14 @@ const NOISE_NAMES = new Set([
 const DATE_LINE_RE = /(?:\d{2,4}\s*년|\d{1,2}\s*월|\d{1,2}\s*일|(?:19|20)\d{2}[-.\/]\d{1,2}[-.\/]\d{1,2})/;
 const META_LINE_RE = /^(?:금\s*액|아\s*래|위\s*와|계\s*산|일\s*금|합\s*계|총\s*계|공\s*급\s*자|공\s*급\s*받)/;
 
+// 계좌번호·사업자등록번호처럼 하이픈으로 이어진 숫자 묶음이 3개 이상인 줄, 그리고
+// `일금일백육십이만원정` 형태의 한글 금액 표기 줄은 어떤 명세서에서도 품목이 아니다.
+// HEADER_LINE_RE·META_LINE_RE 는 `^` 앵커라서 OCR 이 줄 앞에 잡음을 붙이면
+// (`ma  일금일백육십이만원정 …`) 무력화되므로, 이 둘은 앵커 없이 줄 전체를 본다.
+// 은행명·업체명 같은 고유명사는 넣지 않는다 — 구조만 본다.
+const ACCOUNT_LIKE_RE = /(?<!\d)\d{2,6}(?:\s*-\s*\d{2,6}){2,}(?!\d)/;
+const KRW_AMOUNT_WORD_RE = /(?:일\s*금[가-힣\s]*|[일이삼사오육칠팔구십백천만억]{2,}\s*)원\s*정/;
+
 // ============================================================
 // Public API
 // ============================================================
@@ -980,6 +988,8 @@ function extractCandidateRows(text) {
     if (PHONE_TEST_RE.test(line)) continue;
     if (META_LINE_RE.test(line)) continue;
     if (DATE_LINE_RE.test(line)) continue;
+    if (ACCOUNT_LIKE_RE.test(line)) continue;
+    if (KRW_AMOUNT_WORD_RE.test(line)) continue;
     if (!/[가-힣]{2,}/.test(line)) continue;
 
     // Standalone Korean token that isn't a column header nor noise word.
