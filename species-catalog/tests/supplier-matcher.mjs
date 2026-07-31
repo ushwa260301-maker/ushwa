@@ -16,9 +16,11 @@
 import {
   normSupplierName,
   matchSupplier,
+  matchSupplierFromCandidates,
   SUPPLIER_MATCH_THRESHOLD,
   SUPPLIER_POSSIBLE_THRESHOLD
 } from "../js/supplierMatcher.js";
+import { normalizeOcrText, parseInvoiceText } from "../js/vision.js";
 
 let pass = 0, fail = 0;
 const ok = (cond, label, detail = "") => {
@@ -190,6 +192,64 @@ for (const a of realSuppliers) {
   if (res.status === "match") merged.push(`${a.name} → ${res.supplier.name} (${res.score.toFixed(3)})`);
 }
 ok(merged.length === 0, "서로 다른 실제 업체가 자동 병합되지 않음", merged.join(", "));
+
+// ============================================================
+console.log("\n⑤ matchSupplierFromCandidates — 후보 배열 랭킹");
+// ============================================================
+
+r = matchSupplierFromCandidates(["노는", "귀커래향", "서초구"], suppliers, []);
+eq(r.status, "match",           "잡음과 상호가 섞인 후보 → 상호 선택");
+eq(r.supplier.id, "s3",         "귀커래향 → 귀거래향");
+eq(r.pickedCandidate, "귀커래향", "채택된 후보 문자열을 돌려준다");
+
+r = matchSupplierFromCandidates([], suppliers, []);
+eq(r.status, "new",       "빈 후보 배열 → new");
+eq(r.pickedCandidate, null, "빈 후보 배열 → pickedCandidate null");
+r = matchSupplierFromCandidates(null, suppliers, []);
+eq(r.status, "new", "null 후보 → new (예외 없음)");
+
+r = matchSupplierFromCandidates(["가나다", "라마바"], suppliers, []);
+eq(r.status, "new",           "전부 매칭 실패 → new");
+eq(r.pickedCandidate, "가나다", "전부 실패해도 첫 후보는 넘긴다 (UI 입력값)");
+
+// exact/alias 는 score 1 이라 유사도 1.0 과 뒤섞인다 → 가중치로 확정 경로 우선
+r = matchSupplierFromCandidates(["대림원예가듣센테", "나무생각"], suppliers, []);
+eq(r.supplier.id, "s5", "유사도끼리는 점수 높은 쪽 (나무생각 1.000 > 0.900)");
+
+r = matchSupplierFromCandidates(["대림원예가듣센테", "나무생각"], suppliers,
+                                [A("대림원예가듣센테", "s2")]);
+eq(r.via, "alias",              "alias 확정이 유사도 1.000 을 이긴다");
+eq(r.supplier.id, "s2",         "alias 가 가리키는 공급처 채택");
+eq(r.pickedCandidate, "대림원예가듣센테", "alias 후보가 pickedCandidate");
+
+// 동점 시 문서 위쪽 후보 유지 (안정 정렬)
+r = matchSupplierFromCandidates(["나무생각", "나무생각"], suppliers, []);
+eq(r.pickedCandidate, "나무생각", "동점 → 앞선 후보 유지");
+
+// ============================================================
+console.log("\n⑥ vision.js → supplierMatcher 연결 (파서 출력 그대로 투입)");
+// ============================================================
+// vision.js 가 후보를 만들고 supplierMatcher 가 고른다. 두 모듈의 계약 검증.
+const PIPELINE = [
+  ["inv-058", "귀거래향",
+   `으                 노는 | A\nBo 귀커래향 [5] 3 @\n서울 서초구 내곡동 1-701 헌인화휘집하장 CE 41호\nE 02-491-희 38 H.010-91 al 37\n작성년월일       공급대가총액\n200 .   w 153.000  | |`],
+  ["inv-059", "나무생각",
+   `명세서 ee\nNo, 거래명 A = 나무생각\n사 업 지\n713-95-00155 Gog 의자: 2024년 062 ose\n= 호 |나루척착 명 | 대환 AQ 주식회사 수무 귀하\n급 | 삿 82] 경기도 성남시 수정구 며수대로 5-1 40`]
+];
+for (const [id, truth, raw] of PIPELINE) {
+  const sup = parseInvoiceText(normalizeOcrText(raw)).supplier;
+  ok(Array.isArray(sup.nameCandidates) && sup.nameCandidates.length > 0,
+     `${id} · vision.js 가 후보를 만든다 (${sup.nameCandidates.length}개)`);
+  const res = matchSupplierFromCandidates(sup.nameCandidates, suppliers, []);
+  eq(res.supplier?.name ?? null, truth,
+     `${id} · 파서 name=${JSON.stringify(sup.name)} 이지만 후보 랭킹은 ${truth} 에 도달`);
+}
+
+// 상호가 raw 에 없으면 후보 랭킹으로도 못 만들어낸다 — 없는 정보는 생성하지 않는다
+const noName = parseInvoiceText(normalizeOcrText(
+  `경)| BEA 물시랑로 241(주암동) 과전화훼집하장 B\n소 재 지| @(02507-3445 H-P:010-5329-4673\nㅁ주:황병오`)).supplier;
+r = matchSupplierFromCandidates(noName.nameCandidates, [...suppliers, S("s9", "지호식물원")], []);
+eq(r.status, "new", "raw 에 상호가 없으면 후보 랭킹도 new (없는 정보를 만들지 않음)");
 
 // ============================================================
 console.log(`\n${"=".repeat(56)}`);
