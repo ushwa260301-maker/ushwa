@@ -126,7 +126,7 @@ const KRW_AMOUNT_WORD_RE = /(?:일\s*금[가-힣\s]*|[일이삼사오육칠팔�
 // ============================================================
 
 /**
- * @typedef {{name:string, region:string, contact:string}} Supplier
+ * @typedef {{name:string, region:string, contact:string, nameCandidates:string[]}} Supplier
  * @typedef {{name:string, spec:string, unit:string, price:number}} InvoiceRow
  * @typedef {{ok:boolean, reason?:string, supplier:Supplier, rows:InvoiceRow[], meta?:object}} AnalyzeResult
  */
@@ -964,7 +964,43 @@ function detectSupplier(text) {
   ].map(cleanRegion);
   const region = candidates.find(isUsableRegion) || "";
 
-  return { name, region, contact };
+  return { name, region, contact, nameCandidates: collectNameCandidates(head) };
+}
+
+/**
+ * 상호일 수 있는 한글 토큰을 머리 영역에서 **전부** 모은다. 판정하지 않는다.
+ *
+ * 왜 필요한가 — 파서 혼자서는 구별할 수 없는 경우가 있다.
+ *   inv-058  1행 "으 노는 | A"  ·  2행 "Bo 귀커래향 [5] 3 @"
+ *   `노는` 과 `귀커래향` 은 둘 다 한글 2~4자에 모든 게이트를 통과한다.
+ *   텍스트 안에는 둘을 가르는 구조적 신호가 없다. 차이는 오직 하나 —
+ *   `귀커래향` 은 알려진 공급처 `귀거래향` 과 유사도 0.889 이고 `노는` 은
+ *   최대 0.33 이라는 것. 그 판별 정보는 `suppliers` 목록에 있고 vision.js
+ *   는 DB 를 모른다(fixture 테스트가 그 전제 위에 있다).
+ *
+ * 그래서 여기서는 **고르지 않고 넘긴다.** 순위 결정은 공급처 목록을 아는
+ * `supplierMatcher.js` 가 한다. `supplier.name` 의 기존 3단 판정 로직은
+ * 그대로 두고, 이 배열만 덧붙인다 — 무시하면 종전과 완전히 동일하게 동작한다.
+ *
+ * @param {string[]} head  이미 trim·필터된 머리 라인 (detectSupplier 와 공유)
+ * @returns {string[]}     중복 제거된 후보 토큰. 순서는 등장 순.
+ */
+function collectNameCandidates(head) {
+  const out = [];
+  for (const line of head) {
+    // 전화·날짜 라인은 상호를 담지 않는다.
+    if (PHONE_TEST_RE.test(line) || DATE_LINE_RE.test(line)) continue;
+    // 계좌 라인은 `농협:251-1118-4809-83문명석대림원예가듣센테` 처럼
+    // 계좌번호 뒤에 예금주+상호가 붙는 관례가 있다. 번호 앞부분은 버린다.
+    const acc = line.match(ACCOUNT_LIKE_RE);
+    const seg = acc ? line.slice(acc.index + acc[0].length) : line;
+    for (const tok of seg.split(/[\s|:()[\]]+/)) {
+      if (!/^[가-힣]{2,20}$/.test(tok)) continue;
+      if (NOISE_NAMES.has(tok) || COLUMN_HEADER_WORDS.has(tok)) continue;
+      if (!out.includes(tok)) out.push(tok);
+    }
+  }
+  return out;
 }
 
 /** 주소 후보에서 전화번호와 뒤따르는 라벨 꼬리를 떼어내고 공백을 정규화한다. */
