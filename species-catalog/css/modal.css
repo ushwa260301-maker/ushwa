@@ -443,6 +443,46 @@
   font-family: var(--serif);
 }
 
+/* -------------- Step 3 · 거래처 매칭 배지 --------------
+   품목 행의 수종 배지(.ii-badge)와 같은 3-tier 시각 언어를 쓴다.
+   피커는 .species-picker-menu 를 그대로 재사용한다. */
+.supplier-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--rule);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+.supplier-badge[data-status="match"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+.supplier-badge[data-status="possible"] {
+  background: transparent;
+  border-color: var(--muted);
+  color: var(--ink-2);
+  border-style: dashed;
+}
+.supplier-badge[data-status="new"] {
+  background: transparent;
+  border-color: var(--rule);
+  color: var(--muted);
+}
+.supplier-badge.clickable { cursor: pointer; }
+.supplier-badge.clickable:hover,
+.supplier-badge.clickable:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
 /* -------------- Step 3 · 금액 정합성 경고 --------------
    저장을 막지 않는 표시 전용 블록. 오류(danger)가 아니라 확인 요청이므로
    테두리만 danger 계열을 쓰고 배경은 은은하게 둔다. */

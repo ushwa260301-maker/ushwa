@@ -23,6 +23,7 @@
 import { state } from "./state.js";
 import { analyzeInvoice } from "./vision.js";
 import { matchSpecies } from "./matcher.js";
+import { matchSupplier, matchSupplierFromCandidates, normSupplierName } from "./supplierMatcher.js";
 import { setSession as setDebugSession, refresh as refreshDebug, clearDebugPanel, notifySaved as notifyDebugSaved } from "./debugPanel.js";
 
 // ============================================================
@@ -43,7 +44,10 @@ const session = {
   file: null,
   analysis: null,
   header: emptyHeader(),
-  items: [] // [{ name, spec, unit, quantity, unitPrice, amount, _row: HTMLElement }]
+  items: [], // [{ name, spec, unit, quantity, unitPrice, amount, _row: HTMLElement }]
+  // 공급처 매칭 결과. Phase C 는 여기까지만 — alias 기록·저장은 아직 하지 않는다.
+  // { status, via, score, supplierName, pickedCandidate, source: "auto"|"user" } | null
+  supplierMatch: null
 };
 
 function emptyHeader() {
@@ -105,6 +109,7 @@ export function initInvoiceModal(deps) {
   els.itemRows         = document.getElementById("invItemRows");
   els.addItem          = document.getElementById("invAddItem");
   els.amountWarn       = document.getElementById("invAmountWarn");
+  els.supplierBadge    = document.getElementById("invSupplierBadge");
   els.saveBtn          = document.getElementById("invSaveBtn");
   els.itemRowTpl       = document.getElementById("invoiceItemRowTemplate");
 
@@ -142,6 +147,8 @@ function wireEvents() {
   bindHeader(els.invDate,     "invoiceDate");
   bindHeader(els.invNumber,   "invoiceNumber");
   bindHeader(els.invSupplier, "supplier");
+  // 거래처를 직접 입력하는 동안에는 배지만 갱신한다 — 입력란은 덮어쓰지 않는다.
+  els.invSupplier.addEventListener("input", () => refreshSupplierBadge());
   bindHeader(els.invPhone,    "supplierPhone");
   bindHeader(els.invAddress,  "supplierAddress");
 }
@@ -193,6 +200,8 @@ function resetSession() {
   els.itemRows.innerHTML = "";
   els.itemCount.textContent = "0";
   if (els.amountWarn) { els.amountWarn.hidden = true; els.amountWarn.innerHTML = ""; }
+  session.supplierMatch = null;
+  if (els.supplierBadge) { detachSupplierPicker(els.supplierBadge); els.supplierBadge.hidden = true; }
 
   els.invDate.value = "";
   els.invNumber.value = "";
@@ -346,6 +355,9 @@ function enterReview() {
   els.invPhone.value = session.header.supplierPhone;
   els.invAddress.value = session.header.supplierAddress;
 
+  // 공급처 매칭 — 파서가 넘긴 후보 배열을 거래처 목록 기준으로 판정한다.
+  applySupplierCandidates(a.supplier?.nameCandidates || []);
+
   // Item rows from analysis
   els.itemRows.innerHTML = "";
   session.items = [];
@@ -376,6 +388,194 @@ function syncReviewState() {
     items:    session.items    || [],
     file:     session.file     || null
   });
+}
+
+// ============================================================
+// Step 3 · 공급처 매칭 (Phase C — 표시 + 선택 결과 state 전달까지)
+// ============================================================
+
+/**
+ * 거래처 목록을 지금까지 저장된 거래명세서에서 만든다.
+ *
+ * Supabase 의 `suppliers` 테이블을 직접 읽지 않는 이유 — `fetchAll()` 이
+ * species / invoices / invoice_items / attachments 만 가져오고 suppliers 는
+ * 안 가져온다. 새 네트워크 호출을 추가하는 것은 이번 범위 밖이고, 로컬
+ * invoices 의 거래처 문자열이 곧 "사용자가 실제로 거래한 곳" 목록이라
+ * 판정 근거로 충분하다.
+ *
+ * `id` 는 정규화된 이름을 그대로 쓴다. Phase D 에서 alias 를 기록할 때
+ * 실제 uuid 가 필요해지면 그때 `suppliers` 로드를 붙인다.
+ */
+function buildSupplierList() {
+  const seen = new Map();
+  for (const inv of (state.data.invoices || [])) {
+    const name = String(inv?.supplier || "").trim();
+    if (!name) continue;
+    const norm = normSupplierName(name);
+    if (!norm || seen.has(norm)) continue;
+    seen.set(norm, { id: norm, name, norm_name: norm });
+  }
+  return [...seen.values()];
+}
+
+/**
+ * 파서가 넘긴 후보 배열로 공급처를 판정하고 배지를 그린다.
+ * `status === "match"` 일 때만 입력란을 해석된 상호로 채운다 —
+ * OCR 이 `노는` 으로 읽었어도 `귀거래향` 으로 확정되면 그것을 쓰는 것이
+ * 이 기능의 목적이다. 그 외에는 파서 출력을 그대로 둔다.
+ */
+function applySupplierCandidates(candidates) {
+  const suppliers = buildSupplierList();
+  const res = matchSupplierFromCandidates(candidates, suppliers, []);
+
+  if (res.status === "match" && res.supplier) {
+    els.invSupplier.value  = res.supplier.name;
+    session.header.supplier = res.supplier.name;
+  }
+  session.supplierMatch = toSupplierState(res, "auto");
+  renderSupplierBadge(res, suppliers);
+}
+
+/**
+ * 사용자가 거래처를 직접 입력하는 동안 배지만 갱신한다.
+ * **입력란을 절대 덮어쓰지 않는다** — 타이핑 중 값이 바뀌면 안 된다.
+ */
+function refreshSupplierBadge() {
+  const suppliers = buildSupplierList();
+  const res = matchSupplier(els.invSupplier.value, suppliers, []);
+  session.supplierMatch = toSupplierState(res, session.supplierMatch?.source === "user" ? "user" : "auto");
+  renderSupplierBadge(res, suppliers);
+}
+
+/** 매칭 결과에서 저장·디버그에 필요한 부분만 뽑는다 (DOM 참조 없음). */
+function toSupplierState(res, source) {
+  return {
+    status:          res.status,
+    via:             res.via,
+    score:           res.score,
+    supplierName:    res.supplier?.name ?? null,
+    pickedCandidate: res.pickedCandidate ?? null,
+    source
+  };
+}
+
+function renderSupplierBadge(res, suppliers) {
+  const badge = els.supplierBadge;
+  if (!badge) return;
+  detachSupplierPicker(badge);
+
+  if (!String(els.invSupplier.value || "").trim() && res.status === "new") {
+    badge.hidden = true;
+    return;
+  }
+  badge.hidden = false;
+
+  if (res.status === "match") {
+    const label = res.via === "exact" ? "기존 거래처"
+                : res.via === "alias" ? "별칭 연결"
+                : `자동 연결 ${pct(res.score)}`;
+    setBadge(badge, "match", `✓ ${res.supplier.name}`, `${label} · via=${res.via}`);
+    return;
+  }
+  if (res.status === "possible") {
+    setBadge(badge, "possible", `후보 ${res.candidates.length} ▾`,
+      res.candidates.map(c => `${c.supplier.name} ${pct(c.score)}`).join(" · "));
+    attachSupplierPicker(badge, res, suppliers);
+    return;
+  }
+  setBadge(badge, "new", "+ 새 거래처", "일치하는 기존 거래처가 없습니다");
+}
+
+function attachSupplierPicker(badge, res, suppliers) {
+  badge.classList.add("clickable");
+  badge.tabIndex = 0;
+  badge.setAttribute("role", "button");
+  badge.setAttribute("aria-haspopup", "menu");
+  badge.setAttribute("aria-label", `후보 거래처 ${res.candidates.length}개 중 선택`);
+  const open = e => { e.stopPropagation(); openSupplierPicker(badge, res, suppliers); };
+  const key  = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(e); } };
+  badge._supOpen = open;
+  badge._supKey  = key;
+  badge.addEventListener("click", open);
+  badge.addEventListener("keydown", key);
+}
+
+function detachSupplierPicker(badge) {
+  if (badge._supOpen) badge.removeEventListener("click", badge._supOpen);
+  if (badge._supKey)  badge.removeEventListener("keydown", badge._supKey);
+  badge._supOpen = badge._supKey = null;
+  badge.classList.remove("clickable");
+  badge.removeAttribute("role");
+  badge.removeAttribute("tabindex");
+  badge.removeAttribute("aria-haspopup");
+  badge.removeAttribute("aria-label");
+}
+
+function openSupplierPicker(anchor, res, suppliers) {
+  closePicker();
+  const menu = document.createElement("div");
+  menu.className = "species-picker-menu";
+  menu.setAttribute("role", "menu");
+
+  const header = document.createElement("div");
+  header.className = "picker-header";
+  header.textContent = `"${res.pickedCandidate ?? els.invSupplier.value}" 에 가까운 거래처`;
+  menu.appendChild(header);
+
+  for (const cand of res.candidates) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "picker-item";
+    btn.setAttribute("role", "menuitem");
+    const name  = document.createElement("span"); name.className  = "pi-name";  name.textContent  = cand.supplier.name;
+    const score = document.createElement("span"); score.className = "pi-score"; score.textContent = pct(cand.score);
+    btn.append(name, score);
+    btn.addEventListener("click", () => {
+      // 선택 결과를 입력란과 세션에 반영한다. 저장 흐름은 건드리지 않는다 —
+      // header.supplier 는 기존과 똑같이 입력란에서 읽힌다.
+      els.invSupplier.value   = cand.supplier.name;
+      session.header.supplier = cand.supplier.name;
+      session.supplierMatch = {
+        status: "match", via: "user-pick", score: cand.score,
+        supplierName: cand.supplier.name,
+        pickedCandidate: res.pickedCandidate ?? null,
+        source: "user"
+      };
+      setBadge(anchor, "match", `✓ ${cand.supplier.name}`, `사용자 선택 · 유사도 ${pct(cand.score)}`);
+      detachSupplierPicker(anchor);
+      closePicker();
+      syncReviewState();
+    });
+    menu.appendChild(btn);
+  }
+
+  const newBtn = document.createElement("button");
+  newBtn.type = "button";
+  newBtn.className = "picker-item picker-new";
+  newBtn.setAttribute("role", "menuitem");
+  newBtn.textContent = "+ 새 거래처로 등록";
+  newBtn.addEventListener("click", () => {
+    session.supplierMatch = {
+      status: "new", via: null, score: 0, supplierName: null,
+      pickedCandidate: res.pickedCandidate ?? null, source: "user"
+    };
+    setBadge(anchor, "new", "+ 새 거래처", "사용자가 신규 등록 선택");
+    detachSupplierPicker(anchor);
+    closePicker();
+    syncReviewState();
+  });
+  menu.appendChild(newBtn);
+
+  const rect = anchor.getBoundingClientRect();
+  menu.style.position = "fixed";
+  menu.style.top  = `${rect.bottom + 4}px`;
+  menu.style.left = `${Math.max(8, rect.left)}px`;
+  document.body.appendChild(menu);
+  currentPicker = menu;
+  setTimeout(() => {
+    document.addEventListener("click", onDocClickForPicker);
+    document.addEventListener("keydown", onDocKeyForPicker);
+  }, 0);
 }
 
 /**

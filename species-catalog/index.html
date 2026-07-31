@@ -375,6 +375,8 @@
               <div class="form-field">
                 <label for="invSupplier">거래처 <span class="req">*</span></label>
                 <input type="text" id="invSupplier" required maxlength="40" />
+                <!-- 공급처 매칭 상태 — 자동 연결 / 후보 / 신규 -->
+                <span class="supplier-badge" id="invSupplierBadge" data-status="unknown" hidden></span>
               </div>
               <div class="form-field">
                 <label for="invPhone">전화번호</label>
