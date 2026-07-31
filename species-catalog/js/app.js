@@ -27,7 +27,7 @@ import { matchSpecies } from "./matcher.js";
 import { initDebugFlag } from "./debugFlag.js";
 import { initDebugPanel } from "./debugPanel.js";
 import { initAuthGate } from "./auth.js";
-import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSaveSpecies, mirrorDeleteSpecies, mirrorSaveAttachment, mirrorSaveOcrCorrection, fetchAll } from "./cloudStore.js";
+import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSaveSpecies, mirrorDeleteSpecies, mirrorSaveAttachment, mirrorSaveOcrCorrection, mirrorSaveSupplierAlias, fetchAll } from "./cloudStore.js";
 import { addPending, removePending, listPending, hasPending, setLastSync } from "./syncManager.js";
 import { nextId } from "./utils.js";
 
@@ -369,6 +369,24 @@ function projectInvoiceSave(header, items) {
  *   "AI 분석 결과" tab.
  * @returns {Promise<{invoiceId:string, newSpecies:object[], reusedSpecies:object[]}>}
  */
+/**
+ * 공급처 alias 기록 — Step 3 에서 사용자가 후보 거래처를 **직접 고른** 순간에만
+ * 호출된다. 자동 생성 경로는 없다 (OCR_DATA_POLICY §5 규칙 1).
+ *
+ * 거래명세서 저장 흐름과 분리돼 있다. alias 는 "이 OCR 문자열은 이 거래처다"
+ * 라는 사실이고 명세서 저장 여부와 무관하며, 실패해도 사용자는 다시 고르면
+ * 되므로 pending 큐에 넣지 않는다 — 저장 경로를 건드리지 않기 위해서다.
+ *
+ * @param {string} aliasText   OCR 이 읽은 원문
+ * @param {string} supplierId  suppliers.id (uuid)
+ */
+async function saveSupplierAlias(aliasText, supplierId) {
+  const res = await mirrorSaveSupplierAlias(aliasText, supplierId);
+  if (res?.ok || res?.skipped) return res;
+  toast("거래처 별칭 저장 실패 — 다시 선택하면 재시도됩니다");
+  return res;
+}
+
 async function saveInvoice(header, items, extras = {}) {
   // 1. Resolve each row to a Species. Resolution priority:
   //    (a) `it.speciesId` — set by the wizard when the matcher returned
@@ -822,7 +840,9 @@ async function loadCloudFirst(localData) {
       storage.save(merged);                        // 오프라인 대비 캐시 갱신
       setLastSync();
       console.info("[app] data source: CLOUD");
-      return merged;
+      // 공급처 매칭용 런타임 데이터. storage.save 는 4개 키만 쓰므로
+      // LocalStorage 스키마에는 들어가지 않는다 — 캐시 폴백 시에는 없다.
+      return { ...merged, suppliers: cloud.suppliers || [], supplierAlias: cloud.supplierAlias || [] };
     }
   } catch (err) {
     console.warn("[app] cloud read failed:", err?.message || err);
@@ -993,6 +1013,7 @@ async function init() {
 
   initInvoiceModal({
     onSave: saveInvoice,
+    onSupplierAlias: saveSupplierAlias,
     toast
   });
 

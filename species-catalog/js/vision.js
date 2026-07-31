@@ -111,12 +111,22 @@ const NOISE_NAMES = new Set([
 const DATE_LINE_RE = /(?:\d{2,4}\s*년|\d{1,2}\s*월|\d{1,2}\s*일|(?:19|20)\d{2}[-.\/]\d{1,2}[-.\/]\d{1,2})/;
 const META_LINE_RE = /^(?:금\s*액|아\s*래|위\s*와|계\s*산|일\s*금|합\s*계|총\s*계|공\s*급\s*자|공\s*급\s*받)/;
 
+// 계좌번호·사업자등록번호처럼 하이픈으로 이어진 숫자 묶음이 3개 이상인 줄, 그리고
+// `일금일백육십이만원정` 형태의 한글 금액 표기 줄은 어떤 명세서에서도 품목이 아니다.
+// HEADER_LINE_RE·META_LINE_RE 는 `^` 앵커라서 OCR 이 줄 앞에 잡음을 붙이면
+// (`ma  일금일백육십이만원정 …`) 무력화되므로, 이 둘은 앵커 없이 줄 전체를 본다.
+// 은행명·업체명 같은 고유명사는 넣지 않는다 — 구조만 본다.
+// 거래명세서에서 `귀하`·`귀중` 는 받는 쪽을 가리키는 표식이다.
+const RECIPIENT_MARK_RE = /귀\s*하|귀\s*중/;
+const ACCOUNT_LIKE_RE = /(?<!\d)\d{2,6}(?:\s*-\s*\d{2,6}){2,}(?!\d)/;
+const KRW_AMOUNT_WORD_RE = /(?:일\s*금[가-힣\s]*|[일이삼사오육칠팔구십백천만억]{2,}\s*)원\s*정/;
+
 // ============================================================
 // Public API
 // ============================================================
 
 /**
- * @typedef {{name:string, region:string, contact:string}} Supplier
+ * @typedef {{name:string, region:string, contact:string, nameCandidates:string[]}} Supplier
  * @typedef {{name:string, spec:string, unit:string, price:number}} InvoiceRow
  * @typedef {{ok:boolean, reason?:string, supplier:Supplier, rows:InvoiceRow[], meta?:object}} AnalyzeResult
  */
@@ -883,6 +893,10 @@ function detectSupplier(text) {
     for (const l of head) {
       if (BIZ_SUFFIX_KEYWORDS.some(k => l.includes(k))) {
         if (PHONE_TEST_RE.test(l)) continue;
+        // `귀하`/`귀중` 는 받는 쪽 표식이다. 그 라인의 상호는 거래처이지
+        // 공급자가 아니므로 후보에서 뺀다. 실환경 inv-059 는 수신처 라인
+        // (`… 주식회사 수무 귀하`)이 `주식회사` 접미어에 걸려 상호로 채택됐다.
+        if (RECIPIENT_MARK_RE.test(l)) continue;
         // Fragmented OCR (`공 급 자 남 양 수 목 원`) normalizes to
         // `공급자남양수목원` — the label is glued to the value. Strip the
         // known label prefix before the header-line reject; otherwise the
@@ -937,26 +951,76 @@ function detectSupplier(text) {
     contact = normalizePhone(mobile || phones[0] || "");
   }
 
-  // 사업장 소재지 — labelled, then a full 시/도+시/군/구+동/리/로/길 chain, then a short hint.
-  let region = "";
-  const addrKey = headText.match(ADDRESS_KEYWORD_RE);
-  if (addrKey) region = addrKey[1].replace(/\s+/g, " ").trim();
-  if (!region) {
-    const full = text.match(ADDRESS_LINE_RE);
-    if (full && full[0]) region = full[0].replace(/\s+/g, " ").trim();
+  // 사업장 소재지 — 라벨 캡처 → 시/도+시/군/구+동/리/로/길 체인 → 짧은 힌트 순.
+  //
+  // 라벨 분기는 라벨 오른쪽만 캡처한다. 2단 레이아웃(값이 라벨의 왼쪽이나 윗줄에
+  // 있는 양식)에서는 옆 칸의 전화번호 조각을 잡아오는데, 그 값이 비어 있지 않다는
+  // 이유로 나머지 후보를 건너뛰면 정답이 raw 에 있어도 영구히 놓친다.
+  // 그래서 세 후보를 모두 만들어 정제한 뒤, 주소로 성립하는 첫 번째를 쓴다.
+  const candidates = [
+    headText.match(ADDRESS_KEYWORD_RE)?.[1],
+    text.match(ADDRESS_LINE_RE)?.[0],
+    text.match(REGION_HINT_RE)?.[0]
+  ].map(cleanRegion);
+  const region = candidates.find(isUsableRegion) || "";
+
+  return { name, region, contact, nameCandidates: collectNameCandidates(head) };
+}
+
+/**
+ * 상호일 수 있는 한글 토큰을 머리 영역에서 **전부** 모은다. 판정하지 않는다.
+ *
+ * 왜 필요한가 — 파서 혼자서는 구별할 수 없는 경우가 있다.
+ *   inv-058  1행 "으 노는 | A"  ·  2행 "Bo 귀커래향 [5] 3 @"
+ *   `노는` 과 `귀커래향` 은 둘 다 한글 2~4자에 모든 게이트를 통과한다.
+ *   텍스트 안에는 둘을 가르는 구조적 신호가 없다. 차이는 오직 하나 —
+ *   `귀커래향` 은 알려진 공급처 `귀거래향` 과 유사도 0.889 이고 `노는` 은
+ *   최대 0.33 이라는 것. 그 판별 정보는 `suppliers` 목록에 있고 vision.js
+ *   는 DB 를 모른다(fixture 테스트가 그 전제 위에 있다).
+ *
+ * 그래서 여기서는 **고르지 않고 넘긴다.** 순위 결정은 공급처 목록을 아는
+ * `supplierMatcher.js` 가 한다. `supplier.name` 의 기존 3단 판정 로직은
+ * 그대로 두고, 이 배열만 덧붙인다 — 무시하면 종전과 완전히 동일하게 동작한다.
+ *
+ * @param {string[]} head  이미 trim·필터된 머리 라인 (detectSupplier 와 공유)
+ * @returns {string[]}     중복 제거된 후보 토큰. 순서는 등장 순.
+ */
+function collectNameCandidates(head) {
+  const out = [];
+  for (const line of head) {
+    // 전화·날짜 라인은 상호를 담지 않는다.
+    if (PHONE_TEST_RE.test(line) || DATE_LINE_RE.test(line)) continue;
+    // 계좌 라인은 `농협:251-1118-4809-83문명석대림원예가듣센테` 처럼
+    // 계좌번호 뒤에 예금주+상호가 붙는 관례가 있다. 번호 앞부분은 버린다.
+    const acc = line.match(ACCOUNT_LIKE_RE);
+    const seg = acc ? line.slice(acc.index + acc[0].length) : line;
+    for (const tok of seg.split(/[\s|:()[\]]+/)) {
+      if (!/^[가-힣]{2,20}$/.test(tok)) continue;
+      if (NOISE_NAMES.has(tok) || COLUMN_HEADER_WORDS.has(tok)) continue;
+      if (!out.includes(tok)) out.push(tok);
+    }
   }
-  if (!region) {
-    const short = text.match(REGION_HINT_RE);
-    if (short) region = short[0].trim();
-  }
-  region = region
+  return out;
+}
+
+/** 주소 후보에서 전화번호와 뒤따르는 라벨 꼬리를 떼어내고 공백을 정규화한다. */
+function cleanRegion(candidate) {
+  return String(candidate ?? "")
     .replace(PHONE_RE_G, "")
     .split(/(?:상\s*호|성\s*명|대표자|사업자|전\s*화|TEL|FAX|팩스|핸\s*드\s*폰|휴\s*대(?:\s*폰|\s*전\s*화)|M\.\s*)/i)[0]
     .replace(/[·]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
 
-  return { name, region, contact };
+/**
+ * 주소로 성립하려면 한글이 최소 2자 남아 있어야 한다.
+ * 라벨 오른쪽에서 잘못 잡히는 값들(`Tel, Ea` · `| m(02)508-1` · `| @( H-P:`)은
+ * 실환경 3건 모두 한글이 0자였고, 실제 주소는 항상 한글을 포함한다.
+ * 훼손된 한글 주소는 통과시키되 기호·숫자 잔해만 남은 후보는 버리는 최소 조건이다.
+ */
+function isUsableRegion(s) {
+  return (s.match(/[가-힣]/g) || []).length >= 2;
 }
 
 /** Numbers with a 원 or `.-` suffix are always prices; bare ones need ≥100. */
@@ -980,6 +1044,8 @@ function extractCandidateRows(text) {
     if (PHONE_TEST_RE.test(line)) continue;
     if (META_LINE_RE.test(line)) continue;
     if (DATE_LINE_RE.test(line)) continue;
+    if (ACCOUNT_LIKE_RE.test(line)) continue;
+    if (KRW_AMOUNT_WORD_RE.test(line)) continue;
     if (!/[가-힣]{2,}/.test(line)) continue;
 
     // Standalone Korean token that isn't a column header nor noise word.

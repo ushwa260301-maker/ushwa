@@ -23,6 +23,7 @@
 import { state } from "./state.js";
 import { analyzeInvoice } from "./vision.js";
 import { matchSpecies } from "./matcher.js";
+import { matchSupplier, matchSupplierFromCandidates, normSupplierName } from "./supplierMatcher.js";
 import { setSession as setDebugSession, refresh as refreshDebug, clearDebugPanel, notifySaved as notifyDebugSaved } from "./debugPanel.js";
 
 // ============================================================
@@ -43,7 +44,10 @@ const session = {
   file: null,
   analysis: null,
   header: emptyHeader(),
-  items: [] // [{ name, spec, unit, quantity, unitPrice, amount, _row: HTMLElement }]
+  items: [], // [{ name, spec, unit, quantity, unitPrice, amount, _row: HTMLElement }]
+  // 공급처 매칭 결과. Phase C 는 여기까지만 — alias 기록·저장은 아직 하지 않는다.
+  // { status, via, score, supplierName, pickedCandidate, source: "auto"|"user" } | null
+  supplierMatch: null
 };
 
 function emptyHeader() {
@@ -104,6 +108,8 @@ export function initInvoiceModal(deps) {
   els.itemCount        = document.getElementById("invItemCount");
   els.itemRows         = document.getElementById("invItemRows");
   els.addItem          = document.getElementById("invAddItem");
+  els.amountWarn       = document.getElementById("invAmountWarn");
+  els.supplierBadge    = document.getElementById("invSupplierBadge");
   els.saveBtn          = document.getElementById("invSaveBtn");
   els.itemRowTpl       = document.getElementById("invoiceItemRowTemplate");
 
@@ -127,7 +133,7 @@ function wireEvents() {
   els.uploadNext.addEventListener("click", () => startAnalysis());
   els.retryBtn.addEventListener("click", () => startAnalysis());
   els.goReview.addEventListener("click", () => enterReview());
-  els.addItem.addEventListener("click", () => { appendItemRow({}); syncDebugPanel(); });
+  els.addItem.addEventListener("click", () => { appendItemRow({}); syncReviewState(); });
   els.saveBtn.addEventListener("click", () => { onSaveClicked().catch(err => {
     ctx.toast && ctx.toast("저장 실패: " + (err?.message || err));
   }); });
@@ -136,11 +142,13 @@ function wireEvents() {
   // Header field edits — keep session.header live and refresh debug panel.
   const bindHeader = (input, key) => input.addEventListener("input", () => {
     if (session.header) session.header[key] = input.value;
-    syncDebugPanel();
+    syncReviewState();
   });
   bindHeader(els.invDate,     "invoiceDate");
   bindHeader(els.invNumber,   "invoiceNumber");
   bindHeader(els.invSupplier, "supplier");
+  // 거래처를 직접 입력하는 동안에는 배지만 갱신한다 — 입력란은 덮어쓰지 않는다.
+  els.invSupplier.addEventListener("input", () => refreshSupplierBadge());
   bindHeader(els.invPhone,    "supplierPhone");
   bindHeader(els.invAddress,  "supplierAddress");
 }
@@ -191,6 +199,9 @@ function resetSession() {
 
   els.itemRows.innerHTML = "";
   els.itemCount.textContent = "0";
+  if (els.amountWarn) { els.amountWarn.hidden = true; els.amountWarn.innerHTML = ""; }
+  session.supplierMatch = null;
+  if (els.supplierBadge) { detachSupplierPicker(els.supplierBadge); els.supplierBadge.hidden = true; }
 
   els.invDate.value = "";
   els.invNumber.value = "";
@@ -344,6 +355,9 @@ function enterReview() {
   els.invPhone.value = session.header.supplierPhone;
   els.invAddress.value = session.header.supplierAddress;
 
+  // 공급처 매칭 — 파서가 넘긴 후보 배열을 거래처 목록 기준으로 판정한다.
+  applySupplierCandidates(a.supplier?.nameCandidates || []);
+
   // Item rows from analysis
   els.itemRows.innerHTML = "";
   session.items = [];
@@ -352,22 +366,317 @@ function enterReview() {
   updateItemCount();
 
   goTo(3);
-  syncDebugPanel();
+  syncReviewState();
 }
 
 /**
- * Push the current wizard slice into the debug panel. Called by
- * `enterReview()` and by every input handler that could change the outcome
- * of `saveInvoice()` (name/spec/qty/price/amount edits, header changes,
- * row add/remove, species-picker selection).
+ * Step 3 의 단일 "상태 변경" 훅. `enterReview()` 와 `saveInvoice()` 결과를
+ * 바꿀 수 있는 모든 입력 핸들러(품목명/규격/수량/단가/금액 편집, 헤더 변경,
+ * 행 추가·삭제, 수종 선택)가 호출한다.
+ *   ① 금액 정합성 경고를 다시 그리고
+ *   ② 디버그 패널에 현재 세션을 밀어넣는다.
+ *
+ * 순서가 중요하다. 경고는 사용자에게 보여야 하는 값이고 디버그 패널은
+ * 개발자 전용이다. 디버그 패널이 던지면(초기화 전 호출 등) 뒤에 있는
+ * 코드가 실행되지 않으므로, 경고를 먼저 그린다.
  */
-function syncDebugPanel() {
+function syncReviewState() {
+  renderAmountWarnings();
   setDebugSession({
     analysis: session.analysis || null,
     header:   session.header   || null,
     items:    session.items    || [],
     file:     session.file     || null
   });
+}
+
+// ============================================================
+// Step 3 · 공급처 매칭 (Phase C — 표시 + 선택 결과 state 전달까지)
+// ============================================================
+
+/**
+ * 거래처 목록.
+ *
+ * Cloud 읽기가 성공하면 `state.data.suppliers` 에 실제 `suppliers` 행(uuid
+ * 포함)이 들어 있다. alias 를 기록하려면 uuid 가 필요하므로 이쪽을 우선한다.
+ *
+ * Cloud 미설정·오프라인·미로그인이면 그 배열이 없다. 그때는 지금까지 저장된
+ * 거래명세서의 상호 문자열에서 목록을 만든다 — 매칭 표시는 계속 되지만
+ * uuid 가 없으므로 `_local: true` 로 표시해 alias 기록 대상에서 제외한다
+ * (없는 supplier_id 로 INSERT 하면 FK 위반이다).
+ */
+function buildSupplierList() {
+  const cloud = state.data.suppliers;
+  if (Array.isArray(cloud) && cloud.length) {
+    return cloud
+      .filter(s => s?.id && s?.name)
+      .map(s => ({ id: s.id, name: s.name, norm_name: s.norm_name || normSupplierName(s.name) }));
+  }
+  const seen = new Map();
+  for (const inv of (state.data.invoices || [])) {
+    const name = String(inv?.supplier || "").trim();
+    if (!name) continue;
+    const norm = normSupplierName(name);
+    if (!norm || seen.has(norm)) continue;
+    seen.set(norm, { id: norm, name, norm_name: norm, _local: true });
+  }
+  return [...seen.values()];
+}
+
+/** Cloud 에서 읽어둔 활성 alias. 없으면 빈 배열. */
+function currentAliases() {
+  const a = state.data.supplierAlias;
+  return Array.isArray(a) ? a : [];
+}
+
+/**
+ * 사용자가 후보 거래처를 고른 결과를 alias 로 기록한다.
+ *
+ * 기록하지 않는 경우 — 모두 의도적이다:
+ *   · aliasText 가 없음        사용자가 직접 타이핑한 값이다. OCR 오독이
+ *                              아니므로 alias 로 만들면 안 된다. alias 는
+ *                              "OCR 이 이렇게 읽으면 이 거래처" 라는 뜻이다.
+ *   · 정규화 결과가 같음        `대림 원예 가든` ↔ `대림원예가든` 처럼
+ *                              norm_name 이 이미 흡수하는 차이다. 불필요하다.
+ *   · 공급처에 uuid 가 없음     Cloud 미설정·오프라인 폴백 목록이다.
+ *                              없는 supplier_id 로 INSERT 하면 FK 위반이다.
+ *
+ * 실패해도 저장 흐름을 막지 않는다 — 사용자가 다시 고르면 재시도된다.
+ */
+function recordSupplierAlias(aliasText, supplier) {
+  if (!ctx.onSupplierAlias) return;
+  const text = String(aliasText || "").trim();
+  if (!text) return;
+  if (supplier._local || !supplier.id) {
+    console.info("[wizard] alias 기록 건너뜀 — 로컬 파생 거래처(uuid 없음):", supplier.name);
+    return;
+  }
+  if (normSupplierName(text) === normSupplierName(supplier.name)) return;
+
+  Promise.resolve(ctx.onSupplierAlias(text, supplier.id))
+    .catch(err => console.warn("[wizard] alias 기록 실패:", err?.message || err));
+}
+
+/**
+ * 파서가 넘긴 후보 배열로 공급처를 판정하고 배지를 그린다.
+ * `status === "match"` 일 때만 입력란을 해석된 상호로 채운다 —
+ * OCR 이 `노는` 으로 읽었어도 `귀거래향` 으로 확정되면 그것을 쓰는 것이
+ * 이 기능의 목적이다. 그 외에는 파서 출력을 그대로 둔다.
+ */
+function applySupplierCandidates(candidates) {
+  const suppliers = buildSupplierList();
+  const res = matchSupplierFromCandidates(candidates, suppliers, currentAliases());
+
+  if (res.status === "match" && res.supplier) {
+    els.invSupplier.value  = res.supplier.name;
+    session.header.supplier = res.supplier.name;
+  }
+  session.supplierMatch = toSupplierState(res, "auto");
+  renderSupplierBadge(res, suppliers);
+}
+
+/**
+ * 사용자가 거래처를 직접 입력하는 동안 배지만 갱신한다.
+ * **입력란을 절대 덮어쓰지 않는다** — 타이핑 중 값이 바뀌면 안 된다.
+ */
+function refreshSupplierBadge() {
+  const suppliers = buildSupplierList();
+  const res = matchSupplier(els.invSupplier.value, suppliers, currentAliases());
+  session.supplierMatch = toSupplierState(res, session.supplierMatch?.source === "user" ? "user" : "auto");
+  renderSupplierBadge(res, suppliers);
+}
+
+/** 매칭 결과에서 저장·디버그에 필요한 부분만 뽑는다 (DOM 참조 없음). */
+function toSupplierState(res, source) {
+  return {
+    status:          res.status,
+    via:             res.via,
+    score:           res.score,
+    supplierName:    res.supplier?.name ?? null,
+    pickedCandidate: res.pickedCandidate ?? null,
+    source
+  };
+}
+
+function renderSupplierBadge(res, suppliers) {
+  const badge = els.supplierBadge;
+  if (!badge) return;
+  detachSupplierPicker(badge);
+
+  if (!String(els.invSupplier.value || "").trim() && res.status === "new") {
+    badge.hidden = true;
+    return;
+  }
+  badge.hidden = false;
+
+  if (res.status === "match") {
+    const label = res.via === "exact" ? "기존 거래처"
+                : res.via === "alias" ? "별칭 연결"
+                : `자동 연결 ${pct(res.score)}`;
+    setBadge(badge, "match", `✓ ${res.supplier.name}`, `${label} · via=${res.via}`);
+    return;
+  }
+  if (res.status === "possible") {
+    setBadge(badge, "possible", `후보 ${res.candidates.length} ▾`,
+      res.candidates.map(c => `${c.supplier.name} ${pct(c.score)}`).join(" · "));
+    attachSupplierPicker(badge, res, suppliers);
+    return;
+  }
+  setBadge(badge, "new", "+ 새 거래처", "일치하는 기존 거래처가 없습니다");
+}
+
+function attachSupplierPicker(badge, res, suppliers) {
+  badge.classList.add("clickable");
+  badge.tabIndex = 0;
+  badge.setAttribute("role", "button");
+  badge.setAttribute("aria-haspopup", "menu");
+  badge.setAttribute("aria-label", `후보 거래처 ${res.candidates.length}개 중 선택`);
+  const open = e => { e.stopPropagation(); openSupplierPicker(badge, res, suppliers); };
+  const key  = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(e); } };
+  badge._supOpen = open;
+  badge._supKey  = key;
+  badge.addEventListener("click", open);
+  badge.addEventListener("keydown", key);
+}
+
+function detachSupplierPicker(badge) {
+  if (badge._supOpen) badge.removeEventListener("click", badge._supOpen);
+  if (badge._supKey)  badge.removeEventListener("keydown", badge._supKey);
+  badge._supOpen = badge._supKey = null;
+  badge.classList.remove("clickable");
+  badge.removeAttribute("role");
+  badge.removeAttribute("tabindex");
+  badge.removeAttribute("aria-haspopup");
+  badge.removeAttribute("aria-label");
+}
+
+function openSupplierPicker(anchor, res, suppliers) {
+  closePicker();
+  const menu = document.createElement("div");
+  menu.className = "species-picker-menu";
+  menu.setAttribute("role", "menu");
+
+  const header = document.createElement("div");
+  header.className = "picker-header";
+  header.textContent = `"${res.pickedCandidate ?? els.invSupplier.value}" 에 가까운 거래처`;
+  menu.appendChild(header);
+
+  for (const cand of res.candidates) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "picker-item";
+    btn.setAttribute("role", "menuitem");
+    const name  = document.createElement("span"); name.className  = "pi-name";  name.textContent  = cand.supplier.name;
+    const score = document.createElement("span"); score.className = "pi-score"; score.textContent = pct(cand.score);
+    btn.append(name, score);
+    btn.addEventListener("click", () => {
+      // 선택 결과를 입력란과 세션에 반영한다. 저장 흐름은 건드리지 않는다 —
+      // header.supplier 는 기존과 똑같이 입력란에서 읽힌다.
+      els.invSupplier.value   = cand.supplier.name;
+      session.header.supplier = cand.supplier.name;
+      session.supplierMatch = {
+        status: "match", via: "user-pick", score: cand.score,
+        supplierName: cand.supplier.name,
+        pickedCandidate: res.pickedCandidate ?? null,
+        source: "user"
+      };
+      setBadge(anchor, "match", `✓ ${cand.supplier.name}`, `사용자 선택 · 유사도 ${pct(cand.score)}`);
+      detachSupplierPicker(anchor);
+      closePicker();
+      recordSupplierAlias(res.pickedCandidate, cand.supplier);
+      syncReviewState();
+    });
+    menu.appendChild(btn);
+  }
+
+  const newBtn = document.createElement("button");
+  newBtn.type = "button";
+  newBtn.className = "picker-item picker-new";
+  newBtn.setAttribute("role", "menuitem");
+  newBtn.textContent = "+ 새 거래처로 등록";
+  newBtn.addEventListener("click", () => {
+    session.supplierMatch = {
+      status: "new", via: null, score: 0, supplierName: null,
+      pickedCandidate: res.pickedCandidate ?? null, source: "user"
+    };
+    setBadge(anchor, "new", "+ 새 거래처", "사용자가 신규 등록 선택");
+    detachSupplierPicker(anchor);
+    closePicker();
+    syncReviewState();
+  });
+  menu.appendChild(newBtn);
+
+  const rect = anchor.getBoundingClientRect();
+  menu.style.position = "fixed";
+  menu.style.top  = `${rect.bottom + 4}px`;
+  menu.style.left = `${Math.max(8, rect.left)}px`;
+  document.body.appendChild(menu);
+  currentPicker = menu;
+  setTimeout(() => {
+    document.addEventListener("click", onDocClickForPicker);
+    document.addEventListener("keydown", onDocKeyForPicker);
+  }, 0);
+}
+
+/**
+ * 수량 × 단가 ≠ 금액 인 품목을 찾는다. 순수 함수 — 부작용 없음.
+ *
+ * 저장 대상과 같은 조건(품목명·수량·단가가 모두 있는 행)만 본다.
+ * 저장되지 않을 행을 경고해도 사용자가 할 수 있는 일이 없기 때문이다.
+ *
+ * @param {Array<{name,quantity,unitPrice,amount}>} items
+ * @returns {Array<{name,quantity,unitPrice,computed,entered,diff}>}
+ */
+export function checkAmounts(items) {
+  return (items || [])
+    .filter(it => it?.name?.trim() && Number(it.unitPrice) > 0 && Number(it.quantity) > 0)
+    .map(it => {
+      const quantity  = Number(it.quantity)  || 0;
+      const unitPrice = Number(it.unitPrice) || 0;
+      const entered   = Number(it.amount)    || 0;
+      const computed  = quantity * unitPrice;
+      return { name: it.name.trim(), quantity, unitPrice, computed, entered, diff: entered - computed };
+    })
+    .filter(r => r.diff !== 0);
+}
+
+const won = n => Number(n).toLocaleString("ko-KR");
+
+/**
+ * 금액 경고를 렌더한다. **저장을 막지 않는다** — 명세서에 실제로 계산이
+ * 맞지 않게 적혀 있는 경우가 있고, 사용자가 금액을 직접 수정하면
+ * (`_amountEditedByUser`) 자동 재계산이 꺼지는 것도 의도된 동작이다.
+ * 경고는 그 불일치를 눈에 보이게만 한다.
+ */
+function renderAmountWarnings() {
+  if (!els.amountWarn) return;
+  const bad = checkAmounts(session.items);
+  if (!bad.length) {
+    els.amountWarn.hidden = true;
+    els.amountWarn.innerHTML = "";
+    return;
+  }
+  const rows = bad.map(r => `
+    <div class="amount-warn-row">
+      <div class="aw-name">${escapeHtml(r.name)}</div>
+      <dl class="aw-figures">
+        <div><dt>수량</dt><dd>${won(r.quantity)}</dd></div>
+        <div><dt>단가</dt><dd>${won(r.unitPrice)}</dd></div>
+        <div><dt>계산 금액</dt><dd>${won(r.computed)}</dd></div>
+        <div><dt>입력 금액</dt><dd>${won(r.entered)}</dd></div>
+        <div class="aw-diff"><dt>차이</dt><dd>${r.diff > 0 ? "+" : "−"}${won(Math.abs(r.diff))}</dd></div>
+      </dl>
+    </div>`).join("");
+  els.amountWarn.innerHTML =
+    `<div class="amount-warn-head">⚠ 금액 검증 필요 — ${bad.length}건</div>` +
+    rows +
+    `<div class="amount-warn-foot">저장은 그대로 진행됩니다. 명세서를 다시 확인해 주세요.</div>`;
+  els.amountWarn.hidden = false;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 function appendItemRow(source) {
@@ -406,32 +715,32 @@ function appendItemRow(source) {
   nameInp.addEventListener("input", () => {
     item.name = nameInp.value;
     updateBadgeForRow(item, badge);
-    syncDebugPanel();
+    syncReviewState();
   });
-  specInp.addEventListener("input", () => { item.spec = specInp.value; syncDebugPanel(); });
-  unitInp.addEventListener("input", () => { item.unit = unitInp.value; syncDebugPanel(); });
+  specInp.addEventListener("input", () => { item.spec = specInp.value; syncReviewState(); });
+  unitInp.addEventListener("input", () => { item.unit = unitInp.value; syncReviewState(); });
 
   qtyInp.addEventListener("input", () => {
     item.quantity = Number(qtyInp.value) || 0;
     if (!item._amountEditedByUser) recomputeAmount(item, amountInp);
-    syncDebugPanel();
+    syncReviewState();
   });
   priceInp.addEventListener("input", () => {
     item.unitPrice = Number(priceInp.value) || 0;
     if (!item._amountEditedByUser) recomputeAmount(item, amountInp);
-    syncDebugPanel();
+    syncReviewState();
   });
   amountInp.addEventListener("input", () => {
     item.amount = Number(amountInp.value) || 0;
     item._amountEditedByUser = true;
-    syncDebugPanel();
+    syncReviewState();
   });
 
   removeBtn.addEventListener("click", () => {
     rowEl.remove();
     session.items = session.items.filter(x => x !== item);
     updateItemCount();
-    syncDebugPanel();
+    syncReviewState();
   });
 
   updateBadgeForRow(item, badge);
@@ -581,7 +890,7 @@ function openPicker(anchor, item, result) {
         `사용자 선택 · 유사도 ${pct(cand.score)}`);
       detachPicker(anchor);
       closePicker();
-      syncDebugPanel();
+      syncReviewState();
     });
     menu.appendChild(btn);
   }
@@ -596,7 +905,7 @@ function openPicker(anchor, item, result) {
     setBadge(anchor, "new", "+ 새 수종", "사용자가 신규 등록 선택");
     detachPicker(anchor);
     closePicker();
-    syncDebugPanel();
+    syncReviewState();
   });
   menu.appendChild(newBtn);
 

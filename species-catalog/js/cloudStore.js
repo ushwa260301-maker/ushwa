@@ -16,6 +16,7 @@
  */
 
 import { getSupabase, isCloudConfigured } from "./supabaseClient.js";
+import { normSupplierName } from "./supplierMatcher.js";
 
 /** 첨부 원본이 올라가는 Storage 버킷 이름 (supabase/storage.sql 로 생성). */
 const ATTACHMENT_BUCKET = "attachments";
@@ -446,14 +447,23 @@ export async function fetchAll() {
   if (!isCloudConfigured()) return null;
   const supabase = await getSupabase();
 
-  const [sp, inv, items, atts] = await Promise.all([
+  const [sp, inv, items, atts, sups, alias] = await Promise.all([
     supabase.from("species").select("*").order("id"),
     supabase.from("invoices").select("*").order("invoice_date", { ascending: false }),
     supabase.from("invoice_items").select("*"),
-    supabase.from("attachments").select("*")
+    supabase.from("attachments").select("*"),
+    // 공급처 매칭용. suppliers 는 alias 를 기록할 때 실제 uuid 가 필요하고,
+    // supplier_alias 는 기록해도 읽지 않으면 다음 명세서에서 효과가 없다.
+    supabase.from("suppliers").select("id, name, norm_name"),
+    supabase.from("supplier_alias").select("norm_alias, supplier_id, is_active")
   ]);
   for (const r of [sp, inv, items, atts]) {
     if (r.error) throw new Error("[cloud] fetchAll failed: " + r.error.message);
+  }
+  // suppliers / supplier_alias 는 부가 정보다. migration 이 아직 적용되지
+  // 않은 환경에서도 기존 읽기 경로가 죽지 않도록 실패를 삼킨다.
+  for (const [label, r] of [["suppliers", sups], ["supplier_alias", alias]]) {
+    if (r.error) console.warn(`[cloud] ${label} 로드 실패(무시):`, r.error.message);
   }
 
   const attachmentByInvoice = new Map();
@@ -462,6 +472,51 @@ export async function fetchAll() {
   return {
     species:      sp.data.map(speciesFromDb),
     invoices:     inv.data.map(r => invoiceFromDb(r, attachmentByInvoice)),
-    invoiceItems: items.data.map(itemFromDb)
+    invoiceItems: items.data.map(itemFromDb),
+    suppliers:      sups.error  ? [] : (sups.data  || []),
+    supplierAlias:  alias.error ? [] : (alias.data || [])
   };
+}
+
+/**
+ * 공급처 alias 미러 — 사용자가 후보 목록에서 직접 고른 결과만 기록한다.
+ * 자동 생성하지 않는다 (OCR_DATA_POLICY §5 규칙 1).
+ *
+ * `norm_alias` 는 반드시 `normSupplierName()` 결과여야 한다. DB 에
+ * `check (norm_alias = fn_norm_supplier_name(alias_text))` 가 걸려 있어
+ * 다르면 INSERT 가 거부된다 — 두 함수는 같은 공백 집합을 쓰도록 맞춰져 있다.
+ *
+ * 같은 alias→같은 공급처 재등록은 unique 위반(23505)이 나는데, 이미 기록된
+ * 사실이므로 성공으로 처리한다.
+ *
+ * @param {string} aliasText   OCR 이 읽은 원문
+ * @param {string} supplierId  suppliers.id (uuid)
+ */
+export async function mirrorSaveSupplierAlias(aliasText, supplierId) {
+  if (!isCloudConfigured()) return { ok: false, skipped: true };
+  const text = String(aliasText || "").trim();
+  if (!text || !supplierId) return { ok: false, skipped: true };
+  try {
+    const supabase = await getSupabase();
+    const { data: userData } = await supabase.auth.getUser();
+    const { error } = await supabase.from("supplier_alias").insert({
+      alias_text:  text,
+      norm_alias:  normSupplierName(text),
+      supplier_id: supplierId,
+      source:      "user",
+      created_by:  userData?.user?.id || null
+    });
+    if (error) {
+      if (/duplicate key|23505/i.test(error.message || "")) {
+        console.info("[cloud] supplierAlias 이미 기록됨:", text, "→", supplierId);
+        return { ok: true, skipped: true };
+      }
+      throw error;
+    }
+    console.info("[cloud] supplierAlias mirrored:", text, "→", supplierId);
+    return { ok: true };
+  } catch (err) {
+    console.warn("[cloud] supplierAlias mirror failed:", err?.message || err);
+    return { ok: false, error: err?.message || String(err) };
+  }
 }
