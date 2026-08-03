@@ -28,7 +28,7 @@ import { initDebugFlag } from "./debugFlag.js";
 import { initDebugPanel } from "./debugPanel.js";
 import { initAuthGate } from "./auth.js";
 import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSaveSpecies, mirrorDeleteSpecies, mirrorSaveAttachment, mirrorSaveOcrCorrection, mirrorSaveSupplierAlias, fetchAll } from "./cloudStore.js";
-import { addPending, removePending, listPending, hasPending, setLastSync } from "./syncManager.js";
+import { addPending, removePending, listPending, hasPending, setLastSync, replayAction } from "./syncManager.js";
 import { nextId } from "./utils.js";
 
 // ============================================================
@@ -495,8 +495,10 @@ async function saveInvoice(header, items, extras = {}) {
     const refIds   = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
     const refSpecies = state.data.species.filter(s => refIds.has(s.id));
     // pending 선기록 — 미러 중 브라우저가 종료돼도 유실되지 않게 한다.
-    addPending("invoice", invoice.id);
-    reportSync(await mirrorSaveInvoice(invoice, itemRows, refSpecies), "invoice", invoice.id, "거래명세서 저장");
+    // kind 는 "invoiceCreate" 다. 재시도가 이 항목을 update 로 승격시키면
+    // id 가 겹치는 다른 거래명세서를 덮어쓴다 (syncManager.js 상단 참조).
+    addPending("invoiceCreate", invoice.id);
+    reportSync(await mirrorSaveInvoice(invoice, itemRows, refSpecies), "invoiceCreate", invoice.id, "거래명세서 저장");
   }
 
   // 첨부 Cloud 미러 (T8) — attachments.invoice_id 가 invoices 를 참조하므로
@@ -685,7 +687,12 @@ function reportSync(result, kind, id, label) {
   if (!result || result.skipped) { removePending(kind, id); return; }
   if (result.ok) { removePending(kind, id); return; }
   addPending(kind, id);
-  toast(`${label} 클라우드 동기화 실패 — 로컬에는 저장됨 (다음 접속 시 자동 재시도)`);
+  // 충돌은 재시도해도 영원히 실패한다 — "자동 재시도" 안내는 거짓이 되고,
+  // 사용자는 원인을 모른 채 같은 실패를 반복해서 본다. 그래서 문구를 나눈다.
+  // pending 은 그대로 남긴다: 로컬 데이터를 버리지 않기 위해서다.
+  toast(result.conflict
+    ? `${label} 실패 — 같은 번호(${id})가 이미 서버에 있습니다. 로컬에는 저장됨 (관리자 확인 필요)`
+    : `${label} 클라우드 동기화 실패 — 로컬에는 저장됨 (다음 접속 시 자동 재시도)`);
 }
 
 /**
@@ -699,21 +706,28 @@ async function flushPendingWrites(localData) {
   const pend = listPending();
   if (!pend.length) return { tried: 0, remaining: 0 };
   console.info("[sync] pending 재시도:", pend.length, "건");
-  const failures = [];
+  const failures  = [];
+  const conflicts = [];
   for (const e of pend) {
     let res = null;
-    if (e.kind === "invoiceDelete") {
+    const action = replayAction(e.kind);
+    if (action === "invoiceDelete") {
       res = await mirrorDeleteInvoice(e.id);
-    } else if (e.kind === "speciesDelete") {
+    } else if (action === "speciesDelete") {
       res = await mirrorDeleteSpecies(e.id);
-    } else if (e.kind === "invoice") {
+    } else if (action === "invoiceSave" || action === "invoiceUpdate") {
       const inv = (localData?.invoices || []).find(i => i.id === e.id);
-      if (!inv) { removePending("invoice", e.id); continue; }   // 로컬에 없으면 폐기
+      if (!inv) { removePending(e.kind, e.id); continue; }   // 로컬에 없으면 폐기
       const itemRows   = (localData.invoiceItems || []).filter(it => it.invoiceId === e.id);
       const refIds     = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
       const refSpecies = (localData.species || []).filter(s => refIds.has(s.id));
-      res = await mirrorUpdateInvoice(inv, itemRows, refSpecies);
-    } else if (e.kind === "attachment") {
+      // 생성 실패는 생성으로만 재시도한다. mirrorUpdateInvoice 는 Cloud 에
+      // 같은 id 행이 있으면 그것을 수정하므로, 생성 항목에 쓰면 다른 문서를
+      // 덮어쓴다 (syncManager.js 상단 참조).
+      res = action === "invoiceSave"
+        ? await mirrorSaveInvoice(inv, itemRows, refSpecies)
+        : await mirrorUpdateInvoice(inv, itemRows, refSpecies);
+    } else if (action === "attachmentSave") {
       // 원본 blob 은 IndexedDB 에 있다 — 거기서 되읽어 업로드를 재시도한다.
       const rec = await getAttachment(e.id);
       if (!rec?.blob) {
@@ -724,11 +738,11 @@ async function flushPendingWrites(localData) {
       res = await mirrorSaveAttachment(
         { id: rec.id, filename: rec.filename, mimeType: rec.mimeType, size: rec.size },
         rec.invoiceId, rec.blob);
-    } else if (e.kind === "species") {
+    } else if (action === "speciesSave") {
       const sp = (localData?.species || []).find(s => s.id === e.id);
       if (!sp) { removePending("species", e.id); continue; }
       res = await mirrorSaveSpecies(sp);
-    } else if (e.kind === "ocrCorrection") {
+    } else if (action === "ocrCorrectionSave") {
       // 재시도 원본은 로컬 invoice.analysis 다 (Cloud 는 이 값을 복원하지 않음).
       const inv = (localData?.invoices || []).find(i => i.id === e.id);
       if (!inv?.analysis) {
@@ -758,17 +772,33 @@ async function flushPendingWrites(localData) {
       break;
     }
 
+    // 충돌 — 같은 id 가 Cloud 에 이미 있다. 재시도로는 절대 풀리지 않으므로
+    // 사람이 봐야 한다. pending 은 유지한다(로컬 데이터 보호). 덮어쓰기로
+    // 우회하지 않는 것이 이 분기의 존재 이유다.
+    if (res?.conflict) {
+      conflicts.push(`${e.kind}:${e.id}`);
+      continue;
+    }
+
     // 항목별 실패(FK · RLS · 검증 등) — 이 항목만 pending 에 남기고 계속한다.
     // 하나의 영구 실패가 뒤의 정상 항목을 막지 않게 한다 (2026-07-30 실환경:
     // 첨부 업로드 1건이 ocrCorrection 재시도를 무기한 차단했다).
     failures.push(`${e.kind}:${e.id} — ${res?.error || "unknown"}`);
   }
 
+  if (conflicts.length) {
+    console.error("[sync] id 충돌", conflicts.length, "건 — 재시도로 해결되지 않습니다.",
+                  "같은 id 의 Cloud 행은 다른 문서입니다:", conflicts.join(" | "));
+    toast(`서버에 이미 있는 번호 ${conflicts.length}건 — 동기화 보류 중 (로컬 데이터는 안전)`);
+  }
   if (failures.length) {
     console.warn("[sync] 항목별 실패", failures.length, "건 (pending 유지):",
                  failures.join(" | "));
   }
-  return { tried: pend.length, remaining: listPending().length, failed: failures.length };
+  return {
+    tried: pend.length, remaining: listPending().length,
+    failed: failures.length, conflicted: conflicts.length
+  };
 }
 
 /**
