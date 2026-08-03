@@ -103,6 +103,18 @@ const ADDRESS_KEYWORD_RE =
 const MOBILE_KEYWORD_RE =
   /(?:핸\s*드\s*폰|휴\s*대(?:\s*폰|\s*전\s*화)|모\s*바\s*일|H\.?P|Mobile|M\.)\s*[:.\-–]?\s*(01[0-9][-.\s]?\d{3,4}[-.\s]?\d{4})/i;
 
+// 유선 대표번호 — `Tel` 라벨로 앵커한다. PHONE_RE_G 와 달리 뒤 경계 `(?!\d)`
+// 를 두지 않는데, 라벨이 이미 문맥을 고정하므로 숫자 나열이 끼어들 여지가
+// 없기 때문이다. 실환경 inv-059 는 normalizeOcrText 가 `4904,8904` 를
+// `49048904` 로 병합해 Tel 번호가 뒤 경계에 걸려 사라졌고, 남은 Fax 번호가
+// 대표번호로 뽑혔다. 라벨 앵커는 그 병합된 문자열에서도 앞 4자리를 집는다.
+const TEL_KEYWORD_RE =
+  /(?:전\s*화|T\s*E\s*L|대표\s*번호)\s*[:.\-–,]*\s*(0\d{1,2}\)?[-.\s]?\d{3,4}[-.\s]?\d{4})/i;
+
+// Fax 라벨 **직후**의 번호는 대표번호가 아니다. 매치 위치 바로 앞을 보고
+// 라벨과 구분자만 있으면 후보에서 뺀다.
+const FAX_LOOKBEHIND_RE = /(?:F\s*A\s*X|팩\s*스)[\s:.\-–,]*$/i;
+
 const HEADER_LINE_RE =
   /^(?:상\s*호|업체명|공급자|공급업체|사업자|사업자번호|주\s*소|소\s*재\s*지|사\s*업\s*장|핸\s*드\s*폰|휴\s*대|전\s*화|TEL|Tel|FAX|Fax|팩스|대표자|담당자|발행일|일자|번호|합계|총계|부가세|VAT|세금|성\s*명|업\s*태|종\s*목|공|급)/i;
 const COLUMN_HEADER_WORDS = new Set([
@@ -844,8 +856,28 @@ export async function analyzeInvoiceMock(file) {
 // Internal helpers
 // ============================================================
 
-function normalizePhone(p) { return p.replace(/[.\s]/g, "-"); }
+/** 구분자를 하이픈으로 통일한다. 지역번호 괄호(`031)754-4904` · `(02) 507-7080`)도
+ *  하이픈으로 바꾸고 중복·양끝 하이픈을 정리해 `031-754-4904` 형태로 맞춘다. */
+function normalizePhone(p) {
+  return String(p || "")
+    .replace(/[.\s()]/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 function digitsOnly(p) { return p.replace(/[^\d]/g, ""); }
+
+/** 본문의 전화번호를 모으되 Fax 라벨 직후의 번호는 뺀다.
+ *  실환경 inv-059 `Tel, … , Fax, 031)754-8905` 에서 Fax 번호가 대표번호로
+ *  뽑히던 문제. 되돌아보기 창은 라벨+구분자만 담을 만큼만 둔다. */
+function collectPhones(text) {
+  const out = [];
+  for (const m of String(text || "").matchAll(PHONE_RE_G)) {
+    const before = text.slice(Math.max(0, m.index - 12), m.index);
+    if (FAX_LOOKBEHIND_RE.test(before)) continue;
+    out.push(m[0]);
+  }
+  return out;
+}
 function normalizePrice(str) { const d = str.replace(/[^\d]/g, ""); return d ? Number(d) : null; }
 
 /** Try to trim trailing "성명 …", "대표자 …" etc. so a captured 상호 doesn't leak into next field. */
@@ -956,15 +988,17 @@ function detectSupplier(text) {
     }
   }
 
-  // 핸드폰 번호 — labelled first, 010-prefixed preferred, landline as last resort.
+  // 연락처 — 핸드폰 라벨 → 010 접두 → Tel 라벨 → 나머지 첫 번호 순.
+  // Fax 라벨 뒤 번호는 어느 단계에서도 후보가 되지 않는다.
   let contact = "";
   const mobileKey = text.match(MOBILE_KEYWORD_RE);
   if (mobileKey) {
     contact = normalizePhone(mobileKey[1]);
   } else {
-    const phones = [...text.matchAll(PHONE_RE_G)].map(m => m[0]);
+    const phones = collectPhones(text);
     const mobile = phones.find(p => MOBILE_PREFIX_RE.test(digitsOnly(p)));
-    contact = normalizePhone(mobile || phones[0] || "");
+    const telKey = text.match(TEL_KEYWORD_RE);
+    contact = normalizePhone(mobile || telKey?.[1] || phones[0] || "");
   }
 
   // 사업장 소재지 — 라벨 캡처 → 시/도+시/군/구+동/리/로/길 체인 → 짧은 힌트 순.
