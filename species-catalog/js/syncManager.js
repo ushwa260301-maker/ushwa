@@ -13,8 +13,20 @@
  *   species-catalog:sync:pending    [{ kind, id }]
  *   species-catalog:sync:lastSync   ISO 문자열
  *
- * kind ∈ "invoice" | "invoiceDelete" | "species" | "speciesDelete"
- *      | "attachment" | "ocrCorrection"
+ * kind ∈ "invoiceCreate" | "invoice" | "invoiceDelete" | "species"
+ *      | "speciesDelete" | "attachment" | "ocrCorrection"
+ *
+ * `invoiceCreate` 와 `invoice` 를 나누는 이유
+ *   둘 다 "invoice" 였을 때, 재시도는 종류를 알 수 없어 전부 update 로
+ *   보냈다. 그런데 **생성 실패**를 update 로 재시도하면 같은 id 가 Cloud 에
+ *   이미 있을 때 그 행을 덮어쓴다 — 생성이 실패한 이유가 바로 "그 id 가
+ *   이미 있다"(PK 충돌)인 경우, 재시도가 남의 거래명세서를 지운다.
+ *   실제로 inv-066~068 이 이 경로에 걸렸다.
+ *
+ *   pending 에 남아 있다는 것은 "아직 Cloud 저장이 확인되지 않았다"는 뜻이다.
+ *   따라서 `invoiceCreate` 는 곧 "이 id 로 Cloud 에 행을 만든 적 없음"이고,
+ *   그 id 가 Cloud 에 있다면 그것은 **다른 문서**다. 생성 재시도는 생성으로만
+ *   해야 하며, 충돌하면 덮어쓰지 말고 실패로 남겨야 한다.
  */
 
 const PENDING_KEY  = "species-catalog:sync:pending";
@@ -50,6 +62,32 @@ export function listPending() {
 /** pending 존재 여부. */
 export function hasPending() {
   return read().length > 0;
+}
+
+/**
+ * pending kind → 재시도 동작. 라우팅 규칙을 이 한 곳에만 둔다.
+ *
+ * app.js 의 재시도 루프가 이 값으로 분기하므로, 여기서 매핑이 틀리면
+ * 즉시 잘못된 미러 함수가 호출된다 — 그래서 순수 함수로 분리해
+ * `tests/sync-pending.mjs` 가 직접 검증할 수 있게 한다.
+ *
+ * 알 수 없는 kind 는 null 을 돌려준다. 호출자는 이를 "처리 불가 → 폐기"
+ * 로 다루며, 이는 분기 전 동작(else 절에서 removePending)과 동일하다.
+ *
+ * @param {string} kind
+ * @returns {"invoiceSave"|"invoiceUpdate"|"invoiceDelete"|"speciesSave"|"speciesDelete"|"attachmentSave"|"ocrCorrectionSave"|null}
+ */
+export function replayAction(kind) {
+  switch (kind) {
+    case "invoiceCreate": return "invoiceSave";     // 생성 재시도 — 절대 update 로 가지 않는다
+    case "invoice":       return "invoiceUpdate";   // 수정 재시도 — 기존 행이 있어야 정상
+    case "invoiceDelete": return "invoiceDelete";
+    case "species":       return "speciesSave";
+    case "speciesDelete": return "speciesDelete";
+    case "attachment":    return "attachmentSave";
+    case "ocrCorrection": return "ocrCorrectionSave";
+    default:              return null;
+  }
 }
 
 /** 마지막 성공 동기화 시각 기록. */

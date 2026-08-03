@@ -28,7 +28,7 @@ import { initDebugFlag } from "./debugFlag.js";
 import { initDebugPanel } from "./debugPanel.js";
 import { initAuthGate } from "./auth.js";
 import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSaveSpecies, mirrorDeleteSpecies, mirrorSaveAttachment, mirrorSaveOcrCorrection, mirrorSaveSupplierAlias, fetchAll } from "./cloudStore.js";
-import { addPending, removePending, listPending, hasPending, setLastSync } from "./syncManager.js";
+import { addPending, removePending, listPending, hasPending, setLastSync, replayAction } from "./syncManager.js";
 import { nextId } from "./utils.js";
 
 // ============================================================
@@ -495,8 +495,10 @@ async function saveInvoice(header, items, extras = {}) {
     const refIds   = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
     const refSpecies = state.data.species.filter(s => refIds.has(s.id));
     // pending 선기록 — 미러 중 브라우저가 종료돼도 유실되지 않게 한다.
-    addPending("invoice", invoice.id);
-    reportSync(await mirrorSaveInvoice(invoice, itemRows, refSpecies), "invoice", invoice.id, "거래명세서 저장");
+    // kind 는 "invoiceCreate" 다. 재시도가 이 항목을 update 로 승격시키면
+    // id 가 겹치는 다른 거래명세서를 덮어쓴다 (syncManager.js 상단 참조).
+    addPending("invoiceCreate", invoice.id);
+    reportSync(await mirrorSaveInvoice(invoice, itemRows, refSpecies), "invoiceCreate", invoice.id, "거래명세서 저장");
   }
 
   // 첨부 Cloud 미러 (T8) — attachments.invoice_id 가 invoices 를 참조하므로
@@ -702,18 +704,24 @@ async function flushPendingWrites(localData) {
   const failures = [];
   for (const e of pend) {
     let res = null;
-    if (e.kind === "invoiceDelete") {
+    const action = replayAction(e.kind);
+    if (action === "invoiceDelete") {
       res = await mirrorDeleteInvoice(e.id);
-    } else if (e.kind === "speciesDelete") {
+    } else if (action === "speciesDelete") {
       res = await mirrorDeleteSpecies(e.id);
-    } else if (e.kind === "invoice") {
+    } else if (action === "invoiceSave" || action === "invoiceUpdate") {
       const inv = (localData?.invoices || []).find(i => i.id === e.id);
-      if (!inv) { removePending("invoice", e.id); continue; }   // 로컬에 없으면 폐기
+      if (!inv) { removePending(e.kind, e.id); continue; }   // 로컬에 없으면 폐기
       const itemRows   = (localData.invoiceItems || []).filter(it => it.invoiceId === e.id);
       const refIds     = new Set(itemRows.map(it => it.speciesId).filter(Boolean));
       const refSpecies = (localData.species || []).filter(s => refIds.has(s.id));
-      res = await mirrorUpdateInvoice(inv, itemRows, refSpecies);
-    } else if (e.kind === "attachment") {
+      // 생성 실패는 생성으로만 재시도한다. mirrorUpdateInvoice 는 Cloud 에
+      // 같은 id 행이 있으면 그것을 수정하므로, 생성 항목에 쓰면 다른 문서를
+      // 덮어쓴다 (syncManager.js 상단 참조).
+      res = action === "invoiceSave"
+        ? await mirrorSaveInvoice(inv, itemRows, refSpecies)
+        : await mirrorUpdateInvoice(inv, itemRows, refSpecies);
+    } else if (action === "attachmentSave") {
       // 원본 blob 은 IndexedDB 에 있다 — 거기서 되읽어 업로드를 재시도한다.
       const rec = await getAttachment(e.id);
       if (!rec?.blob) {
@@ -724,11 +732,11 @@ async function flushPendingWrites(localData) {
       res = await mirrorSaveAttachment(
         { id: rec.id, filename: rec.filename, mimeType: rec.mimeType, size: rec.size },
         rec.invoiceId, rec.blob);
-    } else if (e.kind === "species") {
+    } else if (action === "speciesSave") {
       const sp = (localData?.species || []).find(s => s.id === e.id);
       if (!sp) { removePending("species", e.id); continue; }
       res = await mirrorSaveSpecies(sp);
-    } else if (e.kind === "ocrCorrection") {
+    } else if (action === "ocrCorrectionSave") {
       // 재시도 원본은 로컬 invoice.analysis 다 (Cloud 는 이 값을 복원하지 않음).
       const inv = (localData?.invoices || []).find(i => i.id === e.id);
       if (!inv?.analysis) {
