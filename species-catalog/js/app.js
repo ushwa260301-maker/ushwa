@@ -687,7 +687,12 @@ function reportSync(result, kind, id, label) {
   if (!result || result.skipped) { removePending(kind, id); return; }
   if (result.ok) { removePending(kind, id); return; }
   addPending(kind, id);
-  toast(`${label} 클라우드 동기화 실패 — 로컬에는 저장됨 (다음 접속 시 자동 재시도)`);
+  // 충돌은 재시도해도 영원히 실패한다 — "자동 재시도" 안내는 거짓이 되고,
+  // 사용자는 원인을 모른 채 같은 실패를 반복해서 본다. 그래서 문구를 나눈다.
+  // pending 은 그대로 남긴다: 로컬 데이터를 버리지 않기 위해서다.
+  toast(result.conflict
+    ? `${label} 실패 — 같은 번호(${id})가 이미 서버에 있습니다. 로컬에는 저장됨 (관리자 확인 필요)`
+    : `${label} 클라우드 동기화 실패 — 로컬에는 저장됨 (다음 접속 시 자동 재시도)`);
 }
 
 /**
@@ -701,7 +706,8 @@ async function flushPendingWrites(localData) {
   const pend = listPending();
   if (!pend.length) return { tried: 0, remaining: 0 };
   console.info("[sync] pending 재시도:", pend.length, "건");
-  const failures = [];
+  const failures  = [];
+  const conflicts = [];
   for (const e of pend) {
     let res = null;
     const action = replayAction(e.kind);
@@ -766,17 +772,33 @@ async function flushPendingWrites(localData) {
       break;
     }
 
+    // 충돌 — 같은 id 가 Cloud 에 이미 있다. 재시도로는 절대 풀리지 않으므로
+    // 사람이 봐야 한다. pending 은 유지한다(로컬 데이터 보호). 덮어쓰기로
+    // 우회하지 않는 것이 이 분기의 존재 이유다.
+    if (res?.conflict) {
+      conflicts.push(`${e.kind}:${e.id}`);
+      continue;
+    }
+
     // 항목별 실패(FK · RLS · 검증 등) — 이 항목만 pending 에 남기고 계속한다.
     // 하나의 영구 실패가 뒤의 정상 항목을 막지 않게 한다 (2026-07-30 실환경:
     // 첨부 업로드 1건이 ocrCorrection 재시도를 무기한 차단했다).
     failures.push(`${e.kind}:${e.id} — ${res?.error || "unknown"}`);
   }
 
+  if (conflicts.length) {
+    console.error("[sync] id 충돌", conflicts.length, "건 — 재시도로 해결되지 않습니다.",
+                  "같은 id 의 Cloud 행은 다른 문서입니다:", conflicts.join(" | "));
+    toast(`서버에 이미 있는 번호 ${conflicts.length}건 — 동기화 보류 중 (로컬 데이터는 안전)`);
+  }
   if (failures.length) {
     console.warn("[sync] 항목별 실패", failures.length, "건 (pending 유지):",
                  failures.join(" | "));
   }
-  return { tried: pend.length, remaining: listPending().length, failed: failures.length };
+  return {
+    tried: pend.length, remaining: listPending().length,
+    failed: failures.length, conflicted: conflicts.length
+  };
 }
 
 /**

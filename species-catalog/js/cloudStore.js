@@ -160,9 +160,30 @@ export async function mirrorSaveInvoice(invoice, items, referencedSpecies = []) 
     console.info("[cloud] saveInvoice mirrored:", data?.invoiceId || invoice.id);
     return { ok: true, data };
   } catch (err) {
+    // PK 충돌은 다른 실패와 성격이 다르다 — 재시도해도 영원히 실패하고,
+    // 그 id 의 Cloud 행은 **다른 문서**다. 호출자가 덮어쓰기로 우회하지
+    // 않도록 conflict 로 표시해 돌려준다 (syncManager.js 상단 참조).
+    if (isUniqueViolation(err)) {
+      console.error("[cloud] saveInvoice 충돌 — 같은 id 가 Cloud 에 이미 있음:",
+                    invoice.id, "·", err?.message || err);
+      return { ok: false, conflict: true, error: err?.message || String(err) };
+    }
     console.warn("[cloud] saveInvoice mirror failed:", err?.message || err);
     return { ok: false, error: err?.message || String(err) };
   }
+}
+
+/**
+ * PostgreSQL unique_violation(23505) 인지 — PK/UNIQUE 충돌 판정.
+ *
+ * PostgREST 는 SQLSTATE 를 `code` 로 그대로 전달한다. 다만 SDK 버전이나
+ * 래핑 경로에 따라 code 가 비는 경우가 있어 메시지도 함께 본다.
+ * `isAlreadyExists()` 와 별개인 이유: 그쪽은 Storage 의 HTTP 409 판정이다.
+ */
+function isUniqueViolation(err) {
+  if (!err) return false;
+  if (String(err.code || "") === "23505") return true;
+  return /duplicate key value|violates unique constraint/i.test(String(err.message || ""));
 }
 
 /**
