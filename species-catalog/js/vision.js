@@ -65,8 +65,18 @@ const PRICE_RE =
 // Token-bounded phone regex — the 0 must NOT be preceded or followed by
 // another digit, otherwise embedded price sequences like `500 3200 1600000`
 // look like `0 3200 1600` to the naive matcher and get flagged as phones.
-const PHONE_RE_G = /(?<!\d)0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}(?!\d)/g;
-const PHONE_TEST_RE = /(?<!\d)0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}(?!\d)/;
+//
+// 지역번호 뒤 닫는 괄호를 허용한다 — `(02) 507-7080` · `031)754-4904` 는
+// 국내 사업자 명세서에서 하이픈만큼 흔한 표기인데 인식하지 못했다.
+// 단순 누락으로 끝나지 않고, 전화 라인이 품목 후보 필터를 통과해
+// 가짜 품목 행을 만들었다 (실환경 inv-062: `마려와 … 전화: (02) 507-7080`
+// → {name:"마려와", price:7080}).
+//
+// `\)?` 는 지역번호 **직후** 한 자리에만 붙는다. 앞뒤 경계 조건
+// (?<!\d) … (?!\d) 은 그대로 두므로 숫자 나열이 전화로 오인되는 일은
+// 늘지 않는다 — 선택적 토큰이라 기존에 매치되던 것은 전부 그대로 매치된다.
+const PHONE_RE_G = /(?<!\d)0\d{1,2}\)?[-.\s]?\d{3,4}[-.\s]?\d{4}(?!\d)/g;
+const PHONE_TEST_RE = /(?<!\d)0\d{1,2}\)?[-.\s]?\d{3,4}[-.\s]?\d{4}(?!\d)/;
 const MOBILE_PREFIX_RE = /^01[016789]/;
 
 const PROVINCE_RE =
