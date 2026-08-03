@@ -187,8 +187,52 @@ function isUniqueViolation(err) {
 }
 
 /**
+ * 같은 id 의 Cloud 행이 **다른 문서**로 판정되는 시각 차이 (ms).
+ *
+ * 실측 근거 (2026-08-03 · inv-066~068 사고 데이터)
+ *   같은 레코드   |Δ| = 2 ~ 3 초      (로컬 저장 → 서버 insert 사이 지연)
+ *   다른 레코드    Δ = 2,912 ~ 3,116 초
+ * 세 자릿수로 벌어져 있어 임계값 선택이 결과를 좌우하지 않는다.
+ */
+export const INVOICE_CREATED_AT_TOLERANCE_MS = 300_000;   // 300초
+
+/**
+ * 로컬 invoice 와 Cloud 행이 서로 다른 문서인지 — id 재사용 감지.
+ *
+ * `invoices.created_at` 은 update_invoice_tx 가 건드리지 않으므로 그 행이
+ * 처음 만들어진 시각을 유지한다. 그리고 `invoiceFromDb()` 가 Cloud 값을
+ * 그대로 `invoice.createdAt` 에 복원하므로, **Cloud 에서 읽어온 레코드를
+ * 수정하는 정상 경로는 차이가 정확히 0** 이다. 로컬에서 갓 만든 레코드만
+ * 클라이언트 시각 vs 서버 시각 차이(수 초)를 갖는다.
+ *
+ * 판정 불가(둘 중 하나라도 없거나 파싱 실패)면 **false** 를 돌려준다 —
+ * 가드가 없던 때와 같은 동작을 유지하기 위해서다. createdAt 이 없는
+ * 오래된 로컬 레코드가 수정 자체를 못 하게 되는 편이 더 나쁘다.
+ *
+ * @param {string|undefined} localCreatedAt   앱 shape invoice.createdAt (ISO)
+ * @param {string|undefined} cloudCreatedAt   invoices.created_at (ISO)
+ * @param {number} [toleranceMs]
+ * @returns {boolean} true = 다른 문서 → 덮어쓰면 안 된다
+ */
+export function isDifferentInvoiceRecord(localCreatedAt, cloudCreatedAt,
+                                         toleranceMs = INVOICE_CREATED_AT_TOLERANCE_MS) {
+  const a = Date.parse(localCreatedAt ?? "");
+  const b = Date.parse(cloudCreatedAt ?? "");
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;   // 비교 불가 → 기존 동작
+  return Math.abs(a - b) > toleranceMs;
+}
+
+/**
  * updateInvoice 미러 — Cloud 의 현재 version 을 조회해 낙관적 잠금으로
  * update_invoice_tx 호출. Cloud 에 행이 없으면(아직 미러 전) save 로 백필.
+ *
+ * id 재사용 가드
+ *   낙관적 잠금(`p_expected_version`)은 직전에 읽은 version 을 넘기므로
+ *   "다른 사용자의 동시 수정"만 막는다. **"이 행이 애초에 내 것인가"는
+ *   검사하지 않는다.** localStorage 가 되감겨 이미 쓰인 id 가 재발급되면
+ *   (실환경 inv-066~068), 재시도가 남의 거래명세서를 헤더째 덮고
+ *   update_invoice_tx 가 items 를 전량 교체해 원본 품목이 사라진다.
+ *   그래서 created_at 을 함께 읽어 다른 문서면 중단한다.
  */
 export async function mirrorUpdateInvoice(invoice, items, referencedSpecies = []) {
   if (!isCloudConfigured()) return { ok: false, skipped: true };
@@ -205,12 +249,24 @@ export async function mirrorUpdateInvoice(invoice, items, referencedSpecies = []
     }
 
     const { data: row, error: verErr } = await supabase
-      .from("invoices").select("version").eq("id", invoice.id).maybeSingle();
+      .from("invoices").select("version, created_at").eq("id", invoice.id).maybeSingle();
     if (verErr) throw verErr;
 
     if (!row) {
       // Cloud 에 아직 없음 — save 로 백필.
       return await mirrorSaveInvoice(invoice, items, referencedSpecies);
+    }
+
+    // id 재사용 가드 — 덮어쓰기 직전의 마지막 방어선.
+    if (isDifferentInvoiceRecord(invoice.createdAt, row.created_at)) {
+      console.error("[cloud] updateInvoice 중단 — 같은 id 의 Cloud 행이 다른 문서입니다:",
+                    invoice.id, "· 로컬 created", invoice.createdAt,
+                    "· Cloud created", row.created_at);
+      return {
+        ok: false, conflict: true, guarded: true,
+        error: `ID_REUSE_GUARD: ${invoice.id} 의 Cloud 행은 다른 거래명세서입니다 ` +
+               `(로컬 ${invoice.createdAt} · Cloud ${row.created_at})`
+      };
     }
 
     const { data, error } = await supabase.rpc("update_invoice_tx", {

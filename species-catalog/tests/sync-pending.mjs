@@ -32,6 +32,10 @@ const {
   setLastSync, getLastSync
 } = await import("../js/syncManager.js");
 
+const {
+  isDifferentInvoiceRecord, INVOICE_CREATED_AT_TOLERANCE_MS
+} = await import("../js/cloudStore.js");
+
 let pass = 0, fail = 0;
 const results = [];
 
@@ -144,6 +148,75 @@ check("초기값 null", getLastSync(), null);
 const ts = setLastSync("2026-08-03T07:00:00.000Z");
 check("setLastSync 는 기록한 값을 돌려준다", ts, "2026-08-03T07:00:00.000Z");
 check("getLastSync 왕복", getLastSync(), "2026-08-03T07:00:00.000Z");
+
+// ============================================================
+section("8. id 재사용 가드 — 실측 데이터 (2026-08-03 inv-066~068)");
+// ============================================================
+// 배포 전에 기록된 pending 은 kind="invoice" 라 생성/수정을 구분할 수 없다.
+// 그 항목은 update 경로로 흘러가므로, 덮어쓰기 직전에 created_at 으로
+// 한 번 더 막는다. 아래 값은 실제 사고 데이터 그대로다.
+const CLOUD = {
+  "inv-066": "2026-08-03T06:30:11.806Z",
+  "inv-067": "2026-08-03T06:31:38.610Z",
+  "inv-068": "2026-08-03T06:34:03.134Z"
+};
+
+// 같은 레코드 — 로컬 저장과 서버 insert 사이 2~3초 지연
+check("inv-066 상부농원 (Δ −3s) → 같은 문서",
+      isDifferentInvoiceRecord("2026-08-03T06:30:08.675Z", CLOUD["inv-066"]), false);
+check("inv-067 코리아가든 (Δ −3s) → 같은 문서",
+      isDifferentInvoiceRecord("2026-08-03T06:31:35.710Z", CLOUD["inv-067"]), false);
+check("inv-068 행운농원 (Δ −2s) → 같은 문서",
+      isDifferentInvoiceRecord("2026-08-03T06:34:00.767Z", CLOUD["inv-068"]), false);
+
+// 다른 레코드 — id 가 재발급된 신규 문서
+check("inv-066 대림원예가든센터 (Δ +2912s) → 다른 문서 · 차단",
+      isDifferentInvoiceRecord("2026-08-03T07:18:43.636Z", CLOUD["inv-066"]), true);
+check("inv-067 초심농원 (Δ +3063s) → 다른 문서 · 차단",
+      isDifferentInvoiceRecord("2026-08-03T07:22:41.867Z", CLOUD["inv-067"]), true);
+check("inv-068 상부농원 9/2 (Δ +3116s) → 다른 문서 · 차단",
+      isDifferentInvoiceRecord("2026-08-03T07:25:59.231Z", CLOUD["inv-068"]), true);
+
+// ============================================================
+section("9. id 재사용 가드 — 경계와 폴백");
+// ============================================================
+check("임계값은 300초", INVOICE_CREATED_AT_TOLERANCE_MS, 300_000);
+
+const base = "2026-08-03T06:00:00.000Z";
+const shift = ms => new Date(Date.parse(base) + ms).toISOString();
+check("Δ = 0 (Cloud 에서 읽어온 레코드 수정 — 가장 흔한 정상 경로)",
+      isDifferentInvoiceRecord(base, base), false);
+check("Δ = +300초 (경계 · 초과 아님) → 통과",
+      isDifferentInvoiceRecord(shift(300_000), base), false);
+check("Δ = +300.001초 (초과) → 차단",
+      isDifferentInvoiceRecord(shift(300_001), base), true);
+check("Δ = −300.001초 (음수 방향도 대칭) → 차단",
+      isDifferentInvoiceRecord(shift(-300_001), base), true);
+
+// 판정 불가 → 기존 동작(통과). createdAt 없는 구 레코드가 수정 자체를
+// 못 하게 되는 편이 덮어쓰기 위험보다 더 나쁘다.
+check("로컬 createdAt 없음 → 기존 동작(통과)",
+      isDifferentInvoiceRecord(undefined, base), false);
+check("Cloud created_at 없음 → 기존 동작(통과)",
+      isDifferentInvoiceRecord(base, null), false);
+check("둘 다 없음 → 기존 동작(통과)",
+      isDifferentInvoiceRecord(undefined, undefined), false);
+check("파싱 불가 문자열 → 기존 동작(통과)",
+      isDifferentInvoiceRecord("어제", base), false);
+check("빈 문자열 → 기존 동작(통과)",
+      isDifferentInvoiceRecord("", base), false);
+
+// 표기 차이가 오탐을 만들지 않는지 — 같은 순간의 다른 표현
+check("Z 표기 vs +00:00 오프셋 → 같은 순간으로 인식",
+      isDifferentInvoiceRecord("2026-08-03T06:00:00.000Z",
+                               "2026-08-03T06:00:00+00:00"), false);
+check("Postgres 마이크로초 표기 → 같은 순간으로 인식",
+      isDifferentInvoiceRecord("2026-08-03T06:00:00.000Z",
+                               "2026-08-03T06:00:00.000123+00:00"), false);
+
+// 임계값을 호출자가 좁힐 수 있는지 (진단용)
+check("toleranceMs 인자 재정의 동작",
+      isDifferentInvoiceRecord(shift(10_000), base, 5_000), true);
 
 // ============================================================
 console.log("\n" + "=".repeat(58));

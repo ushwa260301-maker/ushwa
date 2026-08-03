@@ -559,7 +559,7 @@ species-catalog/tests/
 ```bash
 node species-catalog/tests/ocr-accuracy.mjs      # 229/240 이상 유지
 node species-catalog/tests/supplier-matcher.mjs  # 60/60
-node species-catalog/tests/sync-pending.mjs      # 32/32
+node species-catalog/tests/sync-pending.mjs      # 51/51
 ```
 
 세 러너 모두 브라우저·네트워크 없이 Node 단독으로 돕니다
