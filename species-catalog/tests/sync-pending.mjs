@@ -33,7 +33,8 @@ const {
 } = await import("../js/syncManager.js");
 
 const {
-  isDifferentInvoiceRecord, INVOICE_CREATED_AT_TOLERANCE_MS
+  isDifferentInvoiceRecord, INVOICE_CREATED_AT_TOLERANCE_MS,
+  isUniqueViolation, isForeignKeyViolation
 } = await import("../js/cloudStore.js");
 
 let pass = 0, fail = 0;
@@ -217,6 +218,51 @@ check("Postgres 마이크로초 표기 → 같은 순간으로 인식",
 // 임계값을 호출자가 좁힐 수 있는지 (진단용)
 check("toleranceMs 인자 재정의 동작",
       isDifferentInvoiceRecord(shift(10_000), base, 5_000), true);
+
+// ============================================================
+section("10. 영구 실패 판별 — FK 위반 (실환경 speciesDelete:sp-005)");
+// ============================================================
+// 이 판별이 무너지면 영구 실패가 pending 에 남고, loadCloudFirst 가 Cloud
+// 읽기를 영구히 건너뛴다 → 로컬 캐시가 낡음 → 잘못된 삭제·id 재발급.
+// 실환경에서 이 한 건이 invoice 3건 덮어쓰기까지 연쇄시켰다.
+const FK_MSG = 'update or delete on table "species" violates foreign key ' +
+               'constraint "invoice_items_species_id_fkey" on table "invoice_items"';
+
+check("PostgREST code + message", isForeignKeyViolation({ code: "23503", message: FK_MSG }), true);
+check("code 없음 · message 만", isForeignKeyViolation({ message: FK_MSG }), true);
+check("code 만", isForeignKeyViolation({ code: "23503" }), true);
+check("실환경 sp-005 원문 그대로", isForeignKeyViolation({ message: FK_MSG }), true);
+
+// 다른 실패 유형과 섞이면 안 된다 — 각기 처리 경로가 다르다.
+check("PK 충돌(23505)은 FK 가 아니다",
+      isForeignKeyViolation({ code: "23505", message: "duplicate key value violates unique constraint" }), false);
+check("인증 만료는 FK 가 아니다", isForeignKeyViolation({ message: "JWT expired" }), false);
+check("네트워크 오류는 FK 가 아니다", isForeignKeyViolation({ message: "Failed to fetch" }), false);
+check("VERSION_CONFLICT 는 FK 가 아니다",
+      isForeignKeyViolation({ message: "VERSION_CONFLICT: invoice inv-066 (expected v2)" }), false);
+check("null", isForeignKeyViolation(null), false);
+check("undefined", isForeignKeyViolation(undefined), false);
+
+// ============================================================
+section("11. 실패 유형은 서로 배타적이다");
+// ============================================================
+// 같은 오류가 conflict 로도 permanent 로도 분류되면 처리 경로가 갈린다.
+check("FK 오류 → isUniqueViolation false", isUniqueViolation({ code: "23503", message: FK_MSG }), false);
+check("FK 오류 → isForeignKeyViolation true", isForeignKeyViolation({ code: "23503", message: FK_MSG }), true);
+
+const PK_ERR = { code: "23505", message: 'duplicate key value violates unique constraint "invoices_pkey"' };
+check("PK 오류 → isUniqueViolation true", isUniqueViolation(PK_ERR), true);
+check("PK 오류 → isForeignKeyViolation false", isForeignKeyViolation(PK_ERR), false);
+
+// 영구 실패 메시지가 "전역 장애" 패턴에 걸리면 재시도 루프가 break 로 빠져나가
+// 항목이 큐에 남는다 — 고치려는 버그가 그대로 재현된다.
+const GLOBAL_RE_NET  = /SDK 로드 실패|Failed to fetch|NetworkError|Load failed|net::|ERR_INTERNET|timeout|fetch failed/i;
+const GLOBAL_RE_AUTH = /JWT|Unauthorized|not authenticated|invalid token|token is expired|401/i;
+const looksGlobal = m => GLOBAL_RE_NET.test(m) || GLOBAL_RE_AUTH.test(m);
+check("FK 메시지가 전역 장애로 오분류되지 않는다", looksGlobal(FK_MSG), false);
+check("PK 메시지가 전역 장애로 오분류되지 않는다", looksGlobal(PK_ERR.message), false);
+check("ID_REUSE_GUARD 메시지가 전역 장애로 오분류되지 않는다",
+      looksGlobal("ID_REUSE_GUARD: inv-066 의 Cloud 행은 다른 거래명세서입니다"), false);
 
 // ============================================================
 console.log("\n" + "=".repeat(58));

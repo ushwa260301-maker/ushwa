@@ -107,6 +107,12 @@ async function deleteSpecies(id) {
   if (!sp) return;
 
   // 정책 (iii): 참조 거래가 있으면 거부 (거래 이력 보존).
+  //
+  // 이 검사는 **로컬 목록** 기준이라 Cloud 를 읽지 못한 상태(LOCAL_CACHE)에서는
+  // 참조를 놓칠 수 있다. 실환경 sp-005 가 그랬다 — 로컬에선 참조가 없어 보여
+  // 삭제를 허용했지만 Cloud 에는 참조하는 invoice_items 가 있어 FK 로 거부됐고,
+  // 그 실패가 pending 에 남아 Cloud 읽기를 영구히 막았다.
+  // 최종 판정은 DB 의 invoice_items_species_id_fkey 가 한다(cloudStore 참조).
   const referenced = state.data.invoiceItems.some(it => it.speciesId === id);
   if (referenced) {
     toast(`「${sp.name}」은(는) 거래 이력이 있어 삭제할 수 없습니다`);
@@ -124,7 +130,9 @@ async function deleteSpecies(id) {
   addPending("speciesDelete", id);
   const delRes = await mirrorDeleteSpecies(id);
   reportSync(delRes, "speciesDelete", id, "수종 삭제");
-  if (delRes && delRes.ok) removePending("species", id);
+  // 성공 시 pending 제거는 reportSync 가 같은 kind 로 이미 처리한다.
+  // (예전에는 여기서 kind "species" 를 지웠는데 추가는 "speciesDelete" 였다 —
+  //  아무것도 지우지 않는 죽은 코드였다.)
 }
 
 // ============================================================
@@ -686,6 +694,17 @@ function persistAndRerender() {
 function reportSync(result, kind, id, label) {
   if (!result || result.skipped) { removePending(kind, id); return; }
   if (result.ok) { removePending(kind, id); return; }
+  // 영구 실패(FK 위반 등)는 재시도가 무의미할 뿐 아니라 해롭다 — pending 에
+  // 남으면 loadCloudFirst 가 Cloud 읽기를 영구히 건너뛰어 로컬 캐시가 낡는다.
+  // 그래서 큐에 넣지 않고 즉시 알린다. Cloud 가 정본이므로 다음 읽기에서
+  // 로컬 상태가 올바르게 복원된다.
+  if (result.permanent) {
+    removePending(kind, id);
+    console.error(`[sync] ${kind}:${id} 영구 실패 — 재시도하지 않습니다:`, result.error);
+    toast(`${label} 실패 — 서버가 거부했습니다. 화면을 새로고침하면 서버 기준으로 복원됩니다`);
+    return;
+  }
+
   addPending(kind, id);
   // 충돌은 재시도해도 영원히 실패한다 — "자동 재시도" 안내는 거짓이 되고,
   // 사용자는 원인을 모른 채 같은 실패를 반복해서 본다. 그래서 문구를 나눈다.
@@ -708,6 +727,7 @@ async function flushPendingWrites(localData) {
   console.info("[sync] pending 재시도:", pend.length, "건");
   const failures  = [];
   const conflicts = [];
+  const permanent = [];
   for (const e of pend) {
     let res = null;
     const action = replayAction(e.kind);
@@ -765,6 +785,21 @@ async function flushPendingWrites(localData) {
 
     if (res && res.ok) { removePending(e.kind, e.id); continue; }
 
+    // 영구 실패 — 재시도가 무의미하고, pending 에 남으면 Cloud 읽기를 막아
+    // 로컬 캐시를 낡게 만든다(실환경 speciesDelete:sp-005 가 이 경로로
+    // loadCloudFirst 를 LOCAL_CACHE 에 고착시켰다). 큐에서 뺀다 — Cloud 가
+    // 정본이므로 다음 읽기에서 로컬이 올바르게 복원된다.
+    //
+    // **전역 장애 판정보다 먼저 본다.** 전역 판정은 에러 메시지 패턴 매칭이라
+    // 언젠가 영구 실패 메시지를 잘못 삼킬 수 있고, 그러면 break 로 빠져나가
+    // 항목이 큐에 남는다 — 고치려는 버그가 그대로 재현된다. 발신자가 명시한
+    // permanent 플래그가 추측보다 우선이다.
+    if (res?.permanent) {
+      removePending(e.kind, e.id);
+      permanent.push(`${e.kind}:${e.id} — ${res.error || "unknown"}`);
+      continue;
+    }
+
     // 전역 장애(Cloud 미설정 · 오프라인 · 인증 만료)면 나머지도 실패가
     // 확실하므로 즉시 중단한다 — 무의미한 요청을 쏟아내지 않는다.
     if (isGlobalSyncFailure(res)) {
@@ -786,6 +821,12 @@ async function flushPendingWrites(localData) {
     failures.push(`${e.kind}:${e.id} — ${res?.error || "unknown"}`);
   }
 
+  if (permanent.length) {
+    console.error("[sync] 영구 실패", permanent.length, "건 — 큐에서 제거했습니다.",
+                  "서버가 거부한 변경이며 다음 Cloud 읽기에서 로컬이 복원됩니다:",
+                  permanent.join(" | "));
+    toast(`서버가 거부한 변경 ${permanent.length}건 — 새로고침하면 서버 기준으로 복원됩니다`);
+  }
   if (conflicts.length) {
     console.error("[sync] id 충돌", conflicts.length, "건 — 재시도로 해결되지 않습니다.",
                   "같은 id 의 Cloud 행은 다른 문서입니다:", conflicts.join(" | "));
@@ -797,7 +838,8 @@ async function flushPendingWrites(localData) {
   }
   return {
     tried: pend.length, remaining: listPending().length,
-    failed: failures.length, conflicted: conflicts.length
+    failed: failures.length, conflicted: conflicts.length,
+    permanent: permanent.length
   };
 }
 
