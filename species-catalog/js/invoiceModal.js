@@ -965,6 +965,9 @@ async function onSaveClicked() {
   }
 
   const validItems = collectValidItems(session.items);
+  // [진단] 저장 경로에서 품목 수가 어디서 줄어드는지 추적한다. 원인 확정 후 제거.
+  console.log("[invoiceModal]", "session:", session.items.length,
+              "valid:", validItems.length, structuredClone(validItems));
   if (!validItems.length) {
     ctx.toast("품목명과 수량이 있는 행이 최소 1건 필요합니다");
     return;
