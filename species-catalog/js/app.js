@@ -396,12 +396,6 @@ async function saveSupplierAlias(aliasText, supplierId) {
 }
 
 async function saveInvoice(header, items, extras = {}) {
-  // [진단] invoiceModal 이 넘긴 배열이 그대로 도착했는지. 원인 확정 후 제거.
-  //   items 원소는 `_row`(DOM)를 포함하므로 structuredClone 을 쓰지 않는다.
-  console.log("[app] saveInvoice items", items.length,
-              (items || []).map(i => ({ name: i.name, spec: i.spec,
-                                        quantity: i.quantity, unitPrice: i.unitPrice })));
-
   // 1. Resolve each row to a Species. Resolution priority:
   //    (a) `it.speciesId` — set by the wizard when the matcher returned
   //        "match" or the user picked a candidate for a "possible" row.

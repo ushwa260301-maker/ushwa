@@ -151,12 +151,9 @@ export async function mirrorSaveInvoice(invoice, items, referencedSpecies = []) 
   if (!isCloudConfigured()) return { ok: false, skipped: true };
   try {
     const supabase = await getSupabase();
-    // [진단] RPC 로 실제 전송되는 p_items. 원인 확정 후 제거.
-    const rpcItems = items.map(itemToRpc);
-    console.log("[cloud] RPC items", rpcItems.length, JSON.stringify(rpcItems, null, 2));
     const { data, error } = await supabase.rpc("save_invoice_tx", {
       p_invoice:     invoiceToRpc(invoice),
-      p_items:       rpcItems,
+      p_items:       items.map(itemToRpc),
       p_new_species: referencedSpecies.map(speciesToRpc)
     });
     if (error) throw error;
