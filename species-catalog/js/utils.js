@@ -105,3 +105,29 @@ export function nextId(prefixOrRecords, maybeRecords) {
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+/**
+ * 거래명세서에서 **저장 대상이 되는 품목 행**을 고른다.
+ *
+ * 저장 경로(`invoiceModal.saveInvoice`)와 디버그 스냅샷(`debugPanel.projectSave`)이
+ * **같은 함수**를 써야 한다. 두 곳이 갈라져 있던 동안 스냅샷은 7건인데 DB 에는
+ * 5건이 들어갔고, 감사 기록이 실제 저장과 어긋났다(실환경 inv-073).
+ * 여기(leaf 모듈)에 두는 이유는 그 두 모듈이 `invoiceModal → debugPanel`
+ * 방향으로 이미 의존하고 있어 한쪽에 두면 순환 참조가 되기 때문이다.
+ *
+ * **단가 0원을 거르지 않는다.** 거래명세서의 "서비스" 품목은 단가·금액이 0이다.
+ * 예전 조건 `unitPrice > 0` 은 그 행을 저장 직전에 지웠다
+ * (inv-073 붓들레야 4주·위성류 11주 소실). 거래 이력은 원본대로 보존하고,
+ * 가격 왜곡은 통계에서 막는다 — `stats.js` 의 `pricedItems()` 참조.
+ *
+ * 수량 0은 계속 거른다 — 행만 추가하고 입력하지 않은 빈 행이며, 서비스
+ * 품목이라도 수량은 적혀 있다.
+ *
+ * @param {Array<{name?:string, quantity?:number|string}>} items
+ * @returns {Array} 저장 대상 행
+ */
+export function collectValidItems(items) {
+  return (items || []).filter(it =>
+    it?.name?.trim() && Number(it.quantity) > 0
+  );
+}

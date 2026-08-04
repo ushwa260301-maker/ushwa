@@ -25,6 +25,7 @@ import { analyzeInvoice } from "./vision.js";
 import { matchSpecies } from "./matcher.js";
 import { matchSupplier, matchSupplierFromCandidates, normSupplierName } from "./supplierMatcher.js";
 import { setSession as setDebugSession, refresh as refreshDebug, clearDebugPanel, notifySaved as notifyDebugSaved } from "./debugPanel.js";
+import { collectValidItems } from "./utils.js";
 
 // ============================================================
 // Module-local element cache + wiring context
@@ -963,11 +964,9 @@ async function onSaveClicked() {
     return;
   }
 
-  const validItems = session.items.filter(it =>
-    it.name?.trim() && Number(it.unitPrice) > 0 && Number(it.quantity) > 0
-  );
+  const validItems = collectValidItems(session.items);
   if (!validItems.length) {
-    ctx.toast("품목명·수량·단가가 있는 행이 최소 1건 필요합니다");
+    ctx.toast("품목명과 수량이 있는 행이 최소 1건 필요합니다");
     return;
   }
 
