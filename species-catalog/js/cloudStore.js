@@ -180,7 +180,7 @@ export async function mirrorSaveInvoice(invoice, items, referencedSpecies = []) 
  * 래핑 경로에 따라 code 가 비는 경우가 있어 메시지도 함께 본다.
  * `isAlreadyExists()` 와 별개인 이유: 그쪽은 Storage 의 HTTP 409 판정이다.
  */
-function isUniqueViolation(err) {
+export function isUniqueViolation(err) {
   if (!err) return false;
   if (String(err.code || "") === "23505") return true;
   return /duplicate key value|violates unique constraint/i.test(String(err.message || ""));
@@ -504,9 +504,35 @@ export async function mirrorDeleteSpecies(speciesId) {
     console.info("[cloud] deleteSpecies mirrored:", speciesId);
     return { ok: true };
   } catch (err) {
+    // FK 위반은 영구 실패다 — 참조하는 invoice_items 가 남아 있는 한 몇 번을
+    // 재시도해도 같은 결과다. 이것을 일시 실패처럼 pending 에 남기면
+    // loadCloudFirst 가 영원히 LOCAL_CACHE 로 고착되고, 그 낡은 캐시가 다시
+    // 잘못된 삭제·id 재발급을 부른다 (실환경 speciesDelete:sp-005).
+    if (isForeignKeyViolation(err)) {
+      console.error("[cloud] deleteSpecies 영구 실패 — 참조하는 거래 항목이 있습니다:",
+                    speciesId, "·", err?.message || err);
+      return { ok: false, permanent: true, error: err?.message || String(err) };
+    }
     console.warn("[cloud] deleteSpecies mirror failed:", err?.message || err);
     return { ok: false, error: err?.message || String(err) };
   }
+}
+
+/**
+ * PostgreSQL foreign_key_violation(23503) 인지.
+ *
+ * `invoice_items.species_id → species.id` 는 `on delete` 를 지정하지 않아
+ * NO ACTION 이다. 즉 거래 이력이 있는 수종은 DB 가 삭제를 거부한다 —
+ * schema.sql 이 의도한 "거래 이력 보존" 정책이며, 앱의 사전 검사
+ * (`deleteSpecies` 의 로컬 invoiceItems 조회)가 낡은 캐시로 잘못 통과했을 때
+ * 최종적으로 막아 주는 방어선이다.
+ *
+ * `isUniqueViolation()` 과 마찬가지로 code 가 비는 경로를 위해 메시지도 본다.
+ */
+export function isForeignKeyViolation(err) {
+  if (!err) return false;
+  if (String(err.code || "") === "23503") return true;
+  return /violates foreign key constraint/i.test(String(err.message || ""));
 }
 
 // ============================================================
