@@ -531,6 +531,7 @@ species-catalog/tests/
 ├── ocr-accuracy.mjs           ← Node CLI 러너 (pure export 만 import)
 ├── supplier-matcher.mjs       ← 공급처 매칭 (normSupplierName · matchSupplier)
 ├── sync-pending.mjs           ← pending 큐 재시도 라우팅 (생성≠수정 보장)
+├── service-items.mjs          ← 서비스(0원) 품목 보존 + 가격 통계 제외
 └── ocr-corpus/
     ├── README.md              ← fixture 포맷 설명
     ├── 01-cheonripo-standard.json
@@ -560,9 +561,10 @@ species-catalog/tests/
 node species-catalog/tests/ocr-accuracy.mjs      # 229/240 이상 유지
 node species-catalog/tests/supplier-matcher.mjs  # 60/60
 node species-catalog/tests/sync-pending.mjs      # 68/68
+node species-catalog/tests/service-items.mjs    # 32/32
 ```
 
-세 러너 모두 브라우저·네트워크 없이 Node 단독으로 돕니다
+네 러너 모두 브라우저·네트워크 없이 Node 단독으로 돕니다
 (`sync-pending.mjs` 는 `localStorage` 를 shim 으로 대체합니다).
 
 `normalizeOcrText` → `parseInvoiceText` → `extractInvoiceDate` ·

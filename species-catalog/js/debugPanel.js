@@ -21,11 +21,14 @@
  * after every relevant input event. No storage writes; no state mutation.
  */
 
+import { collectValidItems } from "./utils.js";
+
 // ============================================================
 // Cache + session
 // ============================================================
 
 const els = {};
+
 let ctx = {
   toast:                   null,
   onReanalyze:             null,
@@ -412,10 +415,18 @@ function userEditPayload() {
   return { header: session.header || {}, items };
 }
 
+/**
+ * 저장될 결과의 예측(`toSave`)을 만든다.
+ *
+ * 행 선별은 반드시 `collectValidItems()` 로 한다 — 저장 경로와 **같은 함수**다.
+ * 예전에는 여기서 `name.trim()` 만 봤는데 저장은 `unitPrice > 0` 까지 봐서,
+ * 스냅샷은 7건인데 DB 에는 5건이 들어가는 일이 있었다(실환경 inv-073).
+ * 스냅샷은 감사 기록이므로 실제 저장과 어긋나면 근거로 쓸 수 없다.
+ */
 function projectSave() {
   if (!ctx.onProject || !session.header || !session.items?.length) return null;
   try {
-    const items = session.items.map(it => ({
+    const items = collectValidItems(session.items).map(it => ({
       name:      it.name       ?? it.speciesName ?? "",
       speciesId: it.speciesId  ?? null,
       spec:      it.spec       ?? "",
@@ -423,7 +434,7 @@ function projectSave() {
       quantity:  toNum(it.quantity),
       unitPrice: toNum(it.unitPrice),
       amount:    toNum(it.amount)
-    })).filter(it => it.name.trim());
+    }));
     if (!items.length) return null;
     return ctx.onProject(session.header, items);
   } catch (err) {

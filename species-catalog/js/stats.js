@@ -22,35 +22,60 @@
 // ============================================================
 
 /**
+ * 가격 통계의 대상이 되는 행만 남긴다 — 단가 0원 제외.
+ *
+ * 거래명세서의 "서비스" 품목은 단가·금액이 0이다. 그 행은 거래 이력으로는
+ * 반드시 보존해야 하지만(원본 재현), **가격 통계에 넣으면 값을 망가뜨린다**:
+ *   평균가  0원 행이 분모에 들어가 평균을 끌어내린다
+ *   최저가  Math.min 이 0 을 집어 "최저 0원"이 된다
+ * 예전에는 저장 단계에서 0원 행을 아예 지워 왜곡을 피했는데, 그 대가로
+ * 원본 7건짜리 명세서가 DB 에 5건으로 들어갔다(실환경 inv-073).
+ * 이제 저장은 원본대로 하고, 걸러내는 일은 여기서만 한다.
+ *
+ * 구매 횟수·최근 구매일·주 거래처는 서비스 품목도 실제 거래이므로
+ * 제외하지 않는다 — 가격 계산에만 적용한다.
+ *
+ * @param {InvoiceItem[]} items
+ * @returns {InvoiceItem[]}
+ */
+function pricedItems(items) {
+  return (items || []).filter(it => Number(it.unitPrice || 0) > 0);
+}
+
+/**
  * Recent average unit price across the given invoice items.
  * Returns null when there are no items so the UI can show "정보 없음".
+ * 단가 0원(서비스) 행은 제외한다 — `pricedItems()` 참조.
  * @param {InvoiceItem[]} items
  * @returns {number|null}
  */
 export function calculateAveragePrice(items) {
-  if (!items || items.length === 0) return null;
-  const sum = items.reduce((a, it) => a + Number(it.unitPrice || 0), 0);
-  return Math.round(sum / items.length);
+  const priced = pricedItems(items);
+  if (priced.length === 0) return null;
+  const sum = priced.reduce((a, it) => a + Number(it.unitPrice || 0), 0);
+  return Math.round(sum / priced.length);
 }
 
 /**
- * Lowest unit price ever paid.
+ * Lowest unit price ever paid. 단가 0원(서비스) 행은 제외한다.
  * @param {InvoiceItem[]} items
  * @returns {number|null}
  */
 export function calculateMinPrice(items) {
-  if (!items || items.length === 0) return null;
-  return Math.min(...items.map(it => Number(it.unitPrice || 0)));
+  const priced = pricedItems(items);
+  if (priced.length === 0) return null;
+  return Math.min(...priced.map(it => Number(it.unitPrice)));
 }
 
 /**
- * Highest unit price ever paid.
+ * Highest unit price ever paid. 단가 0원(서비스) 행은 제외한다.
  * @param {InvoiceItem[]} items
  * @returns {number|null}
  */
 export function calculateMaxPrice(items) {
-  if (!items || items.length === 0) return null;
-  return Math.max(...items.map(it => Number(it.unitPrice || 0)));
+  const priced = pricedItems(items);
+  if (priced.length === 0) return null;
+  return Math.max(...priced.map(it => Number(it.unitPrice)));
 }
 
 /**
@@ -144,11 +169,12 @@ export function calculateMonthlyPurchaseHeatmap(items, invoices) {
  * @returns {Array<{spec:string, unit:string, price:number}>}
  */
 export function calculatePriceTable(items, invoices) {
-  if (!items || items.length === 0) return [];
+  const priced = pricedItems(items);          // 서비스(0원) 행은 규격별 단가표에 넣지 않는다
+  if (priced.length === 0) return [];
   const invoiceById = new Map(invoices.map(inv => [inv.id, inv]));
   // Group by "spec|unit"; keep both the latest price and the earliest date
   const grouped = new Map();
-  for (const it of items) {
+  for (const it of priced) {
     const key = `${it.spec}|${it.unit}`;
     const inv = invoiceById.get(it.invoiceId);
     const date = inv?.invoiceDate || "";
@@ -177,10 +203,11 @@ export function calculatePriceTable(items, invoices) {
  * @returns {number|null}
  */
 export function calculateRecentPrice(items, invoices) {
-  if (!items || items.length === 0) return null;
+  const priced = pricedItems(items);          // 서비스(0원) 행은 "최근 단가"가 될 수 없다
+  if (priced.length === 0) return null;
   const invoiceById = new Map(invoices.map(inv => [inv.id, inv]));
   let bestDate = "", bestPrice = null;
-  for (const it of items) {
+  for (const it of priced) {
     const d = invoiceById.get(it.invoiceId)?.invoiceDate;
     if (!d) continue;
     if (d >= bestDate) { bestDate = d; bestPrice = Number(it.unitPrice || 0); }
