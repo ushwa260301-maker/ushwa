@@ -12,8 +12,8 @@ import { analyzeInvoice, parseInvoiceText } from "./vision.js";
 import { enrichSpecies } from "./stats.js";
 import {
   SUNLIGHT_OPTIONS, INDOOR_OUTDOOR_OPTIONS, NATIVE_STATUS_OPTIONS, EVERGREEN_OPTIONS,
-  getSpeciesMeta
-} from "./speciesMeta.js";
+  normalizeMetadata
+} from "./utils.js";
 import {
   buildMonthGrid,
   makePriceRow,
@@ -137,9 +137,9 @@ export function openModal(id) {
   els.fCategoryNew.value = "";
   els.fNotes.value = sp?.notes || "";
 
-  // 식물 도감 정보 — Species 레코드가 아닌 speciesMeta 사이드카에서 읽는다.
-  // 값이 없는 기존 수종도 빈 메타(emptyMeta)가 돌아와 그대로 열린다.
-  const meta = getSpeciesMeta(sp?.id);
+  // 식물 도감 정보 — Species 레코드 안(sp.metadata)에서 읽는다.
+  // metadata 가 없는 기존 수종도 normalizeMetadata 가 빈 값을 돌려줘 그대로 열린다.
+  const meta = normalizeMetadata(sp?.metadata);
   fillSelect(els.fSunlight,      SUNLIGHT_OPTIONS,       meta.sunlight);
   fillSelect(els.fIndoorOutdoor, INDOOR_OUTDOOR_OPTIONS, meta.indoorOutdoor);
   fillSelect(els.fNativeStatus,  NATIVE_STATUS_OPTIONS,  meta.nativeStatus);
@@ -370,9 +370,8 @@ function collectForm() {
     suppliers,
     purchaseCounts,
     notes: els.fNotes.value.trim(),
-    // 도감 메타데이터. app.js 가 speciesMeta 로 따로 저장한다 —
-    // Species 레코드에 넣으면 Cloud 왕복에서 버려지기 때문이다.
-    meta: {
+    // 도감 메타데이터 — Species 레코드 안에 저장된다 (species.metadata).
+    metadata: {
       sunlight:      els.fSunlight.value,
       indoorOutdoor: els.fIndoorOutdoor.value,
       nativeStatus:  els.fNativeStatus.value,

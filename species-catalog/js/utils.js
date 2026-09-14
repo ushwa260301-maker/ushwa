@@ -131,3 +131,83 @@ export function collectValidItems(items) {
     it?.name?.trim() && Number(it.quantity) > 0
   );
 }
+
+// ============================================================
+// 식물 도감 메타데이터 (Species.metadata)
+// ============================================================
+
+/**
+ * 도감 메타데이터는 **Species 레코드 안(`species.metadata`)에 산다.**
+ * 별도 저장소를 두지 않는다 — storage.js 가 species 배열을 통째로 직렬화하고
+ * importExport 도 그대로 주고받으므로, 한 곳에 있으면 저장·불러오기·내보내기가
+ * 자동으로 따라온다.
+ *
+ * 이미 Species 에 있는 것은 중복하지 않는다:
+ *   학명 → `species.latin` · 분류 → `species.category` · 개화 → `species.bloomMonths`
+ */
+export const SUNLIGHT_OPTIONS = [
+  { value: "",       label: "— 미지정 —" },
+  { value: "양지",   label: "양지",   icon: "☀️" },
+  { value: "반양지", label: "반양지", icon: "🌤" },
+  { value: "음지",   label: "음지",   icon: "🌑" }
+];
+
+export const INDOOR_OUTDOOR_OPTIONS = [
+  { value: "",     label: "— 미지정 —" },
+  { value: "실내", label: "실내", icon: "🏡" },
+  { value: "실외", label: "실외", icon: "🌳" },
+  { value: "둘다", label: "둘다", icon: "🏡🌳" }
+];
+
+export const NATIVE_STATUS_OPTIONS = [
+  { value: "",       label: "— 미지정 —" },
+  { value: "자생종", label: "자생종", icon: "🇰🇷" },
+  { value: "재배종", label: "재배종", icon: "🌱" },
+  { value: "외래종", label: "외래종", icon: "🌍" }
+];
+
+export const EVERGREEN_OPTIONS = [
+  { value: "",     label: "— 미지정 —" },
+  { value: "상록", label: "상록", icon: "🌿" },
+  { value: "낙엽", label: "낙엽", icon: "🍂" }
+];
+
+/** metadata 가 담는 필드 전체. 모두 선택 입력이며 빈 문자열이 "미지정"이다. */
+export const METADATA_FIELDS = ["sunlight", "indoorOutdoor", "nativeStatus", "evergreen", "description"];
+
+/** 모든 필드가 빈 값인 metadata — metadata 가 없는 기존 Species 의 기본값. */
+export function emptyMetadata() {
+  return { sunlight: "", indoorOutdoor: "", nativeStatus: "", evergreen: "", description: "" };
+}
+
+/**
+ * 임의 입력을 metadata 모양으로 정규화한다. 알려진 필드만 남기고 문자열로
+ * 맞춘다 — 폼이나 외부 JSON 에서 들어온 값을 그대로 믿지 않는다.
+ * @param {object|null|undefined} raw
+ */
+export function normalizeMetadata(raw) {
+  const out = emptyMetadata();
+  if (!raw || typeof raw !== "object") return out;
+  for (const f of METADATA_FIELDS) out[f] = String(raw[f] ?? "").trim();
+  return out;
+}
+
+/** metadata 에 입력된 값이 하나라도 있는가 (카드 영역 표시 여부). */
+export function hasMetadata(metadata) {
+  return METADATA_FIELDS.some(f => String(metadata?.[f] || "").trim());
+}
+
+/**
+ * Species 하나가 metadata 를 갖도록 보장한다 (없으면 빈 객체를 붙인다).
+ * Cloud 는 metadata 컬럼이 없어 읽어온 Species 에는 이 필드가 비어 있다 —
+ * 그때도 모달·카드가 그대로 동작하게 하는 것이 목적이다.
+ * @param {object} sp
+ */
+export function withMetadata(sp) {
+  return { ...sp, metadata: normalizeMetadata(sp?.metadata) };
+}
+
+/** 선택지 값 → 아이콘. 목록에 없으면 빈 문자열. */
+export function iconFor(options, value) {
+  return options.find(o => o.value === value)?.icon || "";
+}

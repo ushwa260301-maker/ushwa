@@ -10,9 +10,9 @@
 
 import {
 import {
-  getSpeciesMeta, hasSpeciesMeta, iconFor,
+  normalizeMetadata, hasMetadata, iconFor,
   SUNLIGHT_OPTIONS, INDOOR_OUTDOOR_OPTIONS, NATIVE_STATUS_OPTIONS, EVERGREEN_OPTIONS
-} from "./speciesMeta.js";
+} from "./utils.js";
   MONTHS,
   colorFor,
   escapeHtml,
@@ -48,9 +48,10 @@ export function createCard(sp, cardTpl, handlers) {
   // Bloom strip — 12 cells, one per month, "active" when the month is in bloomMonths.
   fillPhenologyStrip(node.querySelector(".phenology-strip"), sp.bloomMonths || []);
 
-  // 식물 도감 정보 — speciesMeta 사이드카에서 읽는다. 입력된 값이 하나도
+  // 식물 도감 정보 — Species 레코드 안(sp.metadata)에서 읽는다. 입력된 값이
+  // 하나도
   // 없으면 영역 자체를 감춘다(기존 수종의 카드 모양이 바뀌지 않는다).
-  fillGuideBlock(node.querySelector(".card-guide"), sp.id);
+  fillGuideBlock(node.querySelector(".card-guide"), sp.metadata);
 
   // Purchase heatmap — 12 cells, color-only intensity by count.
   const counts = normalizeCounts(sp.purchaseCounts);
@@ -107,13 +108,12 @@ export function createCard(sp, cardTpl, handlers) {
  * 빈칸으로 가득 차 읽기 어려워진다. 하나도 없으면 영역을 통째로 감춘다.
  *
  * @param {HTMLElement|null} box   .card-guide
- * @param {string} speciesId
+ * @param {object|undefined} metadata  species.metadata
  */
-function fillGuideBlock(box, speciesId) {
+function fillGuideBlock(box, metadata) {
   if (!box) return;
-  if (!hasSpeciesMeta(speciesId)) { box.hidden = true; return; }
-
-  const meta = getSpeciesMeta(speciesId);
+  const meta = normalizeMetadata(metadata);
+  if (!hasMetadata(meta)) { box.hidden = true; return; }
   const badges = box.querySelector(".guide-badges");
   badges.innerHTML = "";
 
