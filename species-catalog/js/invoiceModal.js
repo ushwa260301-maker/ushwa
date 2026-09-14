@@ -343,8 +343,15 @@ function enterReview() {
   const a = session.analysis || {};
 
   // Header defaults from analysis
+  //
+  // 거래일은 OCR 이 읽지 못하면 **빈 값으로 둔다**. 예전에는 오늘 날짜를
+  // 채웠는데, 그 값이 그대로 저장돼 원본에 없는 거래일이 만들어졌다
+  // (실환경 inv-067 — OCR invoiceDate "" → 등록 당일 2026-08-03 으로 저장.
+  //  같은 문서를 다시 등록한 inv-074 는 2024-08-27 이라 한 문서가 서로 다른
+  //  거래일을 갖게 됐다). 원본에 없는 데이터는 만들지 않는다 — 빈 값이면
+  //  onSaveClicked 의 기존 검증이 사용자에게 입력을 요구한다.
   session.header = {
-    invoiceDate: a.invoiceDate || new Date().toISOString().slice(0, 10),
+    invoiceDate: a.invoiceDate || "",
     invoiceNumber: a.invoiceNumber || "",
     supplier: a.supplier?.name || "",
     supplierPhone: a.supplier?.contact || "",
