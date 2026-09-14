@@ -590,10 +590,13 @@ async function saveInvoice(header, items, extras = {}) {
  * @param {string} invoiceId
  * @param {{invoiceDate,invoiceNumber,supplier,supplierPhone,supplierAddress}} header
  * @param {Array<{id?:string, speciesId?:string, speciesName:string, spec:string, unit:string, quantity:number, unitPrice:number, amount:number}>} items
+ * @returns {Promise<boolean>} 저장했으면 true. 거부하면 false — 거래를 못
+ *   찾았거나, LOCAL_CACHE 라 신규 수종을 만들 수 없는 경우다. 거부 사유는
+ *   여기서 toast 로 알리므로, 호출자는 성공 토스트만 억제하면 된다.
  */
 async function updateInvoice(invoiceId, header, items) {
   const inv = state.data.invoices.find(i => i.id === invoiceId);
-  if (!inv) { toast("거래를 찾을 수 없습니다"); return; }
+  if (!inv) { toast("거래를 찾을 수 없습니다"); return false; }
 
   // 기존 거래 수정 자체는 LOCAL_CACHE 에서도 허용한다 — 번호를 만들지 않기
   // 때문이다. 다만 이 함수는 매칭되지 않는 품목명을 만나면 **신규 species 를
@@ -607,7 +610,7 @@ async function updateInvoice(invoiceId, header, items) {
       const verdict = matchSpecies((raw.speciesName || "").trim(), state.data.species);
       return !(verdict.status === "match" && verdict.species);
     });
-    if (needsNewSpecies) { toast(NEW_ID_BLOCKED_MSG); return; }
+    if (needsNewSpecies) { toast(NEW_ID_BLOCKED_MSG); return false; }
   }
 
   // 1. Patch header
@@ -688,6 +691,7 @@ async function updateInvoice(invoiceId, header, items) {
     addPending("invoice", invoiceId);
     reportSync(await mirrorUpdateInvoice(inv, itemRows, refSpecies), "invoice", invoiceId, "거래 수정");
   }
+  return true;
 }
 
 /**
