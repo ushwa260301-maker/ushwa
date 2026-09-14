@@ -426,13 +426,6 @@ async function saveSupplierAlias(aliasText, supplierId) {
 }
 
 async function saveInvoice(header, items, extras = {}) {
-  // 거래명세서 등록은 **반드시** 새 inv- 번호를 발급한다. LOCAL_CACHE 상태라면
-  // 그 번호가 이미 쓰였을 수 있으므로 저장을 시작하지 않는다 (S1-P0-1).
-  // throw 로 알린다 — invoiceModal 의 저장 핸들러가 이를 잡아 toast 로 띄우고,
-  // 완료 화면(Step 4)으로 넘어가지 않는다. 조용히 실패하면 사용자는 저장된
-  // 줄 안다.
-  if (!canIssueNewId()) throw new Error(NEW_ID_BLOCKED_MSG);
-
   // 1. Resolve each row to a Species. Resolution priority:
   //    (a) `it.speciesId` — set by the wizard when the matcher returned
   //        "match" or the user picked a candidate for a "possible" row.
@@ -464,6 +457,9 @@ async function saveInvoice(header, items, extras = {}) {
     }
 
     // (c) create new — "possible" without a user pick and "new" both land here
+    // 새 sp- 번호가 필요한 지점이다. LOCAL_CACHE 면 여기서 멈춘다 (S1-P0-2).
+    // 검사를 push 앞에 두어, 중단돼도 state.data.species 에 흔적이 남지 않는다.
+    if (!canIssueNewId()) throw new Error(NEW_ID_BLOCKED_MSG);
     const created = {
       id: nextSp(),
       name: trimmed,
@@ -482,6 +478,11 @@ async function saveInvoice(header, items, extras = {}) {
   });
 
   // 2. Create the Invoice header.
+  // 새 inv- 번호를 발급하는 유일한 지점이다. LOCAL_CACHE 면 로컬 목록이
+  // Cloud 보다 작을 수 있어 이미 쓰인 번호가 나온다 (S1-P0-1).
+  // 기존 거래 수정은 updateInvoice 가 담당하며 번호를 만들지 않으므로
+  // 이 검사와 무관하다 — LOCAL_CACHE 에서도 계속 허용된다.
+  if (!canIssueNewId()) throw new Error(NEW_ID_BLOCKED_MSG);
   const invoice = {
     id: nextId("inv", state.data.invoices),
     invoiceDate: header.invoiceDate,
