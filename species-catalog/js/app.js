@@ -31,6 +31,7 @@ import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSave
 import { addPending, removePending, listPending, hasPending, setLastSync, replayAction } from "./syncManager.js";
 import { isCloudConfigured } from "./supabaseClient.js";
 import { nextId } from "./utils.js";
+import { loadSpeciesMeta, setSpeciesMeta } from "./speciesMeta.js";
 
 // ============================================================
 // 신규 ID 발급 가드 (S1-P0-1 · P0-2)
@@ -97,6 +98,11 @@ async function saveSpecies(payload, id) {
     state.data.species.push({ id: speciesId, ...meta });
     toast("추가되었습니다");
   }
+
+  // 식물 도감 메타데이터 — Species 레코드가 아닌 자체 키에 저장한다.
+  // cloudStore 의 speciesToDb/FromDb 가 8개 필드만 통과시키므로, Species 에
+  // 넣으면 다음 Cloud 읽기에서 사라진다 (speciesMeta.js 상단 참조).
+  if (payload.meta) setSpeciesMeta(speciesId, payload.meta);
 
   // Drop old invoice items + orphaned invoices for this species.
   purgeInvoiceRecordsFor(speciesId);
@@ -1114,6 +1120,9 @@ async function init() {
   } catch (err) {
     console.warn("[app] migration load skipped:", err?.message || err);
   }
+
+  // 식물 도감 메타데이터를 메모리로 올린다 (LocalStorage 자체 키 · Cloud 무관).
+  loadSpeciesMeta();
 
   cacheElements();
 

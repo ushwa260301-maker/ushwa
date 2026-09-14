@@ -306,3 +306,54 @@
   color: var(--ink);
   margin-bottom: 4px;
 }
+
+/* ============================================================
+   식물 도감 정보 (Sprint S2 · Ticket #001)
+   값이 입력된 항목만 배지로 표시한다. 미입력 수종은 .card-guide 가
+   hidden 이라 기존 카드 레이아웃이 그대로 유지된다.
+   ============================================================ */
+.card-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0 2px;
+  border-top: 1px dashed var(--line, #8883);
+}
+
+.guide-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.guide-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: nowrap;
+  background: var(--chip-bg, rgba(127, 127, 127, .12));
+  border: 1px solid var(--line, #8883);
+}
+
+/* 항목별 색 구분 — 한눈에 종류를 알아보게 한다. */
+.guide-badge[data-kind="sunlight"]      { background: rgba(255, 193,   7, .16); }
+.guide-badge[data-kind="indoorOutdoor"] { background: rgba(  3, 169, 244, .14); }
+.guide-badge[data-kind="nativeStatus"]  { background: rgba( 76, 175,  80, .14); }
+.guide-badge[data-kind="evergreen"]     { background: rgba(156,  39, 176, .12); }
+
+/* 설명은 최대 2줄 — 카드 높이가 들쭉날쭉해지지 않게 자른다. */
+.guide-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: .8;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

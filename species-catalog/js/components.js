@@ -9,6 +9,10 @@
  */
 
 import {
+import {
+  getSpeciesMeta, hasSpeciesMeta, iconFor,
+  SUNLIGHT_OPTIONS, INDOOR_OUTDOOR_OPTIONS, NATIVE_STATUS_OPTIONS, EVERGREEN_OPTIONS
+} from "./speciesMeta.js";
   MONTHS,
   colorFor,
   escapeHtml,
@@ -43,6 +47,10 @@ export function createCard(sp, cardTpl, handlers) {
 
   // Bloom strip — 12 cells, one per month, "active" when the month is in bloomMonths.
   fillPhenologyStrip(node.querySelector(".phenology-strip"), sp.bloomMonths || []);
+
+  // 식물 도감 정보 — speciesMeta 사이드카에서 읽는다. 입력된 값이 하나도
+  // 없으면 영역 자체를 감춘다(기존 수종의 카드 모양이 바뀌지 않는다).
+  fillGuideBlock(node.querySelector(".card-guide"), sp.id);
 
   // Purchase heatmap — 12 cells, color-only intensity by count.
   const counts = normalizeCounts(sp.purchaseCounts);
@@ -90,6 +98,44 @@ export function createCard(sp, cardTpl, handlers) {
   }
 
   return node;
+}
+
+/**
+ * 카드의 "식물 도감 정보" 영역을 채운다.
+ *
+ * 값이 있는 항목만 배지로 그린다 — 미지정 필드를 "—" 로 채우면 카드가
+ * 빈칸으로 가득 차 읽기 어려워진다. 하나도 없으면 영역을 통째로 감춘다.
+ *
+ * @param {HTMLElement|null} box   .card-guide
+ * @param {string} speciesId
+ */
+function fillGuideBlock(box, speciesId) {
+  if (!box) return;
+  if (!hasSpeciesMeta(speciesId)) { box.hidden = true; return; }
+
+  const meta = getSpeciesMeta(speciesId);
+  const badges = box.querySelector(".guide-badges");
+  badges.innerHTML = "";
+
+  const add = (options, value, kind) => {
+    if (!value) return;
+    const el = document.createElement("span");
+    el.className = "guide-badge";
+    el.dataset.kind = kind;
+    const icon = iconFor(options, value);
+    el.textContent = icon ? `${icon} ${value}` : value;
+    badges.appendChild(el);
+  };
+  add(SUNLIGHT_OPTIONS,       meta.sunlight,      "sunlight");
+  add(INDOOR_OUTDOOR_OPTIONS, meta.indoorOutdoor, "indoorOutdoor");
+  add(NATIVE_STATUS_OPTIONS,  meta.nativeStatus,  "nativeStatus");
+  add(EVERGREEN_OPTIONS,      meta.evergreen,     "evergreen");
+
+  const desc = box.querySelector(".guide-desc");
+  if (meta.description) { desc.textContent = meta.description; desc.hidden = false; }
+  else desc.hidden = true;
+
+  box.hidden = false;
 }
 
 function fillPhenologyStrip(container, bloomMonths) {

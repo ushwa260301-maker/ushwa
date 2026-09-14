@@ -11,6 +11,10 @@ import { state, formState } from "./state.js";
 import { analyzeInvoice, parseInvoiceText } from "./vision.js";
 import { enrichSpecies } from "./stats.js";
 import {
+  SUNLIGHT_OPTIONS, INDOOR_OUTDOOR_OPTIONS, NATIVE_STATUS_OPTIONS, EVERGREEN_OPTIONS,
+  getSpeciesMeta
+} from "./speciesMeta.js";
+import {
   buildMonthGrid,
   makePriceRow,
   renderPriceRows,
@@ -50,6 +54,11 @@ export function initModal(deps) {
   els.fCategory          = document.getElementById("fCategory");
   els.fCategoryNew       = document.getElementById("fCategoryNew");
   els.fNotes             = document.getElementById("fNotes");
+  els.fSunlight          = document.getElementById("fSunlight");
+  els.fIndoorOutdoor     = document.getElementById("fIndoorOutdoor");
+  els.fNativeStatus      = document.getElementById("fNativeStatus");
+  els.fEvergreen         = document.getElementById("fEvergreen");
+  els.fDescription       = document.getElementById("fDescription");
   els.fMonthGrid         = document.getElementById("fMonthGrid");
   els.fColorChips        = document.getElementById("fColorChips");
   els.fColorNew          = document.getElementById("fColorNew");
@@ -127,6 +136,15 @@ export function openModal(id) {
   populateCategorySelect(sp?.category);
   els.fCategoryNew.value = "";
   els.fNotes.value = sp?.notes || "";
+
+  // 식물 도감 정보 — Species 레코드가 아닌 speciesMeta 사이드카에서 읽는다.
+  // 값이 없는 기존 수종도 빈 메타(emptyMeta)가 돌아와 그대로 열린다.
+  const meta = getSpeciesMeta(sp?.id);
+  fillSelect(els.fSunlight,      SUNLIGHT_OPTIONS,       meta.sunlight);
+  fillSelect(els.fIndoorOutdoor, INDOOR_OUTDOOR_OPTIONS, meta.indoorOutdoor);
+  fillSelect(els.fNativeStatus,  NATIVE_STATUS_OPTIONS,  meta.nativeStatus);
+  fillSelect(els.fEvergreen,     EVERGREEN_OPTIONS,      meta.evergreen);
+  els.fDescription.value = meta.description || "";
 
   formState.months = new Set((sp?.bloomMonths || []).map(String));
   buildMonthGrid(els.fMonthGrid, formState.months, () => {});
@@ -277,6 +295,20 @@ function populateCategorySelect(selected) {
 }
 
 /** Read every field, validate, and return a species payload (or null on error). */
+/** select 를 옵션 목록으로 채우고 현재 값을 고른다. 목록에 없는 값도 보존한다. */
+function fillSelect(select, options, value) {
+  select.innerHTML = "";
+  const known = options.some(o => o.value === value);
+  const list = known || !value ? options : [...options, { value, label: value }];
+  for (const o of list) {
+    const opt = document.createElement("option");
+    opt.value = o.value;
+    opt.textContent = o.icon ? `${o.icon} ${o.label}` : o.label;
+    select.appendChild(opt);
+  }
+  select.value = value || "";
+}
+
 function collectForm() {
   const name = els.fName.value.trim();
   if (!name) {
@@ -337,7 +369,16 @@ function collectForm() {
     prices,
     suppliers,
     purchaseCounts,
-    notes: els.fNotes.value.trim()
+    notes: els.fNotes.value.trim(),
+    // 도감 메타데이터. app.js 가 speciesMeta 로 따로 저장한다 —
+    // Species 레코드에 넣으면 Cloud 왕복에서 버려지기 때문이다.
+    meta: {
+      sunlight:      els.fSunlight.value,
+      indoorOutdoor: els.fIndoorOutdoor.value,
+      nativeStatus:  els.fNativeStatus.value,
+      evergreen:     els.fEvergreen.value,
+      description:   els.fDescription.value.trim()
+    }
   };
 }
 
