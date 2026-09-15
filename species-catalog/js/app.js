@@ -30,7 +30,7 @@ import { initAuthGate } from "./auth.js";
 import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSaveSpecies, mirrorDeleteSpecies, mirrorSaveAttachment, mirrorSaveOcrCorrection, mirrorSaveSupplierAlias, fetchAll } from "./cloudStore.js";
 import { addPending, removePending, listPending, hasPending, setLastSync, replayAction } from "./syncManager.js";
 import { isCloudConfigured } from "./supabaseClient.js";
-import { nextId } from "./utils.js";
+import { nextId, normalizeMetadata, withMetadata } from "./utils.js";
 
 // ============================================================
 // 신규 ID 발급 가드 (S1-P0-1 · P0-2)
@@ -181,7 +181,10 @@ function extractSpeciesMeta(payload) {
     bloomMonths: payload.bloomMonths || [],
     colors: payload.colors || [],
     suppliers: payload.suppliers || [],
-    notes: payload.notes || ""
+    notes: payload.notes || "",
+    // 도감 메타데이터는 Species 레코드 안에 함께 산다 — storage.js 가 species
+    // 배열을 통째로 직렬화하므로 저장·불러오기·JSON 내보내기가 자동으로 따라온다.
+    metadata: normalizeMetadata(payload.metadata)
   };
 }
 
@@ -960,10 +963,20 @@ async function loadCloudFirst(localData) {
 
     const cloud = await fetchAll();               // 미설정 → null
     if (isCloudUsable(cloud)) {
+      // Cloud 의 species 에는 metadata 컬럼이 없다(스키마 미확장). 그대로
+      // 채택하면 로컬에 입력해 둔 도감 정보가 사라지므로, 같은 id 의 로컬
+      // metadata 를 이어 붙인다. Cloud 에 없으면 빈 metadata 객체가 붙는다.
+      const localMetaById = new Map(
+        (localData?.species || []).map(s => [s.id, normalizeMetadata(s.metadata)]));
+      const cloudSpecies = cloud.species.map(s => ({
+        ...s,
+        metadata: localMetaById.get(s.id) || normalizeMetadata(s.metadata)
+      }));
+
       const merged = {
         categories:   localData?.categories || [],   // meta 는 로컬 보존 (Cloud 에 없음)
         colors:       localData?.colors || [],
-        species:      cloud.species,
+        species:      cloudSpecies,
         invoices:     cloud.invoices,
         invoiceItems: cloud.invoiceItems
       };
@@ -1012,6 +1025,7 @@ function wireToolbar() {
     try {
       const parsed = await importJson(file);
       if (!confirm(`${parsed.species.length}개 수종으로 덮어씁니다. 계속?`)) return;
+      parsed.species = (parsed.species || []).map(withMetadata);
       state.data = parsed;
       persistAndRerender();
       toast("가져오기 완료");
@@ -1026,6 +1040,7 @@ function wireToolbar() {
     if (!confirm("모든 사용자 데이터를 지우고 시드 데이터로 초기화합니다. 계속?")) return;
     try {
       const seed = await loadSeed();
+      seed.species = (seed.species || []).map(withMetadata);
       state.data = seed;
       persistAndRerender();
       toast("시드 데이터로 초기화되었습니다");
@@ -1134,6 +1149,11 @@ async function init() {
   // 실패/빈결과/미로그인/오프라인 → 위 LocalStorage(data) 유지.
   // storage.load() 는 위에서 그대로 폴백으로 존속한다 (제거하지 않음).
   data = await loadCloudFirst(data);
+
+  // metadata 가 없는 Species 에 빈 객체를 붙인다. 시드·LocalStorage·Cloud·
+  // 가져오기 어느 경로로 들어왔든 이 지점을 지나므로, 모달과 카드는 metadata
+  // 가 항상 있다고 가정할 수 있다 (기존 Species 자동 호환).
+  data.species = (data.species || []).map(withMetadata);
 
   state.data = data;
 

@@ -59,8 +59,15 @@ export const state = {
 
 /** Per-modal-session working state (kept separate so the main state stays clean). */
 export const formState = {
-  months: new Set(),        // strings, mirrors filter's convention
-  colors: new Set()
+  months: new Set(),        // strings, mirrors filter's convention (필터 전용)
+  colors: new Set(),
+  /**
+   * 수종 모달이 연 Species 의 개화월. 화면에서 편집하지 않고 저장 시 그대로
+   * 되돌려준다 — 개화월의 정본은 국가 식물 DB 다.
+   */
+  bloomMonths: [],
+  /** 같은 이유로 보존만 하는 외부 DB 연결 정보 (plant_api_*). */
+  metaApi: {}
 };
 
 /** Restore filter state to defaults. Called by the Reset button. */

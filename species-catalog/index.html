@@ -128,9 +128,13 @@
       <div class="phenology">
         <div class="phenology-label">
           <span class="lbl">Phenology · 개화</span>
-          <span class="val"></span>
         </div>
         <div class="phenology-strip"></div>
+      </div>
+      <div class="card-guide" hidden>
+        <div class="guide-photos" hidden></div>
+        <div class="guide-badges"></div>
+        <p class="guide-desc" hidden></p>
       </div>
       <div class="freq">
         <div class="freq-label">
@@ -224,10 +228,38 @@
         </fieldset>
 
         <fieldset class="form-section">
+          <legend>식물 도감 정보</legend>
+          <p id="fGuideSource" class="attach-hint" hidden></p>
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="fSunlight">양지성</label>
+              <select id="fSunlight"></select>
+            </div>
+            <div class="form-field">
+              <label for="fIndoorOutdoor">실내 / 실외</label>
+              <select id="fIndoorOutdoor"></select>
+            </div>
+            <div class="form-field">
+              <label for="fNativeStatus">자생 여부</label>
+              <select id="fNativeStatus"></select>
+            </div>
+            <div class="form-field">
+              <label for="fEvergreen">상록 / 낙엽</label>
+              <select id="fEvergreen"></select>
+            </div>
+            <div class="form-field span-2">
+              <label for="fDescription">설명</label>
+              <textarea id="fDescription" rows="3" maxlength="400"
+                        placeholder="도감 설명 — 카드에 최대 2줄로 표시됩니다"></textarea>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
           <legend>개화</legend>
           <div class="form-field">
-            <label>개화월 <small>(다중 선택)</small></label>
-            <div id="fMonthGrid" class="month-grid" role="group"></div>
+            <label>개화월 <small>(읽기 전용 · 국가 식물 DB 기준)</small></label>
+            <div id="fBloomView" class="phenology-strip"></div>
           </div>
           <div class="form-field">
             <label>개화색</label>

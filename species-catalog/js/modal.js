@@ -11,7 +11,11 @@ import { state, formState } from "./state.js";
 import { analyzeInvoice, parseInvoiceText } from "./vision.js";
 import { enrichSpecies } from "./stats.js";
 import {
-  buildMonthGrid,
+  SUNLIGHT_OPTIONS, INDOOR_OUTDOOR_OPTIONS, NATIVE_STATUS_OPTIONS, EVERGREEN_OPTIONS,
+  normalizeMetadata, renderBloomMonths, isMetadataReadOnly, metadataSource,
+  normalizeTriBool, API_FIELDS
+} from "./utils.js";
+import {
   makePriceRow,
   renderPriceRows,
   makeSupplierRow,
@@ -50,7 +54,13 @@ export function initModal(deps) {
   els.fCategory          = document.getElementById("fCategory");
   els.fCategoryNew       = document.getElementById("fCategoryNew");
   els.fNotes             = document.getElementById("fNotes");
-  els.fMonthGrid         = document.getElementById("fMonthGrid");
+  els.fSunlight          = document.getElementById("fSunlight");
+  els.fIndoorOutdoor     = document.getElementById("fIndoorOutdoor");
+  els.fNativeStatus      = document.getElementById("fNativeStatus");
+  els.fEvergreen         = document.getElementById("fEvergreen");
+  els.fDescription       = document.getElementById("fDescription");
+  els.fBloomView         = document.getElementById("fBloomView");
+  els.fGuideSource       = document.getElementById("fGuideSource");
   els.fColorChips        = document.getElementById("fColorChips");
   els.fColorNew          = document.getElementById("fColorNew");
   els.fColorAddBtn       = document.getElementById("fColorAddBtn");
@@ -128,8 +138,36 @@ export function openModal(id) {
   els.fCategoryNew.value = "";
   els.fNotes.value = sp?.notes || "";
 
-  formState.months = new Set((sp?.bloomMonths || []).map(String));
-  buildMonthGrid(els.fMonthGrid, formState.months, () => {});
+  // 식물 도감 정보 — Species 레코드 안(sp.metadata)에서 읽는다.
+  // metadata 가 없는 기존 수종도 normalizeMetadata 가 빈 값을 돌려줘 그대로 열린다.
+  const meta = normalizeMetadata(sp?.metadata);
+  fillSelect(els.fSunlight,      SUNLIGHT_OPTIONS,       meta.sunlight);
+  fillSelect(els.fIndoorOutdoor, INDOOR_OUTDOOR_OPTIONS, meta.indoorOutdoor);
+  fillSelect(els.fNativeStatus,  NATIVE_STATUS_OPTIONS,  meta.nativeStatus);
+  const everVal = meta.evergreen === true ? "상록" : meta.evergreen === false ? "낙엽" : "";
+  fillSelect(els.fEvergreen,     EVERGREEN_OPTIONS,      everVal);
+  els.fDescription.value = meta.description?.summary || "";
+
+  // 외부 DB 에 연결된 Species 는 도감 정보를 앱에서 고치지 않는다 —
+  // 정본이 외부에 있어 수정해도 다음 동기화에 덮인다.
+  formState.metaApi = Object.fromEntries(API_FIELDS.map(f => [f, meta[f] || ""]));
+  const readOnly = isMetadataReadOnly(meta);
+  for (const el of [els.fSunlight, els.fIndoorOutdoor, els.fNativeStatus,
+                    els.fEvergreen, els.fDescription]) {
+    el.disabled = readOnly;
+  }
+  const srcInfo = metadataSource(meta);
+  const at = meta.plant_api_synced_at ? ` · 동기화 ${String(meta.plant_api_synced_at).slice(0, 10)}` : "";
+  els.fGuideSource.textContent =
+    srcInfo.kind === "api"  ? `출처: ${srcInfo.label} — 읽기 전용${at}` :
+    srcInfo.kind === "user" ? "출처: 사용자 추가" :
+                              "출처: 미연동 — 직접 입력하거나 식물 DB 와 연동하세요";
+  els.fGuideSource.hidden = false;
+
+  // 개화월은 입력하지 않는다 — 국가 식물 DB 가 정본이며 여기서는 읽기만 한다.
+  // 저장 시 기존 bloomMonths 를 그대로 되돌려주기 위해 원본을 보관한다.
+  formState.bloomMonths = (sp?.bloomMonths || []).map(Number);
+  renderBloomMonths(els.fBloomView, formState.bloomMonths);
 
   formState.colors = new Set(sp?.colors || []);
   rebuildFormColorChips(els.fColorChips, state.data.colors, formState.colors);
@@ -277,6 +315,33 @@ function populateCategorySelect(selected) {
 }
 
 /** Read every field, validate, and return a species payload (or null on error). */
+/** 다중 선택 select — enum 코드를 값으로 두고 화면에는 한글을 보여준다. */
+function fillMultiSelect(select, options, values) {
+  const chosen = new Set(values || []);
+  select.innerHTML = "";
+  for (const o of options) {
+    const opt = document.createElement("option");
+    opt.value = o.value;
+    opt.textContent = o.icon ? `${o.icon} ${o.label}` : o.label;
+    opt.selected = chosen.has(o.value);
+    select.appendChild(opt);
+  }
+}
+
+/** select 를 옵션 목록으로 채우고 현재 값을 고른다. 목록에 없는 값도 보존한다. */
+function fillSelect(select, options, value) {
+  select.innerHTML = "";
+  const known = options.some(o => o.value === value);
+  const list = known || !value ? options : [...options, { value, label: value }];
+  for (const o of list) {
+    const opt = document.createElement("option");
+    opt.value = o.value;
+    opt.textContent = o.icon ? `${o.icon} ${o.label}` : o.label;
+    select.appendChild(opt);
+  }
+  select.value = value || "";
+}
+
 function collectForm() {
   const name = els.fName.value.trim();
   if (!name) {
@@ -295,10 +360,6 @@ function collectForm() {
     ctx.toast("카테고리를 선택하거나 새로 입력하세요");
     return null;
   }
-
-  const months = [...els.fMonthGrid.querySelectorAll('[aria-pressed="true"]')]
-    .map(el => Number(el.textContent))
-    .sort((a, b) => a - b);
 
   const colors = [...formState.colors];
 
@@ -332,12 +393,24 @@ function collectForm() {
     name,
     latin: els.fLatin.value.trim(),
     category,
-    bloomMonths: months,
+    // 개화월은 화면에서 편집하지 않는다 — 열었을 때의 값을 그대로 돌려준다.
+    bloomMonths: [...(formState.bloomMonths || [])],
     colors,
     prices,
     suppliers,
     purchaseCounts,
-    notes: els.fNotes.value.trim()
+    notes: els.fNotes.value.trim(),
+    // 도감 메타데이터 — Species 레코드 안에 저장된다 (species.metadata).
+    metadata: {
+      sunlight:      [...els.fSunlight.selectedOptions].map(o => o.value).filter(Boolean),
+      indoorOutdoor: els.fIndoorOutdoor.value,
+      nativeStatus:  els.fNativeStatus.value,
+      evergreen:     normalizeTriBool(els.fEvergreen.value),
+      // 설명은 { summary, source } 구조. 사람이 고친 값이므로 출처는 비운다.
+      description:   { summary: els.fDescription.value.trim(), source: "" },
+      // 외부 DB 연결 정보는 화면에서 만들지도 고치지도 않는다 — 그대로 보존한다.
+      ...(formState.metaApi || {})
+    }
   };
 }
 

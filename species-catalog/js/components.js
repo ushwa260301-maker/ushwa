@@ -14,7 +14,18 @@ import {
   escapeHtml,
   normalizeCounts,
   freqLevel,
-  formatBloom
+  formatBloom,
+  normalizeMetadata,
+  hasMetadata,
+  iconFor,
+  renderBloomMonths,
+  metadataSource,
+  normalizeTriBool,
+  labelForEnum,
+  SUNLIGHT_LABELS,
+  NATIVE_STATUS_LABELS,
+  PHOTO_TYPE_LABELS,
+  INDOOR_OUTDOOR_OPTIONS
 } from "./utils.js";
 
 // ============================================================
@@ -39,10 +50,13 @@ export function createCard(sp, cardTpl, handlers) {
   else latin.remove();
 
   node.querySelector(".card-cat").textContent = sp.category || "—";
-  node.querySelector(".phenology-label .val").textContent = formatBloom(sp.bloomMonths);
 
-  // Bloom strip — 12 cells, one per month, "active" when the month is in bloomMonths.
-  fillPhenologyStrip(node.querySelector(".phenology-strip"), sp.bloomMonths || []);
+  // 개화 — 텍스트 요약("3~6월") 대신 1~12월 블록. 개화월은 초록, 나머지는 회색.
+  renderBloomMonths(node.querySelector(".phenology-strip"), sp.bloomMonths);
+
+  // 식물 도감 정보 — Species 레코드 안(sp.metadata)에서 읽는다. 입력된 값이
+  // 하나도 없으면 영역 자체를 감춘다(기존 수종의 카드 모양이 바뀌지 않는다).
+  fillGuideBlock(node.querySelector(".card-guide"), sp.metadata);
 
   // Purchase heatmap — 12 cells, color-only intensity by count.
   const counts = normalizeCounts(sp.purchaseCounts);
@@ -92,15 +106,104 @@ export function createCard(sp, cardTpl, handlers) {
   return node;
 }
 
-function fillPhenologyStrip(container, bloomMonths) {
-  const set = new Set(bloomMonths);
-  for (let m = 1; m <= 12; m++) {
-    const cell = document.createElement("div");
-    cell.className = "ph-cell" + (set.has(m) ? " active" : "");
-    cell.textContent = m;
-    cell.title = `${m}월 ${set.has(m) ? "(개화)" : ""}`;
-    container.appendChild(cell);
+/**
+ * 카드의 "식물 도감 정보" 영역을 채운다.
+ *
+ * 값이 있는 항목만 배지로 그린다 — 미지정 필드를 "—" 로 채우면 카드가
+ * 빈칸으로 가득 차 읽기 어려워진다. 하나도 없으면 영역을 통째로 감춘다.
+ *
+ * @param {HTMLElement|null} box   .card-guide
+ * @param {object|undefined} metadata  species.metadata
+ */
+function fillGuideBlock(box, metadata) {
+  if (!box) return;
+  const meta = normalizeMetadata(metadata);
+  const badges = box.querySelector(".guide-badges");
+  const desc = box.querySelector(".guide-desc");
+  badges.innerHTML = "";
+
+  const src = metadataSource(meta);
+  // 값이 하나도 없는 Species 는 영역을 감춘다 — 모든 카드에 "미연동" 배지를
+  // 달면 기존 80종의 레이아웃이 전부 바뀐다 (Ticket #001 "빈 영역 금지").
+  // 출처는 모달에서 항상 볼 수 있다.
+  if (src.kind === "none") { box.hidden = true; return; }
+
+  const add = (text, kind, title) => {
+    if (!text) return;
+    const el = document.createElement("span");
+    el.className = "guide-badge";
+    el.dataset.kind = kind;
+    el.textContent = text;
+    if (title) el.title = title;
+    badges.appendChild(el);
+  };
+
+  const withIcon = (options, value) => {
+    if (!value) return "";
+    const icon = iconFor(options, value);
+    return icon ? `${icon} ${value}` : value;
+  };
+
+  // 광 조건은 enum 배열 — 해당하는 만큼 배지를 단다.
+  for (const code of meta.sunlight || []) add(labelForEnum(SUNLIGHT_LABELS, code), "sunlight");
+
+  add(withIcon(INDOOR_OUTDOOR_OPTIONS, meta.indoorOutdoor), "indoorOutdoor");
+
+  if (meta.nativeStatus) add(labelForEnum(NATIVE_STATUS_LABELS, meta.nativeStatus), "nativeStatus");
+
+  const ever = normalizeTriBool(meta.evergreen);
+  if (ever === true)  add("🌿 상록", "evergreen");
+  if (ever === false) add("🍂 낙엽", "evergreen");
+
+  if (meta.soil)       add(`💧 ${meta.soil}`, "soil");
+  if (meta.plant_type) add(meta.plant_type, "plantType");
+
+  // 출처 — 값이 어디서 왔는지 항상 밝힌다.
+  add(src.kind === "api" ? `🔗 ${src.label}` : `✎ ${src.label}`, "source",
+      src.kind === "api" && meta.plant_api_synced_at
+        ? `동기화 ${String(meta.plant_api_synced_at).slice(0, 10)} · 읽기 전용`
+        : src.kind === "api" ? "읽기 전용" : "사람이 입력한 값");
+
+  // 설명은 { summary, source } 구조다. 원문 HTML 은 저장 단계에서 이미 벗겨졌다.
+  const summary = meta.description?.summary || "";
+  if (summary) {
+    desc.textContent = summary;
+    desc.title = meta.description?.source ? `출처: ${meta.description.source}` : "";
+    desc.hidden = false;
+  } else desc.hidden = true;
+
+  fillGuidePhotos(box.querySelector(".guide-photos"), meta);
+
+  box.hidden = false;
+}
+
+/**
+ * 사진 — `metadata.photos` 가 source of truth 다. 없으면 영역을 감춘다.
+ * 종류(꽃·잎·수형)를 alt 와 title 에 실어 스크린리더에서도 구분되게 한다.
+ */
+function fillGuidePhotos(strip, meta) {
+  if (!strip) return;
+  const photos = (meta.photos || []).filter(p => p?.url);
+  strip.innerHTML = "";
+  if (!photos.length) { strip.hidden = true; return; }
+
+  for (const photo of photos) {
+    const label = PHOTO_TYPE_LABELS[photo.type] || "";
+    const img = document.createElement("img");
+    img.src = photo.url;
+    img.alt = photo.caption || label || "";
+    img.title = [label, photo.caption].filter(Boolean).join(" · ");
+    img.loading = "lazy";
+    img.className = "guide-photo";
+    if (photo.type) img.dataset.photoType = photo.type;
+    // 외부 이미지가 깨져도 카드가 무너지지 않게 한다.
+    img.addEventListener("error", () => {
+      img.remove();
+      if (!strip.querySelector("img")) strip.hidden = true;
+    });
+    strip.appendChild(img);
   }
+  strip.hidden = false;
 }
 
 function fillFreqStrip(container, counts) {

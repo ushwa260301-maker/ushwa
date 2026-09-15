@@ -102,12 +102,6 @@
   color: var(--muted);
   font-weight: 600;
 }
-.phenology-label .val {
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 13px;
-  color: var(--bloom-ink);
-}
 .phenology-strip {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
@@ -126,10 +120,16 @@
   font-feature-settings: "tnum" 1;
   border-radius: 2px;
 }
-.ph-cell.active { background: var(--bloom); color: #fff8ec; font-weight: 600; }
-:root[data-theme="dark"] .ph-cell.active { color: #1a1408; }
+/* 개화월 = 초록. 텍스트 요약을 없애고 블록만 남겼으므로(Ticket #001),
+   선택/미선택 대비를 기존보다 뚜렷하게 준다. */
+.ph-cell.active {
+  background: #2e7d32;
+  color: #f1f8e9;
+  font-weight: 700;
+}
+:root[data-theme="dark"] .ph-cell.active { background: #43a047; color: #0d1f0f; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .ph-cell.active { color: #1a1408; }
+  :root:not([data-theme="light"]) .ph-cell.active { background: #43a047; color: #0d1f0f; }
 }
 
 /* -------------- Purchase frequency heatmap (GitHub-style, color-only) -------------- */
@@ -305,4 +305,87 @@
   font-size: 18px;
   color: var(--ink);
   margin-bottom: 4px;
+}
+
+/* ============================================================
+   식물 도감 정보 (Sprint S2 · Ticket #001)
+   값이 입력된 항목만 배지로 표시한다. 미입력 수종은 .card-guide 가
+   hidden 이라 기존 카드 레이아웃이 그대로 유지된다.
+   ============================================================ */
+.card-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0 2px;
+  border-top: 1px dashed var(--line, #8883);
+}
+
+.guide-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.guide-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: nowrap;
+  background: var(--chip-bg, rgba(127, 127, 127, .12));
+  border: 1px solid var(--line, #8883);
+}
+
+/* 항목별 색 구분 — 한눈에 종류를 알아보게 한다. */
+.guide-badge[data-kind="sunlight"]      { background: rgba(255, 193,   7, .16); }
+.guide-badge[data-kind="indoorOutdoor"] { background: rgba(  3, 169, 244, .14); }
+.guide-badge[data-kind="nativeStatus"]  { background: rgba( 76, 175,  80, .14); }
+.guide-badge[data-kind="evergreen"]     { background: rgba(156,  39, 176, .12); }
+
+/* 설명은 최대 2줄 — 카드 높이가 들쭉날쭉해지지 않게 자른다. */
+.guide-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: .8;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Ticket #002 — 국가 식물 DB 연동 상태 */
+.guide-badge[data-kind="pending"] {
+  background: rgba(158, 158, 158, .16);
+  font-style: italic;
+  opacity: .85;
+}
+.guide-badge[data-kind="source"] {
+  background: rgba( 63,  81, 181, .14);
+  font-size: 11px;
+}
+
+/* 모달의 읽기 전용 개화월 블록 — 카드와 같은 셀을 쓰되 폭만 맞춘다. */
+#fBloomView { max-width: 420px; }
+
+/* T10 — 출처 배지 · 대표 사진 */
+.guide-badge[data-kind="source"] {
+  background: rgba( 63,  81, 181, .14);
+  font-size: 11px;
+}
+.guide-badge[data-kind="soil"]      { background: rgba(  0, 150, 136, .13); }
+.guide-badge[data-kind="plantType"] { background: rgba(121,  85,  72, .13); }
+
+.guide-photos { display: flex; gap: 6px; }
+.guide-photo {
+  width: 100%;
+  max-height: 140px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--line, #8883);
+  background: var(--panel-2, #0001);
 }
