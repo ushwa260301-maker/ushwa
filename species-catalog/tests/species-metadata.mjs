@@ -166,7 +166,7 @@ section("8. T10.1 — enum · 사진 · 설명 구조");
 // ============================================================
 check("SUNLIGHT_ENUM", SUNLIGHT_ENUM, ["full_sun", "partial_sun", "partial_shade", "shade"]);
 check("NATIVE_STATUS_ENUM", NATIVE_STATUS_ENUM, ["native", "naturalized", "introduced", "cultivar"]);
-check("PHOTO_TYPES", PHOTO_TYPES, ["flower", "leaf", "habit"]);
+check("PHOTO_TYPES", PHOTO_TYPES, ["flower", "leaf", "habit", "fruit"]);
 
 check("normalizeSunlight 한글 → enum", normalizeSunlight("반음지"), ["partial_shade"]);
 check("구분자로 붙은 원문", normalizeSunlight("양지/반음지"), ["full_sun", "partial_shade"]);

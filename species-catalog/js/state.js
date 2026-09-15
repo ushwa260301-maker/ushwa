@@ -44,6 +44,23 @@ export const state = {
     invoices: [],      // Invoice header records
     invoiceItems: []   // InvoiceItem line records
   },
+  /**
+   * 도메인 데이터가 아니라 **기준값**. 식물마다 중복 저장하지 않는다.
+   *
+   *   latestProviderVersions  출처별 최신 판. `{ kna:"2026-09", … }`
+   *
+   * `resolveSyncStatus(metadata, latestVersions)` 가 이 값과 각 식물의
+   * `metadata.provider.version` 을 비교해 STALE 을 판정한다. 그래서 여기에
+   * 한 벌만 두면 판이 올라갔을 때 전체를 한 번에 다시 계산할 수 있고,
+   * 반대로 metadata 안에 넣으면 식물 수만큼 같은 값이 복제되면서
+   * 갱신이 반쪽만 되는 상태가 생긴다.
+   *
+   * Edge Function 응답의 `latestVersions` 로 채운다(T11-4). 비어 있으면
+   * 비교할 수 없다는 뜻이고, 그때 STALE 은 계산되지 않는다 — SYNCED 로 남는다.
+   */
+  referenceData: {
+    latestProviderVersions: {}
+  },
   filters: {
     search: "",
     months: new Set(),      // string values ("1"…"12"), matches DOM textContent

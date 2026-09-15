@@ -24,18 +24,26 @@ export const LABEL = "GBIF";
 export const FUNCTION_NAME = "plant-search-gbif";
 
 /**
- * 응답 레코드 1건 → 원본 매핑. **값은 원문 그대로 넘긴다.**
+ * 응답 레코드 1건 → PlantRecord 원본 필드. **값은 원문 그대로 넘긴다.**
  *
  * 🔴 검증된 응답 샘플을 받은 뒤 채울 것. 지금은 의도적으로 비어 있다.
  *    예시(실제 필드명 아님):
  *      return {
- *        sourceId:     row.plantPilbkNo,
- *        koreanName:   row.korNm,
- *        sunlight:     row.growthCondition,   // "양지/반음지" 원문 그대로
- *        nativeStatus: row.nativeYn,          // 원문 그대로
- *        description:  row.explanation,       // HTML 이어도 그대로 — 정규화가 벗긴다
- *        photos:       [{ url: row.imgUrl, type: row.imgType }]
+ *        recordId:           row.plantPilbkNo,
+ *        koreanName:         row.korNm,
+ *        scientificName:     row.sctNm,
+ *        floweringMonthsRaw: row.flwrPd,          // "6~8월" 원문 그대로
+ *        sunlightRaw:        row.growthCondition, // "양지/반음지" 원문 그대로
+ *        nativeStatusRaw:    row.nativeYn,        // 원문 그대로
+ *        descriptionRaw:     row.explanation,     // HTML 이어도 그대로
+ *        photosRaw:          [{ url: row.imgUrl, caption: row.imgNm, type: null }]
  *      };
+ *
+ * 월 배열 변환 · enum 변환 · HTML 제거 · 사진 타입 추측은 **하지 않는다.**
+ * 전부 plantNormalizer 가 한다 — `type` 을 모르면 null 로 둔다.
+ *
+ * `provider` 는 채우지 않는다. search() 가 SOURCE 와 응답의 판(version)으로
+ * 조립한다 — 한 행이 자기 출처를 잘못 말할 수 없게.
  *
  * @param {object} _row
  * @returns {object|null} null 이면 "이 행은 해석할 수 없음"
@@ -62,12 +70,16 @@ export async function search(query, ctx) {
              error: `${LABEL} 응답 매핑이 아직 설정되지 않았습니다` };
   }
   try {
-    const res = await ctx.invoke(FUNCTION_NAME, { q: query });
-    const rows = Array.isArray(res?.items) ? res.items : [];
-    // 원본 매핑 → 정규화. Provider 는 값을 건드리지 않는다.
-    const candidates = rows.map(mapRow).filter(Boolean)
-      .map(r => toPlantRecord({ ...r, source: SOURCE, descriptionSource: LABEL }));
-    return { ok: true, candidates };
+    const res = await ctx.invoke(FUNCTION_NAME, { query });
+    const rows = Array.isArray(res?.records) ? res.records : [];
+    const version = String(res?.version ?? "").trim();
+    // 원본 매핑 → 계약 모양. Provider 는 값을 건드리지 않는다.
+    const candidates = rows.map(mapRow).filter(Boolean).map(r => toPlantRecord({
+      ...r,
+      provider: { name: SOURCE, recordId: r.recordId ?? r.provider?.recordId, version }
+    }));
+    // latestVersions 는 전역 기준값이라 레코드마다 담지 않고 그대로 올려 보낸다.
+    return { ok: true, candidates, latestVersions: res?.latestVersions || null };
   } catch (err) {
     return { ok: false, error: err?.message || String(err) };
   }

@@ -38,8 +38,14 @@ const NO_CACHE = {
  * 식물명 또는 학명으로 검색한다. 절대 throw 하지 않는다.
  *
  * 결과
- *   { ok:true, source:"cache"|"kna"|"nire"|"gbif"|"none", candidates:[] }
+ *   { ok:true, source:"cache"|"kna"|"nire"|"gbif"|"none", candidates:[], latestVersions? }
  *   { ok:false, error }                       모든 경로 실패
+ *
+ * `latestVersions` 는 Edge Function 이 알려 준 **출처별 최신 판**이다
+ * (`{ kna:"2026-09", nire:"2026-08", … }`). 식물마다 중복 저장하지 않고
+ * 호출자가 `state.referenceData.latestProviderVersions` 에 한 벌만 둔다 —
+ * 그래야 판이 올라갔을 때 전체 STALE 을 한 번에 다시 계산할 수 있다.
+ * 캐시가 답한 경우에는 알 수 없으므로 `null` 이다.
  *
  * @param {string} query
  * @param {{
@@ -84,7 +90,8 @@ export async function search(query, ctx = {}) {
       // 다음 조회부터는 캐시가 답하도록 적재한다.
       try { await cache.store?.(q, res.candidates); }
       catch (err) { console.warn("[plantService] 캐시 적재 실패(무시):", err?.message || err); }
-      return { ok: true, source: p.SOURCE, candidates: res.candidates };
+      return { ok: true, source: p.SOURCE, candidates: res.candidates,
+               latestVersions: res.latestVersions || null };
     }
     if (res?.notConfigured) problems.push(`${p.LABEL}: 매핑 미설정`);
     else if (res?.error)    problems.push(`${p.LABEL}: ${res.error}`);

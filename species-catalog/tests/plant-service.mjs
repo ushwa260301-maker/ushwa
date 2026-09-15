@@ -32,16 +32,21 @@ function check(label, actual, expected) {
 }
 function section(t) { console.log(`\n── ${t} ${"─".repeat(Math.max(0, 48 - t.length))}`); }
 
+/**
+ * PlantRecord v1.0 — 출처가 말한 **원문 그대로**. 월은 `"6~8월"` 이고 광 조건은
+ * `"양지/반음지"` 이며 설명에는 HTML 이 섞여 있다. 이 모양이 정규화를 거치지
+ * 않고 들어온다는 것이 계약의 핵심이다.
+ */
 const REC = {
-  source: "kna", sourceId: "KNA00012345",
+  recordId: "KNA00012345",
   koreanName: "산수국", scientificName: "Hydrangea serrata",
   family: "Hydrangeaceae", genus: "Hydrangea",
-  floweringMonths: [6, 7, 8], fruitingMonths: [9, 10],
-  sourceVersion: "2026-09",
-  sunlight: "양지/반음지", soil: "습윤", plantType: "관목", evergreen: false,
-  nativeStatus: "자생종",
-  description: "<p>산지 <b>계곡</b>에 자란다</p>",
-  photos: [{ url: "https://x/1.jpg", type: "꽃" }, { url: "https://x/2.jpg", type: "잎" }]
+  floweringMonthsRaw: "6~8월", fruitingMonthsRaw: "9~10월",
+  sunlightRaw: "양지/반음지", plantTypeRaw: "관목", evergreenRaw: "낙엽",
+  nativeStatusRaw: "자생종",
+  descriptionRaw: "<p>산지 <b>계곡</b>에 자란다</p>",
+  photosRaw: [{ url: "https://x/1.jpg", type: "꽃" }, { url: "https://x/2.jpg", type: "잎" }],
+  provider: { name: "kna", recordId: "KNA00012345", version: "2026-09" }
 };
 
 // 테스트용 Provider — 계약만 따르면 무엇이든 꽂을 수 있음을 보인다.
@@ -133,21 +138,54 @@ check("출처 라벨", providerLabel("kna"), "국립수목원");
 check("모르는 코드", providerLabel("zzz"), "zzz");
 
 // ============================================================
+section("4-1. Edge Function 응답 계약 — latestVersions");
+// ============================================================
+/**
+ * 응답은 `{ provider, version, latestVersions, records }` 다.
+ * `latestVersions` 는 출처별 최신 판이고 전역 기준값이라 식물마다 담지 않는다 —
+ * plantService 가 그대로 올려 보내면 호출자가 state 에 한 벌만 둔다.
+ */
+const VERSIONS = { kna: "2026-09", nire: "2026-08", gbif: "2026-07" };
+const versionedProvider = fakeProvider("kna", "국립수목원", {
+  ok: true, candidates: [toPlantRecord(REC)], latestVersions: VERSIONS
+});
+const withVersions = await search("산수국", {
+  invoke: async () => ({}), allowRemote: true, providers: [versionedProvider]
+});
+check("latestVersions 를 그대로 올려 보낸다", withVersions.latestVersions, VERSIONS);
+check("후보도 함께 온다", withVersions.candidates.length, 1);
+
+const noVersions = await search("산수국", {
+  invoke: async () => ({}), allowRemote: true,
+  providers: [fakeProvider("kna", "국립수목원", { ok: true, candidates: [toPlantRecord(REC)] })]
+});
+check("Provider 가 판을 모르면 null", noVersions.latestVersions, null);
+
+// 캐시가 답하면 판을 알 수 없다 — STALE 은 계산되지 않고 SYNCED 로 남는다.
+const cached = await search("산수국", {
+  cache: { async lookup() { return [REC]; } }, allowRemote: true, invoke: async () => ({})
+});
+check("캐시 응답에는 판 정보가 없다", cached.latestVersions, undefined);
+check("캐시가 우선한다", cached.source, "cache");
+
+// ============================================================
 section("5. PlantRecord 계약");
 // ============================================================
 const r = toPlantRecord(REC);
 check("필드 고정", Object.keys(r).sort(), [...PLANT_RECORD_FIELDS].sort());
-check("Provider 원문이 enum 으로 정규화된다", r.sunlight, ["full_sun", "partial_shade"]);
-check("자생 enum", r.nativeStatus, "native");
-check("설명은 평문 구조로", r.description.summary, "산지 계곡에 자란다");
-check("사진 종류 enum", r.photos.map(p => p.type), ["flower", "leaf"]);
-check("사진 출처는 Provider 코드로 채워진다", r.photos.map(p => p.source), ["kna", "kna"]);
-check("대표 사진", primaryPhotoUrl(r.photos), "https://x/1.jpg");
+// 계약의 핵심 — PlantRecord 는 원문을 나른다. 여기서 변환하면 안 된다.
+check("원문을 변환하지 않는다 — 월", r.floweringMonthsRaw, "6~8월");
+check("원문을 변환하지 않는다 — 광 조건", r.sunlightRaw, "양지/반음지");
+check("원문을 변환하지 않는다 — 자생", r.nativeStatusRaw, "자생종");
+check("원문을 변환하지 않는다 — HTML 유지",
+      r.descriptionRaw, "<p>산지 <b>계곡</b>에 자란다</p>");
+check("사진 타입을 추측하지 않는다", r.photosRaw.map(p => p.type), ["꽃", "잎"]);
+check("provider 조립", r.provider, { name: "kna", recordId: "KNA00012345", version: "2026-09" });
+check("대표 사진", primaryPhotoUrl(r.photosRaw), "https://x/1.jpg");
 check(`사진 최대 ${MAX_PHOTOS}장`,
-      toPlantRecord({ photos: Array.from({ length: 9 }, (_, i) => `u${i}`) }).photos.length, MAX_PHOTOS);
-check("photoUrls 로 들어와도 받는다",
-      toPlantRecord({ photoUrls: ["https://x/a.jpg"] }).photos[0].url, "https://x/a.jpg");
-check("월 범위 밖 제거", toPlantRecord({ floweringMonths: [0, 6, 13] }).floweringMonths, [6]);
+      toPlantRecord({ photosRaw: Array.from({ length: 9 }, (_, i) => `u${i}`) })
+        .photosRaw.length, MAX_PHOTOS);
+check("빈 값은 null — 빈 문자열이 아니다", toPlantRecord({ koreanName: "  " }).koreanName, null);
 check("계약 밖 키는 버린다", toPlantRecord({ ...REC, evil: 1 }).evil, undefined);
 check("null 안전", toPlantRecord(null), emptyRecord());
 
@@ -163,8 +201,15 @@ check("결실월", meta.fruiting_months, [9, 10]);
 check("낙엽 enum", meta.evergreen, "DECIDUOUS");
 check("광 조건 배열", meta.sunlight, ["full_sun", "partial_shade"]);
 check("사진 배열", meta.photos.length, 2);
+check("사진 종류 enum — 정규화 단계에서", meta.photos.map(p => p.type), ["flower", "leaf"]);
+check("사진 출처는 Provider 코드", meta.photos.map(p => p.source), ["kna", "kna"]);
 check("image_url 은 photos 파생", meta.image_url, "https://x/1.jpg");
-check("설명 출처는 Provider 라벨", toSpeciesMetadata({ ...REC, descriptionSource: "국립수목원" }, AT).description.source, "국립수목원");
+check("설명은 평문 구조로", meta.description.summary, "산지 계곡에 자란다");
+check("설명 출처는 Provider 라벨", meta.description.source, "국립수목원");
+check("자생 enum", meta.nativeStatus, "native");
+// PlantRecord v1.0 계약에 없는 필드 — 출처가 주지 않으므로 사람이 입력한다.
+check("soil 은 출처가 주지 않는다", meta.soil, "");
+check("indoorOutdoor 도 마찬가지", meta.indoorOutdoor, "");
 check("출처 코드", meta.plant_api_source, "kna");
 check("동기화 시각", meta.plant_api_synced_at, AT);
 check("schema_version", meta.schema_version, CURRENT_SCHEMA_VERSION);
@@ -193,7 +238,24 @@ check("normalizeSunlight", normalizeSunlight("양지/반음지"), ["full_sun", "
 check("normalizeNativeStatus", normalizeNativeStatus("귀화종"), "naturalized");
 check("HTML 제거", normalizeDescription("<i>가</i>").summary, "가");
 check("사진 정규화", normalizePhotos([{ url: "u", type: "수형" }])[0].type, "habit");
+check("열매 사진", normalizePhotos([{ url: "u", type: "열매" }])[0].type, "fruit");
+check("사진 종류 4종", NORMALIZER.PHOTO_TYPES, ["flower", "leaf", "habit", "fruit"]);
 check("모르는 광 조건은 버린다", normalizeSunlight("우주"), []);
+
+// 개화기는 출처가 문장으로 준다 — 범위를 펼치는 일은 정규화가 한다.
+check("범위 문자열 → 월 배열", normalizeMonths("6~8월"), [6, 7, 8]);
+check("월을 양쪽에 쓴 표기", normalizeMonths("6월~8월"), [6, 7, 8]);
+check("붙임표 표기", normalizeMonths("6-8"), [6, 7, 8]);
+check("단일 월", normalizeMonths("7월"), [7]);
+check("여러 구간", normalizeMonths("4~5월, 9월"), [4, 5, 9]);
+check("해를 넘기는 범위", normalizeMonths("12~2월"), [1, 2, 12]);
+check("모르는 표기는 버린다 — 봄", normalizeMonths("봄"), []);
+check("모르는 표기는 버린다 — 연중", normalizeMonths("연중"), []);
+check("범위 밖은 버린다", normalizeMonths("0~13월"), []);
+// 기존 입력 모양은 그대로 동작해야 한다 — 저장된 metadata 가 배열이다.
+check("배열은 그대로", normalizeMonths([0, 3, 13, 5]), [3, 5]);
+check("숫자 문자열 배열", normalizeMonths(["4", "5"]), [4, 5]);
+check("단건 숫자", normalizeMonths(6), [6]);
 
 // ============================================================
 section("8. plantNormalizer 는 순수 함수다");

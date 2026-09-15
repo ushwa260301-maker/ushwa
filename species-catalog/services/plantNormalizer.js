@@ -52,7 +52,7 @@ export const SYNC_STATUS_ENUM = ["PENDING", "SYNCED", "USER_EDITED", "STALE"];
 export const STORED_SYNC_STATUS = ["PENDING", "SYNCED", "USER_EDITED"];
 
 /** 사진 종류. 모르면 "habit"(수형)으로 두지 않고 빈 값으로 둔다. */
-export const PHOTO_TYPES = ["flower", "leaf", "habit"];
+export const PHOTO_TYPES = ["flower", "leaf", "habit", "fruit"];
 
 /** 한글 표기 → enum. 구버전 데이터와 한국어 응답을 함께 받는다. */
 const SUNLIGHT_ALIASES = {
@@ -74,7 +74,8 @@ const NATIVE_ALIASES = {
 const PHOTO_TYPE_ALIASES = {
   "꽃": "flower", "화": "flower", "flower": "flower",
   "잎": "leaf", "엽": "leaf", "leaf": "leaf",
-  "수형": "habit", "전체": "habit", "habit": "habit"
+  "수형": "habit", "전체": "habit", "habit": "habit",
+  "열매": "fruit", "과실": "fruit", "결실": "fruit", "fruit": "fruit"
 };
 
 const clean = v => (v === undefined || v === null ? "" : String(v).trim());
@@ -179,10 +180,46 @@ export function normalizePhotos(raw, max = 5, defaultSource = "") {
 
 /** 1~12 정수만. */
 export function normalizeMonths(raw) {
-  return toList(raw).map(Number)
-    .filter(n => Number.isInteger(n) && n >= 1 && n <= 12)
+  return toList(raw).flatMap(monthsFromToken)
     .filter((n, i, a) => a.indexOf(n) === i)
     .sort((a, b) => a - b);
+}
+
+const inMonth = n => Number.isInteger(n) && n >= 1 && n <= 12;
+/** `"6~8월"` · `"6월~8월"` · `"6-8"` — 물결·붙임표 변형을 함께 받는다. */
+const MONTH_RANGE = /^(\d{1,2})\s*월?\s*[~∼〜\-–—]\s*(\d{1,2})\s*월?$/;
+const MONTH_ONE   = /^(\d{1,2})\s*월?$/;
+
+/**
+ * 토큰 하나 → 월 목록.
+ *
+ * 국가 식물 DB 는 개화기를 `"6~8월"` 같은 **문장으로** 준다. Provider 는 그
+ * 원문을 그대로 넘기므로(PlantRecord 의 `floweringMonthsRaw`) 범위를 펼치는
+ * 일은 여기서 한다 — 숫자만 긁으면 `"6~8월"` 이 6월과 8월이 되고 7월이 사라진다.
+ *
+ * **모르는 표기는 버린다.** `"봄"` · `"연중"` 은 몇 월인지 원문이 말하지 않았다 —
+ * 그럴듯한 달을 채우는 건 원본에 없는 데이터를 만드는 일이다.
+ */
+function monthsFromToken(token) {
+  const t = String(token ?? "").trim();
+  if (!t) return [];
+
+  const range = t.match(MONTH_RANGE);
+  if (range) {
+    const from = Number(range[1]), to = Number(range[2]);
+    if (!inMonth(from) || !inMonth(to)) return [];
+    // `"12~2월"` 처럼 해를 넘기는 표기도 있다 — 12 다음은 1 로 돌린다.
+    const out = [];
+    for (let m = from; out.length <= 12; m = m === 12 ? 1 : m + 1) {
+      out.push(m);
+      if (m === to) return out;
+    }
+    return [];
+  }
+
+  const one = t.match(MONTH_ONE);
+  if (one) { const n = Number(one[1]); return inMonth(n) ? [n] : []; }
+  return [];
 }
 
 /**

@@ -1,11 +1,30 @@
 /**
- * plantRecord — Provider 들이 공통으로 돌려주는 레코드 계약.
+ * plantRecord — Provider 들이 공통으로 돌려주는 레코드 계약. **PlantRecord v1.0**
  *
  * Provider 가 어떤 API 를 쓰든 앱은 이 모양만 안다. API 를 바꾸거나 추가해도
  * UI 는 그대로다 — 그것이 Provider 구조를 쓰는 이유다.
  *
- * 값 정규화(enum · 배열 · 구조 변환)는 `plantNormalizer.js` 가 전담한다.
- * Provider 는 응답 필드를 이름만 바꿔 넘기고, 여기서 계약 모양으로 맞춘다.
+ * ## `*Raw` 가 이름에 붙어 있는 이유
+ *
+ * PlantRecord 는 **출처가 말한 그대로**를 나르는 그릇이다. `"6~8월"` 은
+ * `"6~8월"` 로, `"반그늘"` 은 `"반그늘"` 로, HTML 이 섞인 설명은 HTML 째로
+ * 들어온다. 이름에 Raw 가 붙어 있으면 Provider 를 새로 쓰는 사람이 "여기서
+ * 변환하면 안 되는구나" 를 타입만 보고 안다 — 규칙을 주석에 적어 두는 것보다
+ * 이름에 박아 두는 편이 지켜진다.
+ *
+ * 변환은 전부 `plantNormalizer.js` 가, 그리고 딱 한 지점에서 일어난다:
+ *
+ *     Provider.mapRow   응답 필드 → PlantRecord   (이름만 바꾼다)
+ *     toPlantRecord     모양 맞추기               (다듬기만 한다)
+ *     toSpeciesMetadata Raw → metadata            (여기서 정규화한다)
+ *
+ * Provider 마다 변환을 복사하면 출처별로 같은 값이 미묘하게 달라진다.
+ *
+ * ## 빈 값은 `null` 이다
+ *
+ * `""` 가 아니라 `null` 을 쓴다. "출처가 빈 문자열을 줬다" 와 "출처가 이 필드를
+ * 주지 않았다" 는 다른 사실이고, 뒤에서 그 둘을 구분해야 한다 —
+ * 원본에 없는 값을 만들지 않기 위해서다.
  */
 
 import {
@@ -18,58 +37,90 @@ import { CURRENT_SCHEMA_VERSION } from "./metadataMigration.js";
 export const MAX_PHOTOS = 5;
 
 /**
- * 한 후보가 담는 필드. 값이 없으면 빈 값이며 **지어내지 않는다**.
+ * 한 후보가 담는 필드. 값이 없으면 `null` 이며 **지어내지 않는다**.
  *
- * `source` 는 Provider 코드(kna · nire · gbif)이고 `sourceId` 는 그 DB 안의
- * 식별자다. 둘이 함께 있어야 어느 DB 의 무엇에서 온 값인지 되짚을 수 있다.
+ * `provider.name` 은 Provider 코드(kna · nire · gbif), `provider.recordId` 는
+ * 그 DB 안의 식별자, `provider.version` 은 그 DB 의 판이다. 셋이 함께 있어야
+ * 어느 DB 의 무엇이 언제 판으로 온 값인지 되짚을 수 있고, `version` 이 있어야
+ * 나중에 STALE 을 계산할 수 있다.
  */
 export const PLANT_RECORD_FIELDS = [
-  "source", "sourceId", "sourceVersion",
   "koreanName", "scientificName", "family", "genus",
-  "floweringMonths", "fruitingMonths",
-  "sunlight",        // string[] — SUNLIGHT_ENUM
-  "soil", "plantType", "indoorOutdoor",
-  "nativeStatus",    // string   — NATIVE_STATUS_ENUM
-  "evergreen",       // EVERGREEN_ENUM
-  "description",     // { summary, source }
-  "photos"           // { url, type, caption }[]
+  "floweringMonthsRaw", "fruitingMonthsRaw",   // "6~8월" 같은 원문
+  "sunlightRaw",                               // "양지/반음지" 원문
+  "nativeStatusRaw",                           // "자생" 원문
+  "plantTypeRaw", "evergreenRaw",              // "낙엽활엽관목" 원문
+  "descriptionRaw",                            // HTML 이어도 그대로
+  "photosRaw",                                 // { url, caption, type }[]
+  "provider"                                   // { name, recordId, version }
 ];
 
 /** 빈 레코드 — Provider 가 부분만 채울 수 있게 기본값을 준다. */
 export function emptyRecord() {
   return {
-    source: "", sourceId: "", sourceVersion: "",
-    koreanName: "", scientificName: "", family: "", genus: "",
-    floweringMonths: [], fruitingMonths: [],
-    sunlight: [], soil: "", plantType: "", indoorOutdoor: "",
-    nativeStatus: "", evergreen: "UNKNOWN",
-    description: { summary: "", source: "" },
-    photos: []
+    koreanName: null, scientificName: null, family: null, genus: null,
+    floweringMonthsRaw: null, fruitingMonthsRaw: null,
+    sunlightRaw: null, nativeStatusRaw: null,
+    plantTypeRaw: null, evergreenRaw: null,
+    descriptionRaw: null,
+    photosRaw: [],
+    provider: { name: "", recordId: "", version: "" }
   };
+}
+
+/** 원문 문자열 필드 — 다듬기만 하고 내용은 건드리지 않는다. */
+const RAW_TEXT_FIELDS = [
+  "koreanName", "scientificName", "family", "genus",
+  "floweringMonthsRaw", "fruitingMonthsRaw",
+  "sunlightRaw", "nativeStatusRaw",
+  "plantTypeRaw", "evergreenRaw", "descriptionRaw"
+];
+
+/** 빈 값은 `null`. 공백만 있는 응답도 "없음"으로 본다. */
+function rawText(v) {
+  if (v === undefined || v === null) return null;
+  const s = String(v).trim();
+  return s ? s : null;
 }
 
 const str = v => (v === undefined || v === null ? "" : String(v).trim());
 
 /**
- * Provider 가 만든 원본 매핑을 계약 모양으로 정규화한다.
+ * 사진 원본. **타입을 추측하지 않는다** — 출처가 말하지 않으면 `null` 이다.
+ * flower · leaf · habit · fruit 판정은 normalizePhotos 가 한다.
+ */
+function rawPhotos(raw) {
+  const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+  const out = [];
+  const seen = new Set();
+  for (const item of list) {
+    const obj = item && typeof item === "object" ? item : { url: item };
+    const url = str(obj.url || obj.src);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    out.push({ url, caption: rawText(obj.caption), type: rawText(obj.type) });
+    if (out.length >= MAX_PHOTOS) break;
+  }
+  return out;
+}
+
+/**
+ * Provider 가 만든 원본 매핑을 계약 모양으로 맞춘다.
  * 계약에 없는 키는 버린다 — 응답 필드가 그대로 새어 나가지 않게.
+ *
+ * **값을 변환하지 않는다.** 여기서 하는 일은 다듬기(trim)와 모양 맞추기뿐이다.
  */
 export function toPlantRecord(partial) {
   const r = emptyRecord();
   if (!partial || typeof partial !== "object") return r;
 
-  for (const f of ["source", "sourceId", "sourceVersion", "koreanName", "scientificName",
-                   "family", "genus", "soil", "plantType", "indoorOutdoor"]) {
-    r[f] = str(partial[f]);
-  }
-  r.floweringMonths = normalizeMonths(partial.floweringMonths);
-  r.fruitingMonths  = normalizeMonths(partial.fruitingMonths);
-  r.sunlight        = normalizeSunlight(partial.sunlight);
-  r.nativeStatus    = normalizeNativeStatus(partial.nativeStatus);
-  r.evergreen       = normalizeEvergreen(partial.evergreen);
-  r.description     = normalizeDescription(partial.description, partial.descriptionSource);
-  // 사진 출처가 없으면 Provider 코드를 쓴다 — 나중에 들어올 사용자 사진과 섞이지 않게.
-  r.photos          = normalizePhotos(partial.photos ?? partial.photoUrls, MAX_PHOTOS, r.source);
+  for (const f of RAW_TEXT_FIELDS) r[f] = rawText(partial[f]);
+  r.photosRaw = rawPhotos(partial.photosRaw);
+  r.provider = {
+    name:     str(partial.provider?.name).toLowerCase(),
+    recordId: str(partial.provider?.recordId),
+    version:  str(partial.provider?.version)
+  };
   return r;
 }
 
@@ -79,37 +130,47 @@ export function primaryPhotoUrl(photos) {
 }
 
 /**
- * PlantRecord → `species.metadata`.
- * metadata 는 외부 DB 스냅샷이므로 받은 값을 그대로 옮긴다.
+ * PlantRecord → `species.metadata`. **정규화가 일어나는 유일한 지점이다.**
+ *
+ * metadata 는 외부 DB 스냅샷이므로 받은 값을 옮기되, 여기서 enum · 월 배열 ·
+ * 설명 구조로 바꾼다. 출처가 주지 않은 필드는 빈 값으로 남는다 — 채우지 않는다.
+ *
+ * ⚠ `soil` · `indoorOutdoor` 는 PlantRecord v1.0 계약에 없다. 출처가 주지
+ *   않는 값이라 여기서는 항상 빈 값이고, 사람이 입력한 값이다. 그래서 이
+ *   함수의 결과로 기존 metadata 를 **통째로 덮으면 사용자 입력이 지워진다** —
+ *   동기화 경로(T11-4)는 덮어쓰기가 아니라 병합이어야 한다. [확인 필요]
  *
  * @param {object} record
  * @param {string} [syncedAt]  ISO 시각. 테스트에서 고정하려고 인자로 뺐다.
  */
 export function toSpeciesMetadata(record, syncedAt = new Date().toISOString()) {
   const r = toPlantRecord(record);
-  const linked = Boolean(r.source);
-  const primary = primaryPhotoUrl(r.photos);
+  const linked = Boolean(r.provider.name);
+  const photos = normalizePhotos(r.photosRaw, MAX_PHOTOS, r.provider.name);
+  const primary = primaryPhotoUrl(photos);
   const provider = normalizeProvider(linked
-    ? { name: r.source, record_id: r.sourceId, synced_at: syncedAt, version: r.sourceVersion }
+    ? { name: r.provider.name, record_id: r.provider.recordId,
+        synced_at: syncedAt, version: r.provider.version }
     : null);
   return {
     schema_version: CURRENT_SCHEMA_VERSION,
     // Provider 가 준 값이면 SYNCED. 사람이 고치면 modal 이 USER_EDITED 로 바꾼다.
     sync_status: linked ? "SYNCED" : "PENDING",
     provider,
-    scientific_name: r.scientificName,
-    family:          r.family,
-    genus:           r.genus,
-    flowering_months: r.floweringMonths,
-    fruiting_months:  r.fruitingMonths,
-    sunlight:      r.sunlight,
-    soil:          r.soil,
-    plant_type:    r.plantType,
-    indoorOutdoor: r.indoorOutdoor,
-    nativeStatus:  r.nativeStatus,
-    evergreen:     r.evergreen,
-    description:   r.description,
-    photos:        r.photos,
+    scientific_name: r.scientificName || "",
+    family:          r.family || "",
+    genus:           r.genus || "",
+    flowering_months: normalizeMonths(r.floweringMonthsRaw),
+    fruiting_months:  normalizeMonths(r.fruitingMonthsRaw),
+    sunlight:      normalizeSunlight(r.sunlightRaw),
+    plant_type:    r.plantTypeRaw || "",
+    nativeStatus:  normalizeNativeStatus(r.nativeStatusRaw),
+    evergreen:     normalizeEvergreen(r.evergreenRaw),
+    description:   normalizeDescription(r.descriptionRaw, providerLabelFor(r.provider.name)),
+    photos,
+    // 출처가 주지 않는 값 — 사람이 입력한다. 여기서는 비워 둔다.
+    soil: "",
+    indoorOutdoor: "",
     // photos 에서 파생 — 기존 카드/외부 참조 호환을 위해 남긴다.
     image_url:     primary,
     thumbnail_url: primary,
@@ -121,6 +182,12 @@ export function toSpeciesMetadata(record, syncedAt = new Date().toISOString()) {
   };
 }
 
+/** 설명 출처 표기. Provider 코드만 알고 라벨을 모르면 코드를 그대로 쓴다. */
+const PROVIDER_LABELS = { kna: "국립수목원", nire: "국립생물자원관", gbif: "GBIF" };
+function providerLabelFor(code) {
+  return PROVIDER_LABELS[code] || code || "";
+}
+
 /**
  * PlantRecord → Species 본체에 덮을 값 + metadata.
  * **빈 필드는 아예 넣지 않는다** — 기존 학명·분류·개화월을 빈 값으로 지우지
@@ -128,9 +195,10 @@ export function toSpeciesMetadata(record, syncedAt = new Date().toISOString()) {
  */
 export function toSpeciesPatch(record, syncedAt = new Date().toISOString()) {
   const r = toPlantRecord(record);
-  const patch = { metadata: toSpeciesMetadata(r, syncedAt) };
-  if (r.scientificName) patch.latin = r.scientificName;
-  if (r.plantType)      patch.category = r.plantType;
-  if (r.floweringMonths.length) patch.bloomMonths = [...r.floweringMonths];
+  const metadata = toSpeciesMetadata(r, syncedAt);
+  const patch = { metadata };
+  if (metadata.scientific_name) patch.latin = metadata.scientific_name;
+  if (metadata.plant_type)      patch.category = metadata.plant_type;
+  if (metadata.flowering_months.length) patch.bloomMonths = [...metadata.flowering_months];
   return patch;
 }
