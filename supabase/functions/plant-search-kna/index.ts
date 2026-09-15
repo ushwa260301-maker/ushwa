@@ -17,14 +17,12 @@
  * ## 이 세션에서 검증하지 못한 것
  *
  * 실제 국립수목원 API 도, Supabase 도 이 세션의 네트워크 정책에 막혀 있다.
- * 그래서 **배포·실호출 검증은 하지 않았다.** 아래 두 가지는 실제 규격을 확인한
- * 뒤에 채운다(T11-4.1):
+ * 그래서 **배포·실호출 검증은 하지 않았다.** 파라미터 이름은 공공데이터포털
+ * 공통 규격을 기본값으로 두었고(API_PROFILE), 실제 응답으로 확인하는 것은
+ * T11-4.1 이다.
  *
- *   · 조회 파라미터 이름 (`KNA_PARAM_QUERY`) — 기본값을 두지 않는다.
- *     추측한 이름으로 부르면 조용히 0건이 오고, 그건 "결과 없음"과 구분되지 않는다.
- *   · 엔드포인트 (`KNA_API_ENDPOINT`)
- *
- * 둘 중 하나라도 없으면 호출하지 않고 `notConfigured` 로 답한다.
+ * 배포 시 반드시 넣어야 하는 것은 둘뿐이다 — `KNA_API_ENDPOINT` ·
+ * `KNA_SERVICE_KEY`. 없으면 호출하지 않고 `notConfigured` 로 답한다.
  */
 
 import {
@@ -34,6 +32,31 @@ import {
 } from "./parser.ts";
 
 export { PROVIDER_NAME, FUNCTION_NAME };
+
+/**
+ * 공공데이터포털 파라미터 이름 — **문자열 리터럴은 여기에만 둔다.**
+ *
+ * 아래 코드에서 `"serviceKey"` 같은 이름을 직접 쓰지 않는다. API 판이 바뀌어
+ * 이름이 달라져도 고칠 자리가 한 곳이고, nire·gbif Edge Function 을 더할 때
+ * 같은 모양을 복사하면 된다 — 문자열이 파일마다 흩어지면 어느 것이 진짜인지
+ * 알 수 없게 된다.
+ *
+ * 각 값은 환경변수로 덮을 수 있다(KNA_PARAM_*). 여기 있는 것은 명세가 정한
+ * 계약값이고, 환경변수는 그 계약이 바뀌었을 때 배포를 다시 하지 않고 넘기는
+ * 수단이다.
+ *
+ * ⚠ 이름이 틀리면 API 는 200 에 0건을 돌려준다 — "결과 없음"과 구분되지 않는다.
+ *   T11-4.1 에서 실제 응답으로 확인할 때 이 표를 먼저 본다.
+ */
+export const API_PROFILE = {
+  key:    "serviceKey",
+  query:  "searchKeyword",
+  rows:   "numOfRows",
+  format: "_type"
+} as const;
+
+/** 응답 형식. JSON 을 요청해 XML 파서에 의존하지 않는다 — XML 은 대비책이다. */
+export const FORMAT_JSON = "json";
 
 /** 브라우저(GitHub Pages)에서 직접 부르므로 CORS 를 연다. */
 const CORS_HEADERS: Record<string, string> = {
@@ -60,6 +83,7 @@ export interface SearchOptions {
   queryParam?: string;
   keyParam?: string;
   rowsParam?: string;
+  formatParam?: string;
   rows?: number;
   /** 판 생성 기준 시각. 테스트에서 고정하려고 뺐다. */
   now?: Date;
@@ -92,27 +116,33 @@ interface Config {
   queryParam: string;
   keyParam: string;
   rowsParam: string;
+  formatParam: string;
   missing: string[];
 }
 
+/** 앞에서부터 비어 있지 않은 첫 값. 빈 문자열은 "지정하지 않음"으로 본다. */
+function pick(...values: Array<string | undefined>): string {
+  for (const v of values) {
+    const s = String(v ?? "").trim();
+    if (s) return s;
+  }
+  return "";
+}
+
 function readConfig(opts: SearchOptions): Config {
-  const endpoint   = opts.endpoint   ?? env("KNA_API_ENDPOINT");
-  const serviceKey = opts.serviceKey ?? env("KNA_SERVICE_KEY");
-  const queryParam = opts.queryParam ?? env("KNA_PARAM_QUERY");
-  // 아래 둘은 공공데이터포털 공통 규격이라 기본값을 둔다. 다르면 환경변수로 덮는다.
-  const keyParam   = opts.keyParam   ?? env("KNA_PARAM_KEY");
-  const rowsParam  = opts.rowsParam  ?? env("KNA_PARAM_ROWS");
-
-  const missing: string[] = [];
-  if (!endpoint)   missing.push("KNA_API_ENDPOINT");
-  if (!serviceKey) missing.push("KNA_SERVICE_KEY");
-  if (!queryParam) missing.push("KNA_PARAM_QUERY");
-
+  // 파라미터 이름은 계약값(API_PROFILE)이 기본이고 환경변수가 덮는다.
+  // 엔드포인트와 키는 기본값이 있을 수 없다 — 배포 때 넣어야 한다.
   return {
-    endpoint, serviceKey, queryParam,
-    keyParam:  keyParam  || "serviceKey",
-    rowsParam: rowsParam || "numOfRows",
-    missing
+    endpoint:    pick(opts.endpoint,   env("KNA_API_ENDPOINT")),
+    serviceKey:  pick(opts.serviceKey, env("KNA_SERVICE_KEY")),
+    queryParam:  pick(opts.queryParam,  env("KNA_PARAM_QUERY"),  API_PROFILE.query),
+    keyParam:    pick(opts.keyParam,    env("KNA_PARAM_KEY"),    API_PROFILE.key),
+    rowsParam:   pick(opts.rowsParam,   env("KNA_PARAM_ROWS"),   API_PROFILE.rows),
+    formatParam: pick(opts.formatParam, env("KNA_PARAM_FORMAT"), API_PROFILE.format),
+    missing: [
+      ...(pick(opts.endpoint,   env("KNA_API_ENDPOINT")) ? [] : ["KNA_API_ENDPOINT"]),
+      ...(pick(opts.serviceKey, env("KNA_SERVICE_KEY"))  ? [] : ["KNA_SERVICE_KEY"])
+    ]
   };
 }
 
@@ -122,6 +152,7 @@ export function buildUrl(cfg: Config, query: string, rows: number): string {
   url.searchParams.set(cfg.keyParam, cfg.serviceKey);
   url.searchParams.set(cfg.queryParam, query);
   url.searchParams.set(cfg.rowsParam, String(rows));
+  url.searchParams.set(cfg.formatParam, FORMAT_JSON);
   return url.toString();
 }
 

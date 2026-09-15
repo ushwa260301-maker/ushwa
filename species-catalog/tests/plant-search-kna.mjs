@@ -227,20 +227,63 @@ let called = 0;
 const countFetch = async () => { called++; return mockRes(JSON_BODY); };
 
 const noCfg = await F.searchPlants("산수국", {
-  endpoint: "", serviceKey: "", queryParam: "", fetchImpl: countFetch, now: NOW
+  endpoint: "", serviceKey: "", fetchImpl: countFetch, now: NOW
 });
 check("notConfigured", noCfg.notConfigured, true);
 check("외부를 부르지 않는다", called, 0);
 check("무엇이 없는지 말해 준다",
-      ["KNA_API_ENDPOINT", "KNA_SERVICE_KEY", "KNA_PARAM_QUERY"]
-        .every(n => noCfg.error.includes(n)), true);
+      ["KNA_API_ENDPOINT", "KNA_SERVICE_KEY"].every(n => noCfg.error.includes(n)), true);
+// 파라미터 이름은 계약값이 있으므로 설정 누락이 아니다.
+check("파라미터 이름은 누락 목록에 없다", noCfg.error.includes("KNA_PARAM"), false);
 
-// 조회 파라미터 이름은 기본값을 두지 않는다 — 틀린 이름으로 부르면 0건이 오고,
-// 그건 "결과 없음"과 구분되지 않는다.
-const noParam = await F.searchPlants("산수국", {
-  endpoint: CFG.endpoint, serviceKey: KEY, queryParam: "", fetchImpl: countFetch, now: NOW
+// ============================================================
+section("7-1. API_PROFILE — 파라미터 이름은 한 곳에서만 정한다");
+// ============================================================
+check("계약값", { ...F.API_PROFILE },
+      { key: "serviceKey", query: "searchKeyword", rows: "numOfRows", format: "_type" });
+
+// 환경변수를 넣지 않아도 부를 수 있어야 한다 — 그게 기본값을 두는 이유다.
+let bare = null;
+await F.searchPlants("산수국", {
+  endpoint: CFG.endpoint, serviceKey: KEY, now: NOW,
+  fetchImpl: async url => { bare = new URL(url); return mockRes(JSON_BODY); }
 });
-check("조회 파라미터가 없으면 부르지 않는다", [noParam.notConfigured, called], [true, 0]);
+check("조회 파라미터 기본값", bare.searchParams.get(F.API_PROFILE.query), "산수국");
+check("키 파라미터 기본값", bare.searchParams.get(F.API_PROFILE.key), KEY);
+check("건수 파라미터 기본값", bare.searchParams.get(F.API_PROFILE.rows), "10");
+check("형식은 JSON 을 요청한다",
+      bare.searchParams.get(F.API_PROFILE.format), F.FORMAT_JSON);
+
+// 계약이 바뀌면 배포를 다시 하지 않고 환경변수로 넘긴다.
+let overridden = null;
+await F.searchPlants("산수국", {
+  endpoint: CFG.endpoint, serviceKey: KEY, now: NOW, queryParam: "plantName",
+  fetchImpl: async url => { overridden = new URL(url); return mockRes(JSON_BODY); }
+});
+check("기본값을 덮을 수 있다", overridden.searchParams.get("plantName"), "산수국");
+check("덮으면 기본 이름은 쓰이지 않는다",
+      overridden.searchParams.get(F.API_PROFILE.query), null);
+check("빈 문자열은 지정하지 않은 것 — 기본값으로 돌아간다",
+      (await (async () => {
+        let u = null;
+        await F.searchPlants("산수국", {
+          endpoint: CFG.endpoint, serviceKey: KEY, now: NOW, queryParam: "",
+          fetchImpl: async url => { u = new URL(url); return mockRes(JSON_BODY); }
+        });
+        return u.searchParams.get(F.API_PROFILE.query);
+      })()), "산수국");
+
+/**
+ * 파라미터 이름이 코드에 흩어지지 않았는지 본다. API_PROFILE 밖에서 같은
+ * 문자열을 쓰면 표를 고쳐도 한쪽만 바뀐다 — 그게 드리프트의 시작이다.
+ */
+const indexSrc = await (await import("node:fs/promises")).readFile(
+  new URL("../../supabase/functions/plant-search-kna/index.ts", import.meta.url), "utf8");
+const indexCode = indexSrc.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+for (const [field, literal] of Object.entries(F.API_PROFILE)) {
+  const hits = indexCode.split(`"${literal}"`).length - 1;
+  check(`${field} 리터럴은 API_PROFILE 에만`, hits, 1);
+}
 
 // ============================================================
 section("8. 서비스 키는 새어 나가지 않는다");
