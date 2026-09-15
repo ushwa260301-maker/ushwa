@@ -154,6 +154,35 @@ check("배열 입력 안전", upgradeMetadata([1, 2]).metadata.schema_version, C
 check("얼린 입력 처리", upgradeMetadata(Object.freeze({ evergreen: true })).metadata.evergreen, "EVERGREEN");
 
 // ============================================================
+section("7. 멱등성 — 두 번 돌려도 같다");
+// ============================================================
+/**
+ * Species Catalog 는 한 레코드에 업그레이드를 여러 번 건다 — Cloud 로드 ·
+ * LocalStorage 로드 · Sync 후 저장이 각각 같은 metadata 를 지나간다. 두 번째
+ * 통과에서 값이 달라지면 화면과 저장본이 갈라지고, 그건 조용히 일어난다.
+ *
+ * 이 테스트는 지금을 지키는 게 아니라 **v3 를 지킨다.** 새 단계를 STEPS 에
+ * 더할 때 그 단계가 자기 출력에 다시 걸리면 여기서 걸린다.
+ */
+const idempotentCases = {
+  "구버전 전체":   legacy,
+  "빈 레코드":     {},
+  "v1 레코드":     { schema_version: 1, evergreen: true, soil: "사질양토" },
+  "사람이 넣은 값": { sunlight: "full_sun", description: "설명" },
+  "연동 레코드":   { plant_api_source: "kna", plant_api_id: "K1", image_url: "https://x/a.jpg" }
+};
+for (const [label, input] of Object.entries(idempotentCases)) {
+  const once  = upgradeMetadata(input).metadata;
+  const twice = upgradeMetadata(once).metadata;
+  check(`${label} — 두 번째가 같다`, twice, once);
+  check(`${label} — 두 번째는 upgraded=false`, upgradeMetadata(once).upgraded, false);
+}
+// 최신 판 레코드는 단계를 타지 않는다 — fromVersion 이 곧 toVersion 이다.
+const settled = upgradeMetadata(legacy).metadata;
+check("정착 후 fromVersion", upgradeMetadata(settled).fromVersion, CURRENT_SCHEMA_VERSION);
+check("정착 후 toVersion", upgradeMetadata(settled).toVersion, CURRENT_SCHEMA_VERSION);
+
+// ============================================================
 console.log("\n" + "=".repeat(52));
 console.log(`통과 ${pass} · 실패 ${fail}`);
 if (fail) { console.log("\n실패 항목:"); for (const l of failed) console.log("  ✗ " + l); }

@@ -245,6 +245,26 @@ check("항목 출처가 기본보다 우선",
       normalizePhotos([{ url: "u", source: "user" }], 5, "kna")[0].source, "user");
 
 // ============================================================
+section("11. 멱등성 — normalizeMetadata 를 여러 번 지나간다");
+// ============================================================
+/**
+ * 실제 호출 경로가 이렇다: Cloud 로드에서 한 번 · LocalStorage 병합에서 한 번 ·
+ * 저장 직전에 다시 한 번. 같은 레코드가 세 번 정규화되므로, 두 번째 통과에서
+ * 값이 바뀌면 사용자가 본 화면과 DB 에 들어간 값이 달라진다.
+ */
+for (const [label, input] of Object.entries({
+  "빈 입력":       {},
+  "구버전 사진":   { image_url: "https://x/a.jpg" },
+  "구버전 연동":   { plant_api_source: "kna", plant_api_id: "K1", evergreen: false },
+  "한글 구버전":   { sunlight: "양지", description: "설명 문장", flowering_months: [5, 6] },
+  "사용자 입력":   { sunlight: "full_sun", soil: "사질양토" }
+})) {
+  const once = normalizeMetadata(input);
+  check(`${label} — 두 번째가 같다`, normalizeMetadata(once), once);
+  check(`${label} — 왕복 후에도 같다`, normalizeMetadata(JSON.parse(JSON.stringify(once))), once);
+}
+
+// ============================================================
 console.log("\n" + "=".repeat(52));
 console.log(`통과 ${pass} · 실패 ${fail}`);
 if (fail) { console.log("\n실패 항목:"); for (const l of failed) console.log("  ✗ " + l); }
