@@ -102,12 +102,6 @@
   color: var(--muted);
   font-weight: 600;
 }
-.phenology-label .val {
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 13px;
-  color: var(--bloom-ink);
-}
 .phenology-strip {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
@@ -126,10 +120,16 @@
   font-feature-settings: "tnum" 1;
   border-radius: 2px;
 }
-.ph-cell.active { background: var(--bloom); color: #fff8ec; font-weight: 600; }
-:root[data-theme="dark"] .ph-cell.active { color: #1a1408; }
+/* 개화월 = 초록. 텍스트 요약을 없애고 블록만 남겼으므로(Ticket #001),
+   선택/미선택 대비를 기존보다 뚜렷하게 준다. */
+.ph-cell.active {
+  background: #2e7d32;
+  color: #f1f8e9;
+  font-weight: 700;
+}
+:root[data-theme="dark"] .ph-cell.active { background: #43a047; color: #0d1f0f; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .ph-cell.active { color: #1a1408; }
+  :root:not([data-theme="light"]) .ph-cell.active { background: #43a047; color: #0d1f0f; }
 }
 
 /* -------------- Purchase frequency heatmap (GitHub-style, color-only) -------------- */

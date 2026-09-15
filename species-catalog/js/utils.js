@@ -211,3 +211,28 @@ export function withMetadata(sp) {
 export function iconFor(options, value) {
   return options.find(o => o.value === value)?.icon || "";
 }
+
+/**
+ * 개화 월 블록을 그린다 — 1~12월을 **항상** 12칸으로 표시하고, 개화월만
+ * 채운다. 텍스트 요약("3~6월") 대신 블록으로 보여주는 것이 도감의 기본
+ * 표기이며, 월 수가 같아도 연속/분산 여부가 한눈에 드러난다.
+ *
+ * 순수 DOM 렌더러 — state 나 storage 를 모른다.
+ *
+ * @param {HTMLElement|null} container  .phenology-strip
+ * @param {number[]} bloomMonths        [3,4,5,6] 같은 월 배열
+ */
+export function renderBloomMonths(container, bloomMonths) {
+  if (!container) return;
+  const set = new Set((bloomMonths || []).map(Number));
+  container.innerHTML = "";
+  for (let m = 1; m <= 12; m++) {
+    const on = set.has(m);
+    const cell = document.createElement("div");
+    cell.className = "ph-cell" + (on ? " active" : "");
+    cell.textContent = String(m);
+    cell.title = on ? `${m}월 개화` : `${m}월`;
+    cell.setAttribute("aria-label", cell.title);
+    container.appendChild(cell);
+  }
+}

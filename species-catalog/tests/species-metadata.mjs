@@ -14,8 +14,22 @@
 
 const {
   emptyMetadata, normalizeMetadata, hasMetadata, withMetadata,
-  iconFor, METADATA_FIELDS, SUNLIGHT_OPTIONS, EVERGREEN_OPTIONS
+  iconFor, METADATA_FIELDS, SUNLIGHT_OPTIONS, EVERGREEN_OPTIONS,
+  renderBloomMonths
 } = await import("../js/utils.js");
+
+/** 최소 DOM 스텁 — renderBloomMonths 가 쓰는 API 만 흉내낸다. */
+function stubEl() {
+  const el = {
+    children: [], innerHTML: "", className: "", textContent: "", attrs: {},
+    appendChild(c) { this.children.push(c); },
+    setAttribute(k, v) { this.attrs[k] = v; }
+  };
+  return el;
+}
+globalThis.document = {
+  createElement: () => stubEl()
+};
 
 let pass = 0, fail = 0;
 const failed = [];
@@ -111,6 +125,36 @@ check("양지 아이콘", iconFor(SUNLIGHT_OPTIONS, "양지"), "☀️");
 check("낙엽 아이콘", iconFor(EVERGREEN_OPTIONS, "낙엽"), "🍂");
 check("없는 값 → 빈 문자열", iconFor(SUNLIGHT_OPTIONS, "해당없음"), "");
 check("빈 값 → 빈 문자열", iconFor(SUNLIGHT_OPTIONS, ""), "");
+
+// ============================================================
+section("8. 개화 월 블록 — 1~12월 항상 표시");
+// ============================================================
+const strip = stubEl();
+renderBloomMonths(strip, [3, 4, 5, 6]);
+check("항상 12칸", strip.children.length, 12);
+check("3월 활성", strip.children[2].className, "ph-cell active");
+check("1월 비활성", strip.children[0].className, "ph-cell");
+check("6월 활성", strip.children[5].className, "ph-cell active");
+check("7월 비활성", strip.children[6].className, "ph-cell");
+check("활성 칸 수 = 4", strip.children.filter(c => c.className.includes("active")).length, 4);
+check("칸 내용은 월 숫자", strip.children.map(c => c.textContent).join(","),
+      "1,2,3,4,5,6,7,8,9,10,11,12");
+check("활성 칸 title", strip.children[2].title, "3월 개화");
+check("비활성 칸 title", strip.children[0].title, "1월");
+
+const empty = stubEl();
+renderBloomMonths(empty, []);
+check("개화월 없음 → 12칸 전부 비활성", empty.children.filter(c => c.className.includes("active")).length, 0);
+check("개화월 없어도 12칸은 그린다", empty.children.length, 12);
+
+const undef = stubEl();
+renderBloomMonths(undef, undefined);
+check("undefined 도 12칸", undef.children.length, 12);
+check("null container 는 던지지 않는다", (renderBloomMonths(null, [1]), true), true);
+
+const strNums = stubEl();
+renderBloomMonths(strNums, ["5", "6"]);
+check("문자열 월도 인식", strNums.children.filter(c => c.className.includes("active")).length, 2);
 
 // ============================================================
 console.log("\n" + "=".repeat(52));

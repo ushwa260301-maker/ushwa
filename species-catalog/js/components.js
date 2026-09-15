@@ -9,16 +9,20 @@
  */
 
 import {
-import {
-  normalizeMetadata, hasMetadata, iconFor,
-  SUNLIGHT_OPTIONS, INDOOR_OUTDOOR_OPTIONS, NATIVE_STATUS_OPTIONS, EVERGREEN_OPTIONS
-} from "./utils.js";
   MONTHS,
   colorFor,
   escapeHtml,
   normalizeCounts,
   freqLevel,
-  formatBloom
+  formatBloom,
+  normalizeMetadata,
+  hasMetadata,
+  iconFor,
+  renderBloomMonths,
+  SUNLIGHT_OPTIONS,
+  INDOOR_OUTDOOR_OPTIONS,
+  NATIVE_STATUS_OPTIONS,
+  EVERGREEN_OPTIONS
 } from "./utils.js";
 
 // ============================================================
@@ -43,14 +47,12 @@ export function createCard(sp, cardTpl, handlers) {
   else latin.remove();
 
   node.querySelector(".card-cat").textContent = sp.category || "—";
-  node.querySelector(".phenology-label .val").textContent = formatBloom(sp.bloomMonths);
 
-  // Bloom strip — 12 cells, one per month, "active" when the month is in bloomMonths.
-  fillPhenologyStrip(node.querySelector(".phenology-strip"), sp.bloomMonths || []);
+  // 개화 — 텍스트 요약("3~6월") 대신 1~12월 블록. 개화월은 초록, 나머지는 회색.
+  renderBloomMonths(node.querySelector(".phenology-strip"), sp.bloomMonths);
 
   // 식물 도감 정보 — Species 레코드 안(sp.metadata)에서 읽는다. 입력된 값이
-  // 하나도
-  // 없으면 영역 자체를 감춘다(기존 수종의 카드 모양이 바뀌지 않는다).
+  // 하나도 없으면 영역 자체를 감춘다(기존 수종의 카드 모양이 바뀌지 않는다).
   fillGuideBlock(node.querySelector(".card-guide"), sp.metadata);
 
   // Purchase heatmap — 12 cells, color-only intensity by count.
@@ -136,17 +138,6 @@ function fillGuideBlock(box, metadata) {
   else desc.hidden = true;
 
   box.hidden = false;
-}
-
-function fillPhenologyStrip(container, bloomMonths) {
-  const set = new Set(bloomMonths);
-  for (let m = 1; m <= 12; m++) {
-    const cell = document.createElement("div");
-    cell.className = "ph-cell" + (set.has(m) ? " active" : "");
-    cell.textContent = m;
-    cell.title = `${m}월 ${set.has(m) ? "(개화)" : ""}`;
-    container.appendChild(cell);
-  }
 }
 
 function fillFreqStrip(container, counts) {
