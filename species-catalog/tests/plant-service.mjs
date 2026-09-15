@@ -17,8 +17,9 @@ const { search, providerLabel, PROVIDERS } = await import("../services/plantServ
 const { toPlantRecord, toSpeciesMetadata, toSpeciesPatch, emptyRecord, primaryPhotoUrl,
         MAX_PHOTOS, PLANT_RECORD_FIELDS } = await import("../services/plantRecord.js");
 const { normalizeSunlight, normalizeNativeStatus, normalizeDescription, normalizePhotos,
-        normalizeProvider, normalizeMonths, normalizeEvergreen, stripHtml,
-        METADATA_SCHEMA_VERSION } = await import("../services/plantNormalizer.js");
+        normalizeProvider, normalizeMonths, normalizeEvergreen, stripHtml }
+  = await import("../services/plantNormalizer.js");
+const { CURRENT_SCHEMA_VERSION } = await import("../services/metadataMigration.js");
 const NORMALIZER = await import("../services/plantNormalizer.js");
 const kna = await import("../services/plantProviders/knaProvider.js");
 
@@ -159,14 +160,15 @@ check("학명", meta.scientific_name, "Hydrangea serrata");
 check("과·속", [meta.family, meta.genus], ["Hydrangeaceae", "Hydrangea"]);
 check("개화월", meta.flowering_months, [6, 7, 8]);
 check("결실월", meta.fruiting_months, [9, 10]);
-check("낙엽", meta.evergreen, false);
+check("낙엽 enum", meta.evergreen, "DECIDUOUS");
 check("광 조건 배열", meta.sunlight, ["full_sun", "partial_shade"]);
 check("사진 배열", meta.photos.length, 2);
 check("image_url 은 photos 파생", meta.image_url, "https://x/1.jpg");
 check("설명 출처는 Provider 라벨", toSpeciesMetadata({ ...REC, descriptionSource: "국립수목원" }, AT).description.source, "국립수목원");
 check("출처 코드", meta.plant_api_source, "kna");
 check("동기화 시각", meta.plant_api_synced_at, AT);
-check("schema_version", meta.schema_version, METADATA_SCHEMA_VERSION);
+check("schema_version", meta.schema_version, CURRENT_SCHEMA_VERSION);
+check("연동 레코드는 SYNCED", meta.metadata_status, "SYNCED");
 check("provider 구조", meta.provider,
       { name: "kna", record_id: "KNA00012345", synced_at: AT, version: "2026-09" });
 check("plant_api_* 는 provider 파생", meta.plant_api_source, meta.provider.name);

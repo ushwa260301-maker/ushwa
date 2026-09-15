@@ -13,7 +13,7 @@ import { enrichSpecies } from "./stats.js";
 import {
   SUNLIGHT_OPTIONS, INDOOR_OUTDOOR_OPTIONS, NATIVE_STATUS_OPTIONS, EVERGREEN_OPTIONS,
   normalizeMetadata, renderBloomMonths, isMetadataReadOnly, metadataSource,
-  normalizeTriBool, API_FIELDS
+  API_FIELDS
 } from "./utils.js";
 import {
   makePriceRow,
@@ -405,11 +405,14 @@ function collectForm() {
       sunlight:      [...els.fSunlight.selectedOptions].map(o => o.value).filter(Boolean),
       indoorOutdoor: els.fIndoorOutdoor.value,
       nativeStatus:  els.fNativeStatus.value,
-      evergreen:     normalizeTriBool(els.fEvergreen.value),
+      evergreen:     els.fEvergreen.value || "UNKNOWN",
       // 설명은 { summary, source } 구조. 사람이 고친 값이므로 출처는 비운다.
       description:   { summary: els.fDescription.value.trim(), source: "" },
       // 외부 DB 연결 정보는 화면에서 만들지도 고치지도 않는다 — 그대로 보존한다.
-      ...(formState.metaApi || {})
+      ...(formState.metaApi || {}),
+      // 사람이 저장했으면 사용자 값이다. 단 연동된 레코드는 읽기 전용이라
+      // 여기 도달해도 값이 바뀌지 않으므로 SYNCED 를 유지한다.
+      metadata_status: formState.metaApi?.plant_api_source ? "SYNCED" : "USER_EDITED"
     }
   };
 }

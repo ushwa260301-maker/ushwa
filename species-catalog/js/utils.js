@@ -148,18 +148,26 @@ export function collectValidItems(items) {
  */
 export {
   SUNLIGHT_ENUM, NATIVE_STATUS_ENUM, PHOTO_TYPES, PHOTO_SOURCES,
-  METADATA_SCHEMA_VERSION,
+  EVERGREEN_ENUM, METADATA_STATUS_ENUM, STORED_METADATA_STATUS,
   normalizeSunlight, normalizeNativeStatus, normalizeDescription,
-  normalizePhotos, normalizeMonths, normalizeEvergreen, normalizeProvider, stripHtml
+  normalizePhotos, normalizeMonths, normalizeEvergreen, normalizeProvider,
+  normalizeMetadataStatus, stripHtml
 } from "../services/plantNormalizer.js";
+export {
+  CURRENT_SCHEMA_VERSION, upgradeMetadata, resolveMetadataStatus, versionOf
+} from "../services/metadataMigration.js";
 
 import {
   normalizeSunlight as _sun, normalizeNativeStatus as _native,
   normalizeDescription as _desc, normalizePhotos as _photos,
   normalizeMonths as _months, normalizeEvergreen as _ever,
-  normalizeProvider as _provider, METADATA_SCHEMA_VERSION as _SCHEMA_V,
+  normalizeProvider as _provider, normalizeMetadataStatus as _status,
   SUNLIGHT_ENUM as _SUN_ENUM, NATIVE_STATUS_ENUM as _NAT_ENUM
 } from "../services/plantNormalizer.js";
+import {
+  CURRENT_SCHEMA_VERSION as _SCHEMA_V, upgradeMetadata as _upgrade,
+  resolveMetadataStatus as _resolveStatus
+} from "../services/metadataMigration.js";
 
 /** enum 코드 → 화면 표기. 저장은 코드로, 표시만 한글로 한다. */
 export const SUNLIGHT_LABELS = {
@@ -189,11 +197,26 @@ export const INDOOR_OUTDOOR_OPTIONS = [
 export const SUNLIGHT_OPTIONS = _SUN_ENUM.map(v => ({ value: v, ...SUNLIGHT_LABELS[v] }));
 export const NATIVE_STATUS_OPTIONS =
   [{ value: "", label: "— 미지정 —" }, ..._NAT_ENUM.map(v => ({ value: v, ...NATIVE_STATUS_LABELS[v] }))];
+export const EVERGREEN_LABELS = {
+  EVERGREEN:      { label: "상록",   icon: "🌿" },
+  DECIDUOUS:      { label: "낙엽",   icon: "🍂" },
+  SEMI_EVERGREEN: { label: "반상록", icon: "🍃" },
+  UNKNOWN:        { label: "미지정", icon: "" }
+};
 export const EVERGREEN_OPTIONS = [
-  { value: "",     label: "— 미지정 —" },
-  { value: "true", label: "상록", icon: "🌿" },
-  { value: "false", label: "낙엽", icon: "🍂" }
+  { value: "UNKNOWN",        label: "— 미지정 —" },
+  { value: "EVERGREEN",      ...EVERGREEN_LABELS.EVERGREEN },
+  { value: "DECIDUOUS",      ...EVERGREEN_LABELS.DECIDUOUS },
+  { value: "SEMI_EVERGREEN", ...EVERGREEN_LABELS.SEMI_EVERGREEN }
 ];
+
+/** 상태 배지 표기. STALE 은 저장값이 아니라 계산 결과다. */
+export const METADATA_STATUS_LABELS = {
+  PENDING:     { label: "미연동",     icon: "○" },
+  SYNCED:      { label: "연동됨",     icon: "🔗" },
+  USER_EDITED: { label: "사용자 추가", icon: "✎" },
+  STALE:       { label: "갱신 필요",   icon: "⟳" }
+};
 
 /** 평문 문자열 필드. */
 export const METADATA_TEXT_FIELDS = [
@@ -202,10 +225,12 @@ export const METADATA_TEXT_FIELDS = [
   "image_url", "thumbnail_url"
 ];
 export const METADATA_MONTH_FIELDS = ["flowering_months", "fruiting_months"];
-export const METADATA_BOOL_FIELDS  = ["evergreen"];
+export const METADATA_ENUM_FIELDS_SINGLE = ["evergreen", "metadata_status"];
+/** @deprecated schema v1 이름 — 호출부 호환용. */
+export const METADATA_BOOL_FIELDS = [];
 /** enum 배열 / enum 단일 / 구조체 / 사진 목록. */
 export const METADATA_ENUM_LIST_FIELDS = ["sunlight"];
-export const METADATA_ENUM_FIELDS      = ["nativeStatus"];
+export const METADATA_ENUM_FIELDS      = ["nativeStatus", "evergreen", "metadata_status"];
 export const METADATA_OBJECT_FIELDS    = ["description"];
 export const METADATA_PHOTO_FIELDS     = ["photos"];
 
@@ -232,11 +257,12 @@ export function emptyMetadata() {
   for (const f of METADATA_TEXT_FIELDS) out[f] = "";
   for (const f of API_FIELDS) { if (f !== "provider") out[f] = ""; }
   for (const f of METADATA_MONTH_FIELDS) out[f] = [];
-  for (const f of METADATA_BOOL_FIELDS) out[f] = "";
   for (const f of METADATA_ENUM_LIST_FIELDS) out[f] = [];
-  for (const f of METADATA_ENUM_FIELDS) out[f] = "";
   for (const f of METADATA_OBJECT_FIELDS) out[f] = { summary: "", source: "" };
   for (const f of METADATA_PHOTO_FIELDS) out[f] = [];
+  out.nativeStatus = "";
+  out.evergreen = "UNKNOWN";
+  out.metadata_status = "PENDING";
   return out;
 }
 
@@ -252,34 +278,33 @@ export function normalizeMetadata(raw) {
   const out = emptyMetadata();
   if (!raw || typeof raw !== "object") return out;
 
-  for (const f of METADATA_TEXT_FIELDS) out[f] = String(raw[f] ?? "").trim();
-  for (const f of API_FIELDS) { if (f !== "provider") out[f] = String(raw[f] ?? "").trim(); }
+  // 먼저 현재 스키마 버전까지 끌어올린다 — 읽는 쪽이 버전 분기를 알 필요가 없다.
+  const { metadata: up } = _upgrade(raw);
 
-  // provider 가 정본. 구버전(plant_api_* 만 있는 레코드)은 그것으로 복원한다.
-  out.provider = _provider(raw.provider?.name ? raw.provider : {
+  for (const f of METADATA_TEXT_FIELDS) out[f] = String(up[f] ?? "").trim();
+  for (const f of API_FIELDS) { if (f !== "provider") out[f] = String(up[f] ?? "").trim(); }
+  for (const f of METADATA_MONTH_FIELDS) out[f] = _months(up[f]);
+  out.sunlight       = _sun(up.sunlight);
+  out.nativeStatus   = _native(up.nativeStatus);
+  out.evergreen      = _ever(up.evergreen);
+  out.description    = _desc(up.description);
+  out.metadata_status = _status(up.metadata_status) || "PENDING";
+
+  out.provider = _provider(up.provider?.name ? up.provider : {
     name: out.plant_api_source, record_id: out.plant_api_id, synced_at: out.plant_api_synced_at
   });
   out.plant_api_source    = out.provider.name;
   out.plant_api_id        = out.provider.record_id;
   out.plant_api_synced_at = out.provider.synced_at;
 
-  // 구조 버전은 있으면 보존하고(과거 판을 알아볼 수 있게), 없으면 현재 판으로 본다.
-  const v = Number(raw[META_VERSION_FIELD]);
-  out[META_VERSION_FIELD] = Number.isInteger(v) && v > 0 ? v : _SCHEMA_V;
-  for (const f of METADATA_MONTH_FIELDS) out[f] = _months(raw[f]);
-  for (const f of METADATA_BOOL_FIELDS)  out[f] = _ever(raw[f]);
-  out.sunlight     = _sun(raw.sunlight);
-  out.nativeStatus = _native(raw.nativeStatus);
-  out.description  = _desc(raw.description);
-
-  // photos 가 source of truth. 없고 image_url 만 있는 구버전 데이터는 그것으로 만든다.
-  out.photos = _photos(raw.photos);
+  out.photos = _photos(up.photos, 5, out.provider.name);
   if (!out.photos.length && out.image_url) {
-    out.photos = _photos([{ url: out.image_url }]);
+    out.photos = _photos([{ url: out.image_url }], 5, out.provider.name);
   }
-  // 반대로 photos 만 있으면 대표 이미지를 파생한다.
   if (!out.image_url && out.photos.length) out.image_url = out.photos[0].url;
   if (!out.thumbnail_url && out.image_url) out.thumbnail_url = out.image_url;
+
+  out[META_VERSION_FIELD] = _SCHEMA_V;
   return out;
 }
 
@@ -288,7 +313,7 @@ export function hasMetadata(metadata) {
   const m = metadata || {};
   return METADATA_TEXT_FIELDS.some(f => String(m[f] || "").trim())
       || METADATA_MONTH_FIELDS.some(f => _months(m[f]).length)
-      || METADATA_BOOL_FIELDS.some(f => _ever(m[f]) !== "")
+      || (_ever(m.evergreen) !== "UNKNOWN")
       || _sun(m.sunlight).length > 0
       || _native(m.nativeStatus) !== ""
       || Boolean(_desc(m.description).summary)
@@ -327,13 +352,16 @@ export const PROVIDER_LABELS = {
  *   { kind: "user", label: "사용자 추가" }
  *   { kind: "none", label: "미연동" }
  */
-export function metadataSource(metadata) {
-  if (isApiLinked(metadata)) {
-    const code = String(metadata.provider?.name || metadata.plant_api_source).trim();
-    return { kind: "api", code, label: PROVIDER_LABELS[code] || code };
+export function metadataSource(metadata, latestVersions = {}) {
+  const status = _resolveStatus(metadata, latestVersions);
+  const code = String(metadata?.provider?.name || metadata?.plant_api_source || "").trim();
+  if (status === "SYNCED" || status === "STALE") {
+    const base = PROVIDER_LABELS[code] || code;
+    return { kind: status === "STALE" ? "stale" : "api", status, code,
+             label: status === "STALE" ? `${base} · 갱신 필요` : base };
   }
-  if (hasMetadata(metadata)) return { kind: "user", code: "", label: "사용자 추가" };
-  return { kind: "none", code: "", label: "미연동" };
+  if (status === "USER_EDITED") return { kind: "user", status, code: "", label: "사용자 추가" };
+  return { kind: "none", status, code: "", label: "미연동" };
 }
 
 /** enum 코드 → "아이콘 한글". 모르는 코드는 코드 그대로. */

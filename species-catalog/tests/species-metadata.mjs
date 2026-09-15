@@ -13,15 +13,16 @@
 
 const {
   emptyMetadata, normalizeMetadata, hasMetadata, withMetadata,
-  normalizeMonths, normalizeTriBool, metadataSource,
+  normalizeMonths, metadataSource, normalizeEvergreen,
   normalizeSunlight, normalizeNativeStatus, normalizeDescription, normalizePhotos,
   SUNLIGHT_ENUM, NATIVE_STATUS_ENUM, PHOTO_TYPES, labelForEnum,
   SUNLIGHT_LABELS, NATIVE_STATUS_LABELS,
   isApiLinked, isMetadataReadOnly, renderBloomMonths, iconFor,
   METADATA_FIELDS, DISPLAY_FIELDS, API_FIELDS,
-  METADATA_TEXT_FIELDS, METADATA_MONTH_FIELDS, METADATA_BOOL_FIELDS,
+  METADATA_TEXT_FIELDS, METADATA_MONTH_FIELDS, EVERGREEN_ENUM,
   SUNLIGHT_OPTIONS, PROVIDER_LABELS,
-  METADATA_SCHEMA_VERSION, META_VERSION_FIELD, PHOTO_SOURCES, normalizeProvider
+  CURRENT_SCHEMA_VERSION, META_VERSION_FIELD, PHOTO_SOURCES, normalizeProvider,
+  upgradeMetadata, resolveMetadataStatus
 } = await import("../js/utils.js");
 
 function stubEl() {
@@ -52,8 +53,9 @@ check("null 안전", normalizeMetadata(null), emptyMetadata());
 check("문자열 입력 안전", normalizeMetadata("x"), emptyMetadata());
 check("필드 구성", METADATA_FIELDS.length, 1 /* schema_version */ + DISPLAY_FIELDS.length + API_FIELDS.length);
 check("표시 필드 구성", DISPLAY_FIELDS.length,
-      METADATA_TEXT_FIELDS.length + METADATA_MONTH_FIELDS.length + METADATA_BOOL_FIELDS.length +
-      1 /* sunlight */ + 1 /* nativeStatus */ + 1 /* description */ + 1 /* photos */);
+      METADATA_TEXT_FIELDS.length + METADATA_MONTH_FIELDS.length +
+      1 /* sunlight */ + 3 /* nativeStatus · evergreen · metadata_status */ +
+      1 /* description */ + 1 /* photos */);
 check("DISPLAY + API + 버전 = 전체", 1 + DISPLAY_FIELDS.length + API_FIELDS.length, METADATA_FIELDS.length);
 
 // ============================================================
@@ -62,12 +64,13 @@ section("2. T10 확장 필드");
 const m = normalizeMetadata({
   scientific_name: "Hydrangea serrata", family: "Hydrangeaceae", genus: "Hydrangea",
   flowering_months: [6, 7, 8], fruiting_months: [9, 10],
-  sunlight: ["partial_shade"], soil: "습윤", plant_type: "관목", evergreen: false,
+  sunlight: ["partial_shade"], soil: "습윤", plant_type: "관목", evergreen: "DECIDUOUS",
   indoorOutdoor: "실외", nativeStatus: "native",
   description: { summary: "산수국", source: "국립수목원" },
   photos: [{ url: "https://x/1.jpg", type: "flower", source: "kna" }],
   provider: { name: "kna", record_id: "KNA00012345",
-              synced_at: "2026-09-15T07:30:00Z", version: "2026-09" }
+              synced_at: "2026-09-15T07:30:00Z", version: "2026-09" },
+  schema_version: 2, metadata_status: "SYNCED"
 });
 check("학명", m.scientific_name, "Hydrangea serrata");
 check("과", m.family, "Hydrangeaceae");
@@ -76,7 +79,7 @@ check("개화월", m.flowering_months, [6, 7, 8]);
 check("결실월", m.fruiting_months, [9, 10]);
 check("토양", m.soil, "습윤");
 check("분류", m.plant_type, "관목");
-check("낙엽(false)", m.evergreen, false);
+check("낙엽 enum", m.evergreen, "DECIDUOUS");
 check("사진 배열이 source of truth", m.photos,
       [{ url: "https://x/1.jpg", type: "flower", caption: "", source: "kna" }]);
 check("image_url 은 photos 에서 파생", m.image_url, "https://x/1.jpg");
@@ -95,13 +98,15 @@ check("월 범위 밖 제거", normalizeMonths([0, 3, 13, 5]), [3, 5]);
 check("월 문자열 → 숫자", normalizeMonths(["4", "5"]), [4, 5]);
 check("월 단건 → 배열", normalizeMonths(6), [6]);
 check("월 null", normalizeMonths(null), []);
-check("상록 true", normalizeTriBool(true), true);
-check("낙엽 false", normalizeTriBool(false), false);
-check("구버전 '상록' 문자열", normalizeTriBool("상록"), true);
-check("구버전 '낙엽' 문자열", normalizeTriBool("낙엽"), false);
-check("미지정", normalizeTriBool(""), "");
-check("알 수 없는 값 → 미지정", normalizeTriBool("아무거나"), "");
-check("evergreen false 도 값으로 센다", hasMetadata(normalizeMetadata({ evergreen: false })), true);
+check("enum 4종", EVERGREEN_ENUM, ["EVERGREEN", "DECIDUOUS", "SEMI_EVERGREEN", "UNKNOWN"]);
+check("구버전 true → EVERGREEN", normalizeEvergreen(true), "EVERGREEN");
+check("구버전 false → DECIDUOUS", normalizeEvergreen(false), "DECIDUOUS");
+check("구버전 '상록' 문자열", normalizeEvergreen("상록"), "EVERGREEN");
+check("반상록", normalizeEvergreen("반상록"), "SEMI_EVERGREEN");
+check("미지정", normalizeEvergreen(""), "UNKNOWN");
+check("알 수 없는 값 → UNKNOWN", normalizeEvergreen("아무거나"), "UNKNOWN");
+check("DECIDUOUS 도 값으로 센다", hasMetadata(normalizeMetadata({ evergreen: false })), true);
+check("UNKNOWN 은 값으로 세지 않는다", hasMetadata(normalizeMetadata({ evergreen: "" })), false);
 
 // ============================================================
 section("4. 알 수 없는 필드 차단");
@@ -113,13 +118,14 @@ check("주입 없음", dirty.hackField, undefined);
 // ============================================================
 section("5. 출처 — 국립수목원 / 사용자 추가 / 미연동");
 // ============================================================
-check("API 연동", metadataSource(m), { kind: "api", code: "kna", label: "국립수목원" });
+check("API 연동", metadataSource(m),
+      { kind: "api", status: "SYNCED", code: "kna", label: "국립수목원" });
+check("새 판이 있으면 갱신 필요", metadataSource(m, { kna: "2026-10" }).kind, "stale");
 check("nire 라벨", metadataSource({ plant_api_source: "nire" }).label, "국립생물자원관");
 check("gbif 라벨", metadataSource({ plant_api_source: "gbif" }).label, "GBIF");
 check("모르는 코드는 그대로", metadataSource({ plant_api_source: "zzz" }).label, "zzz");
-check("사용자 입력", metadataSource(normalizeMetadata({ sunlight: "full_sun" })),
-      { kind: "user", code: "", label: "사용자 추가" });
-check("미연동", metadataSource(emptyMetadata()), { kind: "none", code: "", label: "미연동" });
+check("사용자 입력", metadataSource(normalizeMetadata({ sunlight: "full_sun" })).kind, "user");
+check("미연동", metadataSource(emptyMetadata()).kind, "none");
 check("PROVIDER_LABELS 3종", Object.keys(PROVIDER_LABELS).sort(), ["gbif", "kna", "nire"]);
 
 check("연동 = 읽기 전용", isMetadataReadOnly(m), true);
@@ -200,17 +206,18 @@ check("구버전 sunlight 문자열", legacyMeta.sunlight, ["full_sun"]);
 check("구버전 nativeStatus", legacyMeta.nativeStatus, "introduced");
 check("구버전 description 문자열", legacyMeta.description.summary, "옛 설명");
 check("구버전 image_url → photos", legacyMeta.photos, [{ url: "https://x/old.jpg", type: "", caption: "", source: "" }]);
-check("구버전 evergreen 문자열", legacyMeta.evergreen, false);
+check("구버전 evergreen 문자열", legacyMeta.evergreen, "DECIDUOUS");
 check("구버전도 hasMetadata", hasMetadata(legacyMeta), true);
 
 // ============================================================
 section("9. P0 — schema_version · provider · photos[].source");
 // ============================================================
-check("빈 metadata 에도 버전", emptyMetadata()[META_VERSION_FIELD], METADATA_SCHEMA_VERSION);
-check("현재 버전은 1", METADATA_SCHEMA_VERSION, 1);
-check("버전 없으면 현재 판으로", normalizeMetadata({})[META_VERSION_FIELD], METADATA_SCHEMA_VERSION);
-check("정수가 아니면 현재 판", normalizeMetadata({ schema_version: 0.5 })[META_VERSION_FIELD], METADATA_SCHEMA_VERSION);
-check("정수 버전 보존", normalizeMetadata({ schema_version: 2 })[META_VERSION_FIELD], 2);
+check("빈 metadata 에도 버전", emptyMetadata()[META_VERSION_FIELD], CURRENT_SCHEMA_VERSION);
+check("현재 버전은 2", CURRENT_SCHEMA_VERSION, 2);
+check("버전 없으면 현재 판으로", normalizeMetadata({})[META_VERSION_FIELD], CURRENT_SCHEMA_VERSION);
+check("정수가 아니면 현재 판", normalizeMetadata({ schema_version: 0.5 })[META_VERSION_FIELD], CURRENT_SCHEMA_VERSION);
+check("읽은 값은 항상 현재 판", normalizeMetadata({ schema_version: 1 })[META_VERSION_FIELD], CURRENT_SCHEMA_VERSION);
+check("업그레이드 후 상태 부여", normalizeMetadata({ schema_version: 1 }).metadata_status, "PENDING");
 
 check("provider 구조", m.provider,
       { name: "kna", record_id: "KNA00012345", synced_at: "2026-09-15T07:30:00Z", version: "2026-09" });

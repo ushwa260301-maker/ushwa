@@ -20,10 +20,10 @@ import {
   iconFor,
   renderBloomMonths,
   metadataSource,
-  normalizeTriBool,
   labelForEnum,
   SUNLIGHT_LABELS,
   NATIVE_STATUS_LABELS,
+  EVERGREEN_LABELS,
   PHOTO_TYPE_LABELS,
   INDOOR_OUTDOOR_OPTIONS
 } from "./utils.js";
@@ -151,15 +151,17 @@ function fillGuideBlock(box, metadata) {
 
   if (meta.nativeStatus) add(labelForEnum(NATIVE_STATUS_LABELS, meta.nativeStatus), "nativeStatus");
 
-  const ever = normalizeTriBool(meta.evergreen);
-  if (ever === true)  add("🌿 상록", "evergreen");
-  if (ever === false) add("🍂 낙엽", "evergreen");
+  if (meta.evergreen && meta.evergreen !== "UNKNOWN") {
+    add(labelForEnum(EVERGREEN_LABELS, meta.evergreen), "evergreen");
+  }
 
   if (meta.soil)       add(`💧 ${meta.soil}`, "soil");
   if (meta.plant_type) add(meta.plant_type, "plantType");
 
   // 출처 — 값이 어디서 왔는지 항상 밝힌다.
-  add(src.kind === "api" ? `🔗 ${src.label}` : `✎ ${src.label}`, "source",
+  add(src.kind === "stale" ? `⟳ ${src.label}`
+      : src.kind === "api" ? `🔗 ${src.label}` : `✎ ${src.label}`,
+      src.kind === "stale" ? "stale" : "source",
       src.kind === "api" && meta.plant_api_synced_at
         ? `동기화 ${String(meta.plant_api_synced_at).slice(0, 10)} · 읽기 전용`
         : src.kind === "api" ? "읽기 전용" : "사람이 입력한 값");

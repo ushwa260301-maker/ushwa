@@ -19,15 +19,6 @@
  *   (tests/plant-service.mjs 의 "순수 함수" 절이 이를 고정한다)
  */
 
-/**
- * metadata 스키마 버전.
- *
- * 앞으로 flower_color · fall_color · growth_rate · hardiness_zone 같은 필드가
- * 계속 붙는다. 그때 "이 레코드는 어느 시점 구조인가"를 알 수 있어야 마이그레이션
- * 기준점이 생긴다. 필드를 더하거나 의미를 바꿀 때 이 숫자를 올린다.
- */
-export const METADATA_SCHEMA_VERSION = 1;
-
 /** 사진 출처. 외부 DB 와 사용자 업로드가 섞이지 않게 한다. */
 export const PHOTO_SOURCES = ["kna", "nire", "gbif", "user"];
 
@@ -36,6 +27,29 @@ export const SUNLIGHT_ENUM = ["full_sun", "partial_sun", "partial_shade", "shade
 
 /** 자생 구분 enum. */
 export const NATIVE_STATUS_ENUM = ["native", "naturalized", "introduced", "cultivar"];
+
+/**
+ * 상록성 enum (schema v2).
+ *
+ * 불리언이던 것을 enum 으로 바꾼 이유는 **반상록**이다. 한국 조경에서 흔한데
+ * true/false 로는 표현할 수 없었고, 모르는 경우와 낙엽인 경우도 구분되지 않았다.
+ */
+export const EVERGREEN_ENUM = ["EVERGREEN", "DECIDUOUS", "SEMI_EVERGREEN", "UNKNOWN"];
+
+/**
+ * metadata 상태 enum (schema v2).
+ *
+ *   PENDING      아직 아무 정보가 없다
+ *   SYNCED       외부 DB 에서 받아왔다
+ *   USER_EDITED  사람이 직접 입력·수정했다
+ *   STALE        출처에 더 새 판이 있다 — **저장하지 않고 화면에서 계산한다**
+ *
+ * STALE 을 저장하지 않는 이유: 최신 판이 나오는 시점은 우리가 모른다. 저장해
+ * 두면 그 값 자체가 낡아서, "STALE 이라고 저장돼 있지만 이미 최신"인 상태가
+ * 생긴다. 저장은 PENDING · SYNCED · USER_EDITED 셋만 한다.
+ */
+export const METADATA_STATUS_ENUM = ["PENDING", "SYNCED", "USER_EDITED", "STALE"];
+export const STORED_METADATA_STATUS = ["PENDING", "SYNCED", "USER_EDITED"];
 
 /** 사진 종류. 모르면 "habit"(수형)으로 두지 않고 빈 값으로 둔다. */
 export const PHOTO_TYPES = ["flower", "leaf", "habit"];
@@ -171,14 +185,38 @@ export function normalizeMonths(raw) {
     .sort((a, b) => a - b);
 }
 
-/** true(상록) · false(낙엽) · ""(미지정). */
+/**
+ * 상록성 → EVERGREEN_ENUM.
+ *
+ * **SEMI_EVERGREEN 은 출처가 그렇게 말할 때만 쓴다.** 애매해 보인다는 이유로
+ * 추측해 넣지 않는다 — 모르면 UNKNOWN 이다.
+ *
+ * 구버전 불리언(true/false)도 읽는다 — schema v1 레코드가 그렇게 저장돼 있다.
+ */
 export function normalizeEvergreen(raw) {
-  if (raw === true || raw === "true") return true;
-  if (raw === false || raw === "false") return false;
+  if (raw === true)  return "EVERGREEN";
+  if (raw === false) return "DECIDUOUS";
   const v = clean(raw);
-  if (v === "상록" || v === "상록성" || v.toLowerCase() === "evergreen") return true;
-  if (v === "낙엽" || v === "낙엽성" || v.toLowerCase() === "deciduous") return false;
-  return "";
+  if (!v) return "UNKNOWN";
+  const up = v.toUpperCase();
+  if (EVERGREEN_ENUM.includes(up)) return up;
+  if (v === "true")  return "EVERGREEN";
+  if (v === "false") return "DECIDUOUS";
+  const low = v.toLowerCase();
+  if (v === "반상록" || v === "반상록성" || low === "semi-evergreen" || low === "semi evergreen")
+    return "SEMI_EVERGREEN";
+  if (v === "상록" || v === "상록성" || low === "evergreen") return "EVERGREEN";
+  if (v === "낙엽" || v === "낙엽성" || low === "deciduous") return "DECIDUOUS";
+  return "UNKNOWN";
+}
+
+/**
+ * 저장되는 metadata 상태 → enum. STALE 은 저장 대상이 아니므로 받아도 버린다
+ * (화면에서 계산한다 — resolveMetadataStatus 참조).
+ */
+export function normalizeMetadataStatus(raw) {
+  const v = clean(raw).toUpperCase();
+  return STORED_METADATA_STATUS.includes(v) ? v : "";
 }
 
 /**

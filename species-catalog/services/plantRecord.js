@@ -10,9 +10,9 @@
 
 import {
   normalizeSunlight, normalizeNativeStatus, normalizeDescription,
-  normalizePhotos, normalizeMonths, normalizeEvergreen, normalizeProvider,
-  METADATA_SCHEMA_VERSION
+  normalizePhotos, normalizeMonths, normalizeEvergreen, normalizeProvider
 } from "./plantNormalizer.js";
+import { CURRENT_SCHEMA_VERSION } from "./metadataMigration.js";
 
 /** 사진은 최대 5장까지만 보관한다. */
 export const MAX_PHOTOS = 5;
@@ -30,7 +30,7 @@ export const PLANT_RECORD_FIELDS = [
   "sunlight",        // string[] — SUNLIGHT_ENUM
   "soil", "plantType", "indoorOutdoor",
   "nativeStatus",    // string   — NATIVE_STATUS_ENUM
-  "evergreen",       // true | false | ""
+  "evergreen",       // EVERGREEN_ENUM
   "description",     // { summary, source }
   "photos"           // { url, type, caption }[]
 ];
@@ -42,7 +42,7 @@ export function emptyRecord() {
     koreanName: "", scientificName: "", family: "", genus: "",
     floweringMonths: [], fruitingMonths: [],
     sunlight: [], soil: "", plantType: "", indoorOutdoor: "",
-    nativeStatus: "", evergreen: "",
+    nativeStatus: "", evergreen: "UNKNOWN",
     description: { summary: "", source: "" },
     photos: []
   };
@@ -93,7 +93,9 @@ export function toSpeciesMetadata(record, syncedAt = new Date().toISOString()) {
     ? { name: r.source, record_id: r.sourceId, synced_at: syncedAt, version: r.sourceVersion }
     : null);
   return {
-    schema_version: METADATA_SCHEMA_VERSION,
+    schema_version: CURRENT_SCHEMA_VERSION,
+    // Provider 가 준 값이면 SYNCED. 사람이 고치면 modal 이 USER_EDITED 로 바꾼다.
+    metadata_status: linked ? "SYNCED" : "PENDING",
     provider,
     scientific_name: r.scientificName,
     family:          r.family,
