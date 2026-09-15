@@ -93,6 +93,19 @@ check("판이 없으면 빈 값 — 만들어 내지 않는다",
       kna.toCandidate({ recordId: "K1" }).provider.version, "");
 check("빈 판도 빈 값", kna.toCandidate({ recordId: "K1" }, "").provider.version, "");
 
+/**
+ * mapRow 는 판을 만들 수 없다. 행이 판을 들고 와도 toCandidate 가 provider 를
+ * 통째로 다시 조립하므로 인자로 받은 판만 남는다 — 한 행이 자기 출처나 판을
+ * 잘못 말할 수 없게 하는 것이 이 조립의 목적이다.
+ */
+check("행이 판을 들고 와도 무시한다",
+      kna.toCandidate({ recordId: "K1", version: "9999-99" }, "2026-09").provider.version,
+      "2026-09");
+check("행이 출처를 속여도 무시한다",
+      kna.toCandidate({ recordId: "K1", provider: { name: "gbif", version: "9999-99" } },
+                      "2026-09").provider,
+      { name: "kna", recordId: "K1", version: "2026-09" });
+
 // ============================================================
 section("5. 빈 필드 — 지어내지 않는다");
 // ============================================================
