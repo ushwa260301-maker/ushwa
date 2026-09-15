@@ -42,7 +42,10 @@ export const FUNCTION_NAME = "plant-search-kna";
  * 월 배열 변환 · enum 변환 · HTML 제거 · 사진 타입 추측은 **하지 않는다.**
  * 전부 plantNormalizer 가 한다 — `type` 을 모르면 null 로 둔다.
  *
- * `provider` 는 채우지 않는다. search() 가 SOURCE 와 응답의 판(version)으로
+ * `recordId` 가 없는 행은 `null` 을 돌려준다 — 학명을 대신 쓰지 않는다.
+ * 같은 학명에 여러 행이 있을 수 있어 학명은 식별자가 못 된다.
+ *
+ * `provider` 는 채우지 않는다. toCandidate() 가 SOURCE 와 응답의 판(version)으로
  * 조립한다 — 한 행이 자기 출처를 잘못 말할 수 없게.
  *
  * @param {object} _row
@@ -55,6 +58,31 @@ export function mapRow(_row) {
 /** 매핑이 채워졌는가 — 안 채워졌으면 조회하지 않는다. */
 export function isReady() {
   return mapRow({ probe: 1 }) !== null;
+}
+
+/**
+ * 매핑된 행 + 판 → PlantRecord. **출처를 되짚을 수 없는 레코드는 만들지 않는다.**
+ *
+ * `provider.name` 이 "kna" 인데 `recordId` 가 비어 있으면, 그 레코드는 SYNCED
+ * 상태가 되면서도 국립수목원의 어느 행에서 왔는지 말하지 못한다. 나중에 갱신할
+ * 수도, 틀렸을 때 원본을 확인할 수도 없다 — 그래서 아예 만들지 않는다.
+ *
+ * 같은 규칙이 mapRow 의 계약에도 적혀 있지만, 여기서 한 번 더 막는다.
+ * 주석에만 있는 규칙은 다음 사람이 잊는다. 레코드가 실제로 만들어지는
+ * 길목에서 걸러야 규칙이 구조가 된다.
+ *
+ * @param {object|null} row      mapRow 결과
+ * @param {string} version       Edge Function 이 알려 준 판. Provider 는 만들지 않는다.
+ * @returns {object|null}
+ */
+export function toCandidate(row, version = "") {
+  if (!row || typeof row !== "object") return null;
+  const recordId = String(row.recordId ?? row.provider?.recordId ?? "").trim();
+  if (!recordId) return null;
+  return toPlantRecord({
+    ...row,
+    provider: { name: SOURCE, recordId, version: String(version ?? "").trim() }
+  });
 }
 
 /**
@@ -72,12 +100,12 @@ export async function search(query, ctx) {
   try {
     const res = await ctx.invoke(FUNCTION_NAME, { query });
     const rows = Array.isArray(res?.records) ? res.records : [];
+    // 판은 Edge Function 이 정한다 — Provider 가 만들어 내지 않는다.
+    // 응답에 없으면 빈 값이고, 그러면 STALE 은 계산되지 않는다(SYNCED 유지).
     const version = String(res?.version ?? "").trim();
     // 원본 매핑 → 계약 모양. Provider 는 값을 건드리지 않는다.
-    const candidates = rows.map(mapRow).filter(Boolean).map(r => toPlantRecord({
-      ...r,
-      provider: { name: SOURCE, recordId: r.recordId ?? r.provider?.recordId, version }
-    }));
+    // recordId 없는 행은 toCandidate 가 떨어뜨린다.
+    const candidates = rows.map(mapRow).map(r => toCandidate(r, version)).filter(Boolean);
     // latestVersions 는 전역 기준값이라 레코드마다 담지 않고 그대로 올려 보낸다.
     return { ok: true, candidates, latestVersions: res?.latestVersions || null };
   } catch (err) {
