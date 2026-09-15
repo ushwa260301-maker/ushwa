@@ -7,11 +7,13 @@
  * 네트워크를 쓰지 않는다. Provider 는 API 를 직접 부르지 않으므로
  * Edge Function 호출자(`invoke`)를 주입하고, 응답은 Fixture 에서 읽는다.
  *
- * ⚠ **Fixture 의 성격** — `tests/fixtures/kna/*.json` 은 국립수목원 OpenAPI
- *   **명세를 기준으로 작성한 것**이고, 실제 서버에서 받아 온 응답이 아니다.
- *   그래서 이 테스트가 통과한다고 실제 API 와 맞는다는 뜻은 아니다. 실제
- *   응답과의 대조는 Edge Function 을 붙이는 T11-4 에서 한다 — 필드명이
- *   다르면 mapRow 와 이 Fixture 를 같이 고친다.
+ * ⚠ **Fixture 의 성격** — `tests/fixtures/kna_examples/*.json` 은 국립수목원
+ *   OpenAPI **명세를 기준으로 작성한 것**이고, 실제 서버에서 받아 온 응답이
+ *   아니다. 그래서 이 테스트가 통과한다고 실제 API 와 맞는다는 뜻은 아니다.
+ *
+ *   폴더 이름(`_examples`)과 파일 안의 `_fixture_source: "spec_example"` 이
+ *   같은 말을 두 번 한다 — 목록만 보는 사람과 파일을 여는 사람이 서로 다른
+ *   결론에 이르지 않게. 실제 응답으로 교체할 때(T11-4.1) 둘 다 없앤다.
  *
  * 계약
  *   ① Provider 는 **이름만 바꾼다** — 월 배열·enum·HTML·사진 타입을 만들지 않는다
@@ -35,7 +37,7 @@ const { normalizeMonths, normalizeNativeStatus, normalizeSunlight, normalizePhot
   = await import("../../services/plantNormalizer.js");
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const FIXTURE_DIR = join(HERE, "..", "fixtures", "kna");
+const FIXTURE_DIR = join(HERE, "..", "fixtures", "kna_examples");
 const REQUIRED_FIXTURES = [
   "hydrangea-serrata.json",      // 산수국
   "spiraea-prunifolia.json",     // 설유화
@@ -254,6 +256,13 @@ try {
   fixtures = (await readdir(FIXTURE_DIR)).filter(f => f.endsWith(".json")).sort();
 } catch { /* 폴더 없음 */ }
 check("필수 Fixture", REQUIRED_FIXTURES.filter(f => !fixtures.includes(f)), []);
+
+// 이 폴더에 있는 것은 전부 명세 기반 예시다. 실제 응답이 섞여 들어오면
+// 폴더를 옮기고 마커를 지워야 한다 — 그 전에 여기서 걸린다.
+for (const name of fixtures) {
+  const raw = await readFixture(name);
+  check(`${name} — 예시로 표시돼 있다`, raw._fixture_source, "spec_example");
+}
 
 // 모든 Fixture 가 계약을 만족하는지 한 번 더 훑는다 — 새 Fixture 를 넣어도 걸린다.
 for (const name of fixtures) {

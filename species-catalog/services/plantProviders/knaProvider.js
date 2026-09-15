@@ -29,7 +29,8 @@ export const FUNCTION_NAME = "plant-search-kna";
  * ⚠ 이 매핑은 **명세 기반 Fixture** 로 맞춘 것이다 (T11-3.2). 실제 국립수목원
  *   서버에서 받아 온 응답으로 검증한 것이 아니다 — Edge Function 을 붙이는
  *   T11-4 에서 실제 응답과 대조하고, 필드명이 다르면 여기만 고치면 된다.
- *   Fixture 도 같은 성격이라 `tests/fixtures/kna/` 에 그 사실을 적어 두었다.
+ *   Fixture 도 같은 성격이라 `tests/fixtures/kna_examples/` 에 두고 파일마다
+ *   `_fixture_source: "spec_example"` 로 표시해 두었다.
  *
  * 하는 일은 **이름 바꾸기뿐이다.**
  *   월 배열 변환 · enum 변환 · HTML 제거 · 사진 타입 추측을 하지 않는다.

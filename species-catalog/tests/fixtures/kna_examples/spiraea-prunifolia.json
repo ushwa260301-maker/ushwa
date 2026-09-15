@@ -1,4 +1,6 @@
 {
+  "_fixture_source": "spec_example",
+  "_note": "명세 기반 예시. 실제 KNA 응답 아님. 실제 응답을 받으면 이 파일을 교체하고 두 _ 키를 지운다 (T11-4.1).",
   "resultCode": "00",
   "resultMsg": "NORMAL SERVICE",
   "items": [
