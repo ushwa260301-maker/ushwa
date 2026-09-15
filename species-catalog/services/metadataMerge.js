@@ -24,29 +24,63 @@
 import { normalizePhotos } from "./plantNormalizer.js";
 
 /**
- * 사람이 정본인 필드 — 출처는 이 값을 주지 않는다.
- * 동기화가 절대 건드리지 않는다. 필드가 늘면 여기에만 더한다.
+ * 필드별 정본이 누구인가 — **병합 규칙은 여기에만 선언한다.**
+ *
+ *   provider  출처가 정본. 출처가 값을 말했을 때만 덮는다.
+ *   user      사람이 정본. 동기화가 절대 건드리지 않는다.
+ *   merge     규칙이 따로 있다 (MERGERS).
+ *   system    동기화라는 사실 자체. 새 값으로 간다.
+ *   derived   다른 필드에서 다시 계산한다. 병합하지 않는다.
+ *
+ * 이 표가 있는 이유는 규칙이 코드에 흩어지는 걸 막기 위해서다. 필드를 더할 때
+ * (growthMemo · maintenanceMemo …) 여기 한 줄이면 되고, 표에 없는 필드는
+ * 테스트가 잡는다 — 선언을 빠뜨린 필드는 조용히 출처에게 덮인다.
+ *
+ * 점 표기는 구조체 안쪽이다: `description` 은 한 필드지만 요약은 출처가,
+ * 메모는 사람이 정본이다.
  */
-export const USER_OWNED_FIELDS = ["soil", "indoorOutdoor"];
+export const FIELD_OWNERSHIP = {
+  scientific_name:  "provider",
+  family:           "provider",
+  genus:            "provider",
+  flowering_months: "provider",
+  fruiting_months:  "provider",
+  sunlight:         "provider",
+  plant_type:       "provider",
+  nativeStatus:     "provider",
+  evergreen:        "provider",
+
+  soil:          "user",
+  indoorOutdoor: "user",
+
+  description:            "merge",
+  "description.summary":  "provider",
+  "description.source":   "provider",
+  "description.note":     "user",
+  photos:                 "merge",
+  sync_status:            "system",
+
+  schema_version:      "system",
+  provider:            "system",
+  plant_api_source:    "system",
+  plant_api_id:        "system",
+  plant_api_synced_at: "system",
+
+  image_url:     "derived",
+  thumbnail_url: "derived"
+};
+
+/** 소유자별 필드 목록. 점 표기(구조체 안쪽)는 제외한다. */
+function fieldsOwnedBy(owner) {
+  return Object.keys(FIELD_OWNERSHIP)
+    .filter(f => !f.includes(".") && FIELD_OWNERSHIP[f] === owner);
+}
+
+/** 사람이 정본인 필드 — 동기화가 절대 건드리지 않는다. */
+export const USER_OWNED_FIELDS = fieldsOwnedBy("user");
 
 /** 사용자가 올린 사진의 출처 코드. 어떤 동기화에서도 살아남는다. */
 export const USER_PHOTO_SOURCE = "user";
-
-/**
- * 출처가 정본인 필드 — 출처가 값을 말했을 때만 덮는다.
- * description · photos · provider 는 규칙이 달라 따로 다룬다.
- */
-const PROVIDER_OWNED_FIELDS = [
-  "scientific_name", "family", "genus",
-  "flowering_months", "fruiting_months",
-  "sunlight", "plant_type", "nativeStatus", "evergreen"
-];
-
-/** 동기화라는 사실 자체를 기록하는 필드 — 새 값으로 간다. */
-const SYNC_FACT_FIELDS = [
-  "schema_version", "provider",
-  "plant_api_source", "plant_api_id", "plant_api_synced_at"
-];
 
 /**
  * 출처가 이 필드를 "말했는가".
@@ -65,16 +99,15 @@ function told(v) {
  * 사진 병합.
  *
  *   ① `source: "user"` 는 항상 남는다 — 사람이 직접 올린 것이다.
- *   ② 이번에 들어온 출처의 사진은 통째로 교체된다 (kna 갱신이면 기존 kna 만).
- *   ③ 다른 출처의 사진은 건드리지 않는다.
+ *   ② **같은 출처 · 같은 종류**의 자리는 새 사진이 차지한다. 국립수목원 꽃
+ *      사진의 URL 이 바뀌면 옛 URL 은 사라진다 — 같은 자리의 갱신이기 때문이다.
+ *   ③ 이번에 오지 않은 자리는 건드리지 않는다. 같은 kna 라도 꽃만 왔으면
+ *      잎 사진은 남는다 — "출처가 지웠다" 와 "이번 응답에 없다" 는 다르고,
+ *      구분할 수 없으니 지우지 않는 쪽을 택한다.
  *   ④ 같은 URL 은 한 번만. 먼저 있던 쪽이 이긴다.
  *
  * 순서는 **남은 것 → 새로 온 것**이다. 대표 사진(`photos[0]`)이 곧
  * `image_url` 이라, 사용자가 올린 사진이 있으면 그것이 계속 대표로 남는다.
- *
- * 들어온 사진이 없으면 아무 출처도 교체되지 않는다 — 그 경우 기존 사진이
- * 그대로 남는다. "출처가 사진을 지웠다" 와 "이번 응답에 사진이 없다" 를
- * 구분할 수 없으니, 지우지 않는 쪽을 택한다.
  *
  * @param {object[]} existing  기존 photos
  * @param {object[]} incoming  이번에 받은 photos
@@ -84,12 +117,15 @@ export function mergePhotos(existing, incoming, max = 5) {
   const before = normalizePhotos(existing, Infinity);
   const after  = normalizePhotos(incoming, Infinity);
 
-  // 이번 응답이 책임지는 출처들. 사용자 사진은 어떤 경우에도 교체 대상이 아니다.
+  // 사진 한 장의 "자리" — 출처와 종류로 정한다. 종류를 모르면 빈 칸이 곧 자리다.
+  const slotOf = p => `${p.source}/${p.type}`;
+
+  // 이번 응답이 채우는 자리들. 사용자 사진 자리는 어떤 경우에도 대상이 아니다.
   const replaced = new Set(
-    after.map(p => p.source).filter(s => s && s !== USER_PHOTO_SOURCE)
+    after.filter(p => p.source && p.source !== USER_PHOTO_SOURCE).map(slotOf)
   );
 
-  const kept = before.filter(p => p.source === USER_PHOTO_SOURCE || !replaced.has(p.source));
+  const kept = before.filter(p => p.source === USER_PHOTO_SOURCE || !replaced.has(slotOf(p)));
 
   const out = [];
   const seen = new Set();
@@ -141,23 +177,36 @@ export function mergeMetadata(existing, incoming, maxPhotos = 5) {
 
   const out = { ...before };
 
-  // 출처가 말한 것만 덮는다. 기존에 그 필드가 아예 없으면 `after` 의 빈 값을
-  // 쓴다 — 결과가 언제나 완전한 metadata 모양이 되도록.
-  for (const f of PROVIDER_OWNED_FIELDS) {
-    out[f] = told(after[f]) ? after[f] : (f in before ? before[f] : after[f]);
+  // 규칙이 따로 있는 필드는 전용 병합기가 맡는다.
+  const MERGERS = {
+    description: () => mergeDescription(before.description, after.description),
+    photos:      () => mergePhotos(before.photos, after.photos, maxPhotos),
+    sync_status: () => mergeStatus(before.sync_status, after.sync_status)
+  };
+
+  for (const [field, owner] of Object.entries(FIELD_OWNERSHIP)) {
+    if (field.includes(".")) continue;          // 구조체 안쪽은 전용 병합기가 본다
+    if (MERGERS[field]) { out[field] = MERGERS[field](); continue; }
+
+    switch (owner) {
+      case "provider":
+        // 출처가 말한 것만 덮는다. 기존에 그 필드가 아예 없으면 `after` 의 빈
+        // 값을 쓴다 — 결과가 언제나 완전한 metadata 모양이 되도록.
+        out[field] = told(after[field]) ? after[field]
+                   : (field in before ? before[field] : after[field]);
+        break;
+      case "user":
+        // 어떤 경우에도 기존 값을 유지한다.
+        out[field] = before[field] ?? after[field] ?? "";
+        break;
+      case "system":
+        // 동기화 사실은 새 값으로 간다 — 언제 어느 판에서 받았는지가 바뀌었다.
+        if (field in after) out[field] = after[field];
+        break;
+      case "derived":
+        break;                                  // 아래에서 다시 계산한다
+    }
   }
-
-  // 사람이 정본인 필드는 어떤 경우에도 기존 값을 유지한다.
-  for (const f of USER_OWNED_FIELDS) out[f] = before[f] ?? after[f] ?? "";
-
-  out.description = mergeDescription(before.description, after.description);
-  out.photos = mergePhotos(before.photos, after.photos, maxPhotos);
-
-  // 동기화 사실은 새 값으로 간다 — 언제 어느 판에서 받았는지가 바뀌었다.
-  for (const f of SYNC_FACT_FIELDS) {
-    if (f in after) out[f] = after[f];
-  }
-  out.sync_status = mergeStatus(before.sync_status, after.sync_status);
 
   // 대표 이미지는 병합된 photos 에서 다시 뽑는다.
   const primary = out.photos[0]?.url || "";

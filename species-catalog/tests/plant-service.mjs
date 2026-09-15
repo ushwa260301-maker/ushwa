@@ -20,8 +20,9 @@ const { normalizeSunlight, normalizeNativeStatus, normalizeDescription, normaliz
         normalizeProvider, normalizeMonths, normalizeEvergreen, stripHtml }
   = await import("../services/plantNormalizer.js");
 const { CURRENT_SCHEMA_VERSION } = await import("../services/metadataMigration.js");
-const { mergePhotos, mergeMetadata, USER_OWNED_FIELDS }
+const { mergePhotos, mergeMetadata, USER_OWNED_FIELDS, FIELD_OWNERSHIP }
   = await import("../services/metadataMerge.js");
+const { METADATA_FIELDS } = await import("../js/utils.js");
 const NORMALIZER = await import("../services/plantNormalizer.js");
 const kna = await import("../services/plantProviders/knaProvider.js");
 
@@ -271,19 +272,40 @@ check("출처가 말 안 한 분류는 유지", silent.plant_type, "관목");
 check("출처가 말 안 한 개화월은 유지", silent.flowering_months, []);
 check("사진이 없으면 기존 사진 유지", silent.photos.length, 1);
 
-// 같은 출처를 다시 받으면 그 출처의 사진만 교체된다.
+/**
+ * 사진의 "자리" 는 출처 + 종류다. 같은 자리에 새 사진이 오면 URL 이 바뀐
+ * 것이므로 옛 URL 은 사라지고, 이번에 오지 않은 자리는 남는다.
+ */
 const twoSources = { ...EXISTING, photos: [
-  { url: "https://x/my.jpg",  type: "", caption: "", source: "user" },
-  { url: "https://x/old.jpg", type: "", caption: "", source: "kna"  },
-  { url: "https://x/g.jpg",   type: "", caption: "", source: "gbif" }
+  { url: "https://x/my.jpg",  type: "flower", caption: "", source: "user" },
+  { url: "https://x/old.jpg", type: "flower", caption: "", source: "kna"  },
+  { url: "https://x/leaf.jpg", type: "leaf",  caption: "", source: "kna"  },
+  { url: "https://x/g.jpg",   type: "flower", caption: "", source: "gbif" }
 ] };
 const rePhoto = mergePhotos(twoSources.photos,
   [{ url: "https://x/new.jpg", type: "flower", caption: "", source: "kna" }], 5);
-check("kna 사진만 교체", rePhoto.map(p => p.url),
-      ["https://x/my.jpg", "https://x/g.jpg", "https://x/new.jpg"]);
+check("같은 자리는 URL 이 교체된다 — 옛 kna 꽃 제거",
+      rePhoto.some(p => p.url === "https://x/old.jpg"), false);
+check("오지 않은 자리는 남는다 — kna 잎 유지",
+      rePhoto.some(p => p.url === "https://x/leaf.jpg"), true);
+check("다른 출처는 건드리지 않는다",
+      rePhoto.some(p => p.url === "https://x/g.jpg"), true);
+check("사용자 사진은 같은 자리여도 남는다",
+      rePhoto.some(p => p.url === "https://x/my.jpg"), true);
+check("최종 순서", rePhoto.map(p => p.url),
+      ["https://x/my.jpg", "https://x/leaf.jpg", "https://x/g.jpg", "https://x/new.jpg"]);
 check("중복 URL 은 한 번만",
       mergePhotos([{ url: "u", source: "user" }], [{ url: "u", source: "kna" }], 5).length, 1);
-check("입력을 변형하지 않는다", twoSources.photos.length, 3);
+check("들어온 사진이 없으면 아무것도 지우지 않는다",
+      mergePhotos(twoSources.photos, [], 5).length, 4);
+check("입력을 변형하지 않는다", twoSources.photos.length, 4);
+
+// 소유권 표가 규칙의 단일 선언이다 — metadata 필드가 표에 빠지면 잡는다.
+const declared = new Set(Object.keys(FIELD_OWNERSHIP).filter(f => !f.includes(".")));
+check("모든 metadata 필드에 정본이 선언돼 있다",
+      METADATA_FIELDS.filter(f => !declared.has(f)), []);
+check("표에만 있고 metadata 에 없는 필드도 없다",
+      [...declared].filter(f => !METADATA_FIELDS.includes(f)), []);
 
 // 소유권 목록은 계약이다 — 여기 없는 필드는 동기화가 덮는다.
 check("사람이 정본인 필드", USER_OWNED_FIELDS, ["soil", "indoorOutdoor"]);
@@ -315,8 +337,17 @@ check("여러 구간", normalizeMonths("4~5월, 9월"), [4, 5, 9]);
 check("가운뎃점 표기", normalizeMonths("6·7월"), [6, 7]);
 check("가운뎃점 + 범위", normalizeMonths("5·7~9월"), [5, 7, 8, 9]);
 check("해를 넘기는 범위", normalizeMonths("12~2월"), [1, 2, 12]);
+// 몇 월인지 원문이 말하지 않으면 버린다 — 그럴듯한 달을 채우는 건
+// 원본에 없는 데이터를 만드는 일이다.
 check("모르는 표기는 버린다 — 봄", normalizeMonths("봄"), []);
 check("모르는 표기는 버린다 — 연중", normalizeMonths("연중"), []);
+check("모르는 표기는 버린다 — 초여름", normalizeMonths("초여름"), []);
+check("모르는 표기는 버린다 — 수시", normalizeMonths("수시"), []);
+check("모르는 표기는 버린다 — 정보없음", normalizeMonths("개화기 정보 없음"), []);
+check("월이 섞인 문장도 버린다", normalizeMonths("6월경 또는 이듬해"), []);
+// "3월경" 은 근사 표기다. 지금은 버린다 — 3월로 단정할 근거가 원문에 없다.
+// [확인 필요] 근사 표기를 받아들일지는 실제 응답 샘플을 보고 정한다.
+check("근사 표기는 아직 버린다 — 3월경", normalizeMonths("3월경"), []);
 check("범위 밖은 버린다", normalizeMonths("0~13월"), []);
 // 기존 입력 모양은 그대로 동작해야 한다 — 저장된 metadata 가 배열이다.
 check("배열은 그대로", normalizeMonths([0, 3, 13, 5]), [3, 5]);
