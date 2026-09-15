@@ -344,10 +344,20 @@ check("모르는 표기는 버린다 — 연중", normalizeMonths("연중"), [])
 check("모르는 표기는 버린다 — 초여름", normalizeMonths("초여름"), []);
 check("모르는 표기는 버린다 — 수시", normalizeMonths("수시"), []);
 check("모르는 표기는 버린다 — 정보없음", normalizeMonths("개화기 정보 없음"), []);
-check("월이 섞인 문장도 버린다", normalizeMonths("6월경 또는 이듬해"), []);
-// "3월경" 은 근사 표기다. 지금은 버린다 — 3월로 단정할 근거가 원문에 없다.
-// [확인 필요] 근사 표기를 받아들일지는 실제 응답 샘플을 보고 정한다.
-check("근사 표기는 아직 버린다 — 3월경", normalizeMonths("3월경"), []);
+
+/**
+ * 근사 표기는 받아들인다. 기준은 "불확실한가" 가 아니라 **"월이 적혀 있는가"** 다.
+ * "3월경" 은 날짜가 흐릴 뿐 3월이라고 말하고 있고, 우리가 저장하는 단위는 월이다.
+ * "초여름" 은 월 자체가 없다 — 그래서 위에서 버린다.
+ */
+check("근사 표기 — 3월경", normalizeMonths("3월경"), [3]);
+check("근사 표기 — 3월 말", normalizeMonths("3월 말"), [3]);
+check("근사 표기 — 3월 중순", normalizeMonths("3월 중순"), [3]);
+check("근사 표기 — 3월쯤", normalizeMonths("3월쯤"), [3]);
+check("근사 표기가 붙은 범위", normalizeMonths("3월 말~4월 초"), [3, 4]);
+// 토큰 전체가 해석돼야 받는다 — 뒷말이 무엇을 한정하는지 알 수 없다.
+check("설명이 더 붙으면 버린다", normalizeMonths("6월경 또는 이듬해"), []);
+check("월 없는 숫자에는 꼬리표가 붙지 않는다", normalizeMonths("3경"), []);
 check("범위 밖은 버린다", normalizeMonths("0~13월"), []);
 // 기존 입력 모양은 그대로 동작해야 한다 — 저장된 metadata 가 배열이다.
 check("배열은 그대로", normalizeMonths([0, 3, 13, 5]), [3, 5]);
