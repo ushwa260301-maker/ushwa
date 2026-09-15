@@ -357,3 +357,17 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Ticket #002 — 국가 식물 DB 연동 상태 */
+.guide-badge[data-kind="pending"] {
+  background: rgba(158, 158, 158, .16);
+  font-style: italic;
+  opacity: .85;
+}
+.guide-badge[data-kind="source"] {
+  background: rgba( 63,  81, 181, .14);
+  font-size: 11px;
+}
+
+/* 모달의 읽기 전용 개화월 블록 — 카드와 같은 셀을 쓰되 폭만 맞춘다. */
+#fBloomView { max-width: 420px; }

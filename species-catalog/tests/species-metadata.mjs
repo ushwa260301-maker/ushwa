@@ -14,8 +14,9 @@
 
 const {
   emptyMetadata, normalizeMetadata, hasMetadata, withMetadata,
-  iconFor, METADATA_FIELDS, SUNLIGHT_OPTIONS, EVERGREEN_OPTIONS,
-  renderBloomMonths
+  iconFor, METADATA_FIELDS, DISPLAY_FIELDS, API_FIELDS,
+  SUNLIGHT_OPTIONS, EVERGREEN_OPTIONS,
+  renderBloomMonths, isApiLinked, isInfoPending, isMetadataReadOnly
 } = await import("../js/utils.js");
 
 /** 최소 DOM 스텁 — renderBloomMonths 가 쓰는 API 만 흉내낸다. */
@@ -155,6 +156,47 @@ check("null container 는 던지지 않는다", (renderBloomMonths(null, [1]), t
 const strNums = stubEl();
 renderBloomMonths(strNums, ["5", "6"]);
 check("문자열 월도 인식", strNums.children.filter(c => c.className.includes("active")).length, 2);
+
+// ============================================================
+section("9. 국가 식물 DB 연동 (Ticket #002)");
+// ============================================================
+check("METADATA_FIELDS = 표시 + 연결", METADATA_FIELDS.length,
+      DISPLAY_FIELDS.length + API_FIELDS.length);
+check("연결 필드 3개", [...API_FIELDS].sort(),
+      ["plant_api_id", "plant_api_source", "plant_api_synced_at"]);
+
+const linked = normalizeMetadata({
+  plant_api_id: "KNA-12345", plant_api_source: "국립수목원",
+  plant_api_synced_at: "2026-09-15T02:00:00Z",
+  sunlight: "양지"
+});
+check("isApiLinked = true", isApiLinked(linked), true);
+check("읽기 전용", isMetadataReadOnly(linked), true);
+check("내용이 있으면 준비중 아님", isInfoPending(linked), false);
+check("연결 필드 보존", linked.plant_api_id, "KNA-12345");
+check("출처 보존", linked.plant_api_source, "국립수목원");
+
+const pending = normalizeMetadata({ plant_api_id: "KNA-99999", plant_api_source: "국립수목원" });
+check("연결됐지만 내용 없음 → 정보 준비중", isInfoPending(pending), true);
+check("표시할 값은 없다", hasMetadata(pending), false);
+check("그래도 읽기 전용", isMetadataReadOnly(pending), true);
+
+const plain = normalizeMetadata({ sunlight: "음지" });
+check("연결 없으면 isApiLinked = false", isApiLinked(plain), false);
+check("연결 없으면 준비중 아님 (영역 감춤)", isInfoPending(plain), false);
+check("연결 없으면 편집 가능", isMetadataReadOnly(plain), false);
+
+const none = emptyMetadata();
+check("아무것도 없으면 준비중 아님", isInfoPending(none), false);
+check("아무것도 없으면 표시 안 함", hasMetadata(none), false);
+
+check("연결 정보는 hasMetadata 에 세지 않는다",
+      hasMetadata(normalizeMetadata({ plant_api_id: "X" })), false);
+check("빈 문자열 id 는 연결 아님", isApiLinked(normalizeMetadata({ plant_api_id: "  " })), false);
+
+const legacyLinked = withMetadata({ id: "sp-050", name: "소나무" });
+check("기존 Species 는 연결 필드도 빈 값", legacyLinked.metadata.plant_api_id, "");
+check("기존 Species 는 준비중 아님", isInfoPending(legacyLinked.metadata), false);
 
 // ============================================================
 console.log("\n" + "=".repeat(52));

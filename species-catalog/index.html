@@ -228,6 +228,7 @@
 
         <fieldset class="form-section">
           <legend>식물 도감 정보</legend>
+          <p id="fGuideSource" class="attach-hint" hidden></p>
           <div class="form-grid">
             <div class="form-field">
               <label for="fSunlight">양지성</label>
@@ -256,8 +257,8 @@
         <fieldset class="form-section">
           <legend>개화</legend>
           <div class="form-field">
-            <label>개화월 <small>(다중 선택)</small></label>
-            <div id="fMonthGrid" class="month-grid" role="group"></div>
+            <label>개화월 <small>(읽기 전용 · 국가 식물 DB 기준)</small></label>
+            <div id="fBloomView" class="phenology-strip"></div>
           </div>
           <div class="form-field">
             <label>개화색</label>

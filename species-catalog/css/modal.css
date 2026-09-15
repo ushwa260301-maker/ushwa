@@ -1623,3 +1623,10 @@ html.debug-mode .debug-only { display: revert !important; }
     max-height: 45%;
   }
 }
+
+/* Ticket #002 — 외부 DB 연동 시 도감 입력은 읽기 전용 */
+.form-field select:disabled,
+.form-field textarea:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}

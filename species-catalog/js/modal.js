@@ -12,10 +12,9 @@ import { analyzeInvoice, parseInvoiceText } from "./vision.js";
 import { enrichSpecies } from "./stats.js";
 import {
   SUNLIGHT_OPTIONS, INDOOR_OUTDOOR_OPTIONS, NATIVE_STATUS_OPTIONS, EVERGREEN_OPTIONS,
-  normalizeMetadata
+  normalizeMetadata, renderBloomMonths, isApiLinked, isMetadataReadOnly, API_FIELDS
 } from "./utils.js";
 import {
-  buildMonthGrid,
   makePriceRow,
   renderPriceRows,
   makeSupplierRow,
@@ -59,7 +58,8 @@ export function initModal(deps) {
   els.fNativeStatus      = document.getElementById("fNativeStatus");
   els.fEvergreen         = document.getElementById("fEvergreen");
   els.fDescription       = document.getElementById("fDescription");
-  els.fMonthGrid         = document.getElementById("fMonthGrid");
+  els.fBloomView         = document.getElementById("fBloomView");
+  els.fGuideSource       = document.getElementById("fGuideSource");
   els.fColorChips        = document.getElementById("fColorChips");
   els.fColorNew          = document.getElementById("fColorNew");
   els.fColorAddBtn       = document.getElementById("fColorAddBtn");
@@ -146,8 +146,27 @@ export function openModal(id) {
   fillSelect(els.fEvergreen,     EVERGREEN_OPTIONS,      meta.evergreen);
   els.fDescription.value = meta.description || "";
 
-  formState.months = new Set((sp?.bloomMonths || []).map(String));
-  buildMonthGrid(els.fMonthGrid, formState.months, () => {});
+  // 외부 DB 에 연결된 Species 는 도감 정보를 앱에서 고치지 않는다 —
+  // 정본이 외부에 있어 수정해도 다음 동기화에 덮인다.
+  formState.metaApi = Object.fromEntries(API_FIELDS.map(f => [f, meta[f] || ""]));
+  const readOnly = isMetadataReadOnly(meta);
+  for (const el of [els.fSunlight, els.fIndoorOutdoor, els.fNativeStatus,
+                    els.fEvergreen, els.fDescription]) {
+    el.disabled = readOnly;
+  }
+  if (isApiLinked(meta)) {
+    const src = meta.plant_api_source || "국가 식물 DB";
+    const at = meta.plant_api_synced_at ? ` · 동기화 ${meta.plant_api_synced_at.slice(0, 10)}` : "";
+    els.fGuideSource.textContent = `${src} 연동 — 읽기 전용${at}`;
+    els.fGuideSource.hidden = false;
+  } else {
+    els.fGuideSource.hidden = true;
+  }
+
+  // 개화월은 입력하지 않는다 — 국가 식물 DB 가 정본이며 여기서는 읽기만 한다.
+  // 저장 시 기존 bloomMonths 를 그대로 되돌려주기 위해 원본을 보관한다.
+  formState.bloomMonths = (sp?.bloomMonths || []).map(Number);
+  renderBloomMonths(els.fBloomView, formState.bloomMonths);
 
   formState.colors = new Set(sp?.colors || []);
   rebuildFormColorChips(els.fColorChips, state.data.colors, formState.colors);
@@ -328,10 +347,6 @@ function collectForm() {
     return null;
   }
 
-  const months = [...els.fMonthGrid.querySelectorAll('[aria-pressed="true"]')]
-    .map(el => Number(el.textContent))
-    .sort((a, b) => a - b);
-
   const colors = [...formState.colors];
 
   const prices = [...els.fPriceRows.querySelectorAll(".price-row")]
@@ -364,7 +379,8 @@ function collectForm() {
     name,
     latin: els.fLatin.value.trim(),
     category,
-    bloomMonths: months,
+    // 개화월은 화면에서 편집하지 않는다 — 열었을 때의 값을 그대로 돌려준다.
+    bloomMonths: [...(formState.bloomMonths || [])],
     colors,
     prices,
     suppliers,
@@ -376,7 +392,9 @@ function collectForm() {
       indoorOutdoor: els.fIndoorOutdoor.value,
       nativeStatus:  els.fNativeStatus.value,
       evergreen:     els.fEvergreen.value,
-      description:   els.fDescription.value.trim()
+      description:   els.fDescription.value.trim(),
+      // 외부 DB 연결 정보는 화면에서 만들지도 고치지도 않는다 — 그대로 보존한다.
+      ...(formState.metaApi || {})
     }
   };
 }

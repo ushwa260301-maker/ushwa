@@ -19,6 +19,8 @@ import {
   hasMetadata,
   iconFor,
   renderBloomMonths,
+  isApiLinked,
+  isInfoPending,
   SUNLIGHT_OPTIONS,
   INDOOR_OUTDOOR_OPTIONS,
   NATIVE_STATUS_OPTIONS,
@@ -115,9 +117,25 @@ export function createCard(sp, cardTpl, handlers) {
 function fillGuideBlock(box, metadata) {
   if (!box) return;
   const meta = normalizeMetadata(metadata);
-  if (!hasMetadata(meta)) { box.hidden = true; return; }
   const badges = box.querySelector(".guide-badges");
+  const desc = box.querySelector(".guide-desc");
   badges.innerHTML = "";
+
+  // 외부 DB 에 연결됐지만 아직 내려받은 내용이 없는 상태 — 빈 카드 대신
+  // 준비중임을 알린다. 연결도 내용도 없으면 아래에서 영역을 감춘다.
+  if (isInfoPending(meta)) {
+    const pending = document.createElement("span");
+    pending.className = "guide-badge";
+    pending.dataset.kind = "pending";
+    pending.textContent = "⏳ 정보 준비중";
+    pending.title = `${meta.plant_api_source || "국가 식물 DB"} 연동 대기`;
+    badges.appendChild(pending);
+    desc.hidden = true;
+    box.hidden = false;
+    return;
+  }
+
+  if (!hasMetadata(meta)) { box.hidden = true; return; }
 
   const add = (options, value, kind) => {
     if (!value) return;
@@ -133,7 +151,18 @@ function fillGuideBlock(box, metadata) {
   add(NATIVE_STATUS_OPTIONS,  meta.nativeStatus,  "nativeStatus");
   add(EVERGREEN_OPTIONS,      meta.evergreen,     "evergreen");
 
-  const desc = box.querySelector(".guide-desc");
+  // 외부 DB 가 정본인 Species 는 출처를 밝힌다 (읽기 전용 표시).
+  if (isApiLinked(meta)) {
+    const src = document.createElement("span");
+    src.className = "guide-badge";
+    src.dataset.kind = "source";
+    src.textContent = `🔗 ${meta.plant_api_source || "국가 식물 DB"}`;
+    src.title = meta.plant_api_synced_at
+      ? `동기화 ${meta.plant_api_synced_at.slice(0, 10)} · 읽기 전용`
+      : "읽기 전용";
+    badges.appendChild(src);
+  }
+
   if (meta.description) { desc.textContent = meta.description; desc.hidden = false; }
   else desc.hidden = true;
 

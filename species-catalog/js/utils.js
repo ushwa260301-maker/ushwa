@@ -172,12 +172,31 @@ export const EVERGREEN_OPTIONS = [
   { value: "낙엽", label: "낙엽", icon: "🍂" }
 ];
 
-/** metadata 가 담는 필드 전체. 모두 선택 입력이며 빈 문자열이 "미지정"이다. */
-export const METADATA_FIELDS = ["sunlight", "indoorOutdoor", "nativeStatus", "evergreen", "description"];
+/** 카드·모달에 **표시되는** 도감 항목. 모두 선택 입력이며 빈 문자열이 "미지정"이다. */
+export const DISPLAY_FIELDS = ["sunlight", "indoorOutdoor", "nativeStatus", "evergreen", "description"];
+
+/**
+ * 국가 식물 DB(국립수목원 등) 연결 정보. 사용자가 입력하지 않는다 —
+ * 동기화 기능이 채우고, 앱은 읽기만 한다.
+ *
+ *   plant_api_id         외부 DB 의 식물 식별자
+ *   plant_api_source     출처 (예: "국립수목원")
+ *   plant_api_synced_at  마지막 동기화 시각 (ISO)
+ *
+ * 필드명은 외부 DB 계약을 그대로 따른다(snake_case). 표시 항목과 분리해 두는
+ * 이유는 hasMetadata() 가 "보여줄 값이 있는가" 만 판단하게 하기 위해서다 —
+ * 연결 정보만 있고 내용이 비면 배지 대신 "정보 준비중" 을 보여준다.
+ */
+export const API_FIELDS = ["plant_api_id", "plant_api_source", "plant_api_synced_at"];
+
+/** metadata 가 담는 필드 전체. */
+export const METADATA_FIELDS = [...DISPLAY_FIELDS, ...API_FIELDS];
 
 /** 모든 필드가 빈 값인 metadata — metadata 가 없는 기존 Species 의 기본값. */
 export function emptyMetadata() {
-  return { sunlight: "", indoorOutdoor: "", nativeStatus: "", evergreen: "", description: "" };
+  const out = {};
+  for (const f of METADATA_FIELDS) out[f] = "";
+  return out;
 }
 
 /**
@@ -192,9 +211,31 @@ export function normalizeMetadata(raw) {
   return out;
 }
 
-/** metadata 에 입력된 값이 하나라도 있는가 (카드 영역 표시 여부). */
+/** 카드에 **보여줄** 값이 하나라도 있는가. 연결 정보(API_FIELDS)는 세지 않는다. */
 export function hasMetadata(metadata) {
-  return METADATA_FIELDS.some(f => String(metadata?.[f] || "").trim());
+  return DISPLAY_FIELDS.some(f => String(metadata?.[f] || "").trim());
+}
+
+/** 국가 식물 DB 에 연결돼 있는가 — plant_api_id 가 있으면 연결된 것으로 본다. */
+export function isApiLinked(metadata) {
+  return Boolean(String(metadata?.plant_api_id || "").trim());
+}
+
+/**
+ * "정보 준비중" 상태인가 — 외부 DB 에 연결은 됐지만 아직 내려받은 내용이 없다.
+ * 연결도 내용도 없는 Species 는 준비중이 아니라 **그냥 정보가 없는 것**이므로
+ * 카드에 아무것도 그리지 않는다(Ticket #001 계약 유지).
+ */
+export function isInfoPending(metadata) {
+  return isApiLinked(metadata) && !hasMetadata(metadata);
+}
+
+/**
+ * 연결된 도감 정보는 **읽기 전용**이다. 외부 DB 가 정본이므로 앱에서 고치면
+ * 다음 동기화에 덮이고, 그 사이 두 값이 어긋난다.
+ */
+export function isMetadataReadOnly(metadata) {
+  return isApiLinked(metadata);
 }
 
 /**
