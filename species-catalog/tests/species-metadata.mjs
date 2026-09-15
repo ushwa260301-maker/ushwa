@@ -14,6 +14,9 @@
 const {
   emptyMetadata, normalizeMetadata, hasMetadata, withMetadata,
   normalizeMonths, normalizeTriBool, metadataSource,
+  normalizeSunlight, normalizeNativeStatus, normalizeDescription, normalizePhotos,
+  SUNLIGHT_ENUM, NATIVE_STATUS_ENUM, PHOTO_TYPES, labelForEnum,
+  SUNLIGHT_LABELS, NATIVE_STATUS_LABELS,
   isApiLinked, isMetadataReadOnly, renderBloomMonths, iconFor,
   METADATA_FIELDS, DISPLAY_FIELDS, API_FIELDS,
   METADATA_TEXT_FIELDS, METADATA_MONTH_FIELDS, METADATA_BOOL_FIELDS,
@@ -46,9 +49,10 @@ check("기존 필드 보존", withMetadata(legacy).name, "느티나무");
 check("hasMetadata = false", hasMetadata(emptyMetadata()), false);
 check("null 안전", normalizeMetadata(null), emptyMetadata());
 check("문자열 입력 안전", normalizeMetadata("x"), emptyMetadata());
-check("필드 구성", METADATA_FIELDS.length,
-      METADATA_TEXT_FIELDS.length + METADATA_MONTH_FIELDS.length +
-      METADATA_BOOL_FIELDS.length + API_FIELDS.length);
+check("필드 구성", METADATA_FIELDS.length, DISPLAY_FIELDS.length + API_FIELDS.length);
+check("표시 필드 구성", DISPLAY_FIELDS.length,
+      METADATA_TEXT_FIELDS.length + METADATA_MONTH_FIELDS.length + METADATA_BOOL_FIELDS.length +
+      1 /* sunlight */ + 1 /* nativeStatus */ + 1 /* description */ + 1 /* photos */);
 check("DISPLAY + API = 전체", DISPLAY_FIELDS.length + API_FIELDS.length, METADATA_FIELDS.length);
 
 // ============================================================
@@ -57,9 +61,10 @@ section("2. T10 확장 필드");
 const m = normalizeMetadata({
   scientific_name: "Hydrangea serrata", family: "Hydrangeaceae", genus: "Hydrangea",
   flowering_months: [6, 7, 8], fruiting_months: [9, 10],
-  sunlight: "반음지", soil: "습윤", plant_type: "관목", evergreen: false,
-  indoorOutdoor: "실외", nativeStatus: "자생종", description: "산수국",
-  image_url: "https://x/1.jpg", thumbnail_url: "https://x/t.jpg",
+  sunlight: ["partial_shade"], soil: "습윤", plant_type: "관목", evergreen: false,
+  indoorOutdoor: "실외", nativeStatus: "native",
+  description: { summary: "산수국", source: "국립수목원" },
+  photos: [{ url: "https://x/1.jpg", type: "flower" }],
   plant_api_source: "kna", plant_api_id: "KNA00012345",
   plant_api_synced_at: "2026-09-15T07:30:00Z"
 });
@@ -71,8 +76,12 @@ check("결실월", m.fruiting_months, [9, 10]);
 check("토양", m.soil, "습윤");
 check("분류", m.plant_type, "관목");
 check("낙엽(false)", m.evergreen, false);
-check("대표 사진", m.image_url, "https://x/1.jpg");
-check("썸네일", m.thumbnail_url, "https://x/t.jpg");
+check("사진 배열이 source of truth", m.photos, [{ url: "https://x/1.jpg", type: "flower", caption: "" }]);
+check("image_url 은 photos 에서 파생", m.image_url, "https://x/1.jpg");
+check("thumbnail_url 도 파생", m.thumbnail_url, "https://x/1.jpg");
+check("광 조건 enum 배열", m.sunlight, ["partial_shade"]);
+check("자생 enum", m.nativeStatus, "native");
+check("설명 구조", m.description, { summary: "산수국", source: "국립수목원" });
 check("출처 코드", m.plant_api_source, "kna");
 check("출처 id", m.plant_api_id, "KNA00012345");
 check("hasMetadata = true", hasMetadata(m), true);
@@ -95,7 +104,7 @@ check("evergreen false 도 값으로 센다", hasMetadata(normalizeMetadata({ ev
 // ============================================================
 section("4. 알 수 없는 필드 차단");
 // ============================================================
-const dirty = normalizeMetadata({ sunlight: "음지", hackField: "x", id: "sp-999" });
+const dirty = normalizeMetadata({ sunlight: "shade", hackField: "x", id: "sp-999" });
 check("알려진 필드만", Object.keys(dirty).sort(), [...METADATA_FIELDS].sort());
 check("주입 없음", dirty.hackField, undefined);
 
@@ -106,13 +115,13 @@ check("API 연동", metadataSource(m), { kind: "api", code: "kna", label: "국�
 check("nire 라벨", metadataSource({ plant_api_source: "nire" }).label, "국립생물자원관");
 check("gbif 라벨", metadataSource({ plant_api_source: "gbif" }).label, "GBIF");
 check("모르는 코드는 그대로", metadataSource({ plant_api_source: "zzz" }).label, "zzz");
-check("사용자 입력", metadataSource(normalizeMetadata({ sunlight: "양지" })),
+check("사용자 입력", metadataSource(normalizeMetadata({ sunlight: "full_sun" })),
       { kind: "user", code: "", label: "사용자 추가" });
 check("미연동", metadataSource(emptyMetadata()), { kind: "none", code: "", label: "미연동" });
 check("PROVIDER_LABELS 3종", Object.keys(PROVIDER_LABELS).sort(), ["gbif", "kna", "nire"]);
 
 check("연동 = 읽기 전용", isMetadataReadOnly(m), true);
-check("사용자 입력 = 편집 가능", isMetadataReadOnly(normalizeMetadata({ sunlight: "양지" })), false);
+check("사용자 입력 = 편집 가능", isMetadataReadOnly(normalizeMetadata({ sunlight: "full_sun" })), false);
 check("연결 정보만 있으면 표시값 없음", hasMetadata(normalizeMetadata({ plant_api_source: "kna" })), false);
 check("그래도 연동 상태", isApiLinked(normalizeMetadata({ plant_api_source: "kna" })), true);
 
@@ -136,7 +145,61 @@ check("활성 4칸", strip.children.filter(c => c.className.includes("active")).
 const empty = stubEl(); renderBloomMonths(empty, []);
 check("빈 값도 12칸", empty.children.length, 12);
 check("null container 안전", (renderBloomMonths(null, [1]), true), true);
-check("양지 아이콘", iconFor(SUNLIGHT_OPTIONS, "양지"), "☀️");
+check("양지 표기", labelForEnum(SUNLIGHT_LABELS, "full_sun"), "☀️ 양지");
+
+// ============================================================
+section("8. T10.1 — enum · 사진 · 설명 구조");
+// ============================================================
+check("SUNLIGHT_ENUM", SUNLIGHT_ENUM, ["full_sun", "partial_sun", "partial_shade", "shade"]);
+check("NATIVE_STATUS_ENUM", NATIVE_STATUS_ENUM, ["native", "naturalized", "introduced", "cultivar"]);
+check("PHOTO_TYPES", PHOTO_TYPES, ["flower", "leaf", "habit"]);
+
+check("normalizeSunlight 한글 → enum", normalizeSunlight("반음지"), ["partial_shade"]);
+check("구분자로 붙은 원문", normalizeSunlight("양지/반음지"), ["full_sun", "partial_shade"]);
+check("enum 순서로 정렬", normalizeSunlight(["shade", "full_sun"]), ["full_sun", "shade"]);
+check("중복 제거", normalizeSunlight(["양지", "full_sun"]), ["full_sun"]);
+check("모르는 값은 버린다", normalizeSunlight("아무거나"), []);
+check("빈 값", normalizeSunlight(""), []);
+
+check("normalizeNativeStatus 한글", normalizeNativeStatus("자생종"), "native");
+check("귀화종", normalizeNativeStatus("귀화종"), "naturalized");
+check("외래종", normalizeNativeStatus("외래종"), "introduced");
+check("재배품종", normalizeNativeStatus("재배품종"), "cultivar");
+check("enum 그대로", normalizeNativeStatus("cultivar"), "cultivar");
+check("모르는 값은 빈 문자열", normalizeNativeStatus("???"), "");
+check("자생 표기", labelForEnum(NATIVE_STATUS_LABELS, "naturalized"), "🌾 귀화종");
+
+check("설명 문자열 → 구조", normalizeDescription("설명입니다", "국립수목원"),
+      { summary: "설명입니다", source: "국립수목원" });
+check("HTML 은 저장하지 않는다",
+      normalizeDescription("<p>산지 <b>계곡</b>에 자란다</p>").summary, "산지 계곡에 자란다");
+check("br 은 공백으로", normalizeDescription("가<br>나").summary, "가 나");
+check("엔티티 복원", normalizeDescription("가&amp;나").summary, "가&나");
+check("빈 설명은 출처도 비움", normalizeDescription("", "국립수목원"), { summary: "", source: "" });
+check("구조 그대로 받기", normalizeDescription({ summary: "가", source: "GBIF" }),
+      { summary: "가", source: "GBIF" });
+
+check("사진 문자열 배열도 받는다",
+      normalizePhotos(["https://x/a.jpg"]), [{ url: "https://x/a.jpg", type: "", caption: "" }]);
+check("종류 한글 → enum",
+      normalizePhotos([{ url: "u", type: "꽃" }])[0].type, "flower");
+check("모르는 종류는 빈 값 (habit 으로 밀어 넣지 않는다)",
+      normalizePhotos([{ url: "u", type: "???" }])[0].type, "");
+check("URL 중복 제거", normalizePhotos(["u", "u"]).length, 1);
+check("최대 5장", normalizePhotos(Array.from({ length: 9 }, (_, i) => `u${i}`)).length, 5);
+check("url 없는 항목은 버린다", normalizePhotos([{ type: "flower" }]), []);
+
+// 구버전 데이터 호환
+const legacyMeta = normalizeMetadata({
+  sunlight: "양지", nativeStatus: "외래종", description: "<b>옛 설명</b>",
+  image_url: "https://x/old.jpg", evergreen: "낙엽"
+});
+check("구버전 sunlight 문자열", legacyMeta.sunlight, ["full_sun"]);
+check("구버전 nativeStatus", legacyMeta.nativeStatus, "introduced");
+check("구버전 description 문자열", legacyMeta.description.summary, "옛 설명");
+check("구버전 image_url → photos", legacyMeta.photos, [{ url: "https://x/old.jpg", type: "", caption: "" }]);
+check("구버전 evergreen 문자열", legacyMeta.evergreen, false);
+check("구버전도 hasMetadata", hasMetadata(legacyMeta), true);
 
 // ============================================================
 console.log("\n" + "=".repeat(52));

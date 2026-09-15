@@ -146,7 +146,7 @@ export function openModal(id) {
   fillSelect(els.fNativeStatus,  NATIVE_STATUS_OPTIONS,  meta.nativeStatus);
   const everVal = meta.evergreen === true ? "상록" : meta.evergreen === false ? "낙엽" : "";
   fillSelect(els.fEvergreen,     EVERGREEN_OPTIONS,      everVal);
-  els.fDescription.value = meta.description || "";
+  els.fDescription.value = meta.description?.summary || "";
 
   // 외부 DB 에 연결된 Species 는 도감 정보를 앱에서 고치지 않는다 —
   // 정본이 외부에 있어 수정해도 다음 동기화에 덮인다.
@@ -315,6 +315,19 @@ function populateCategorySelect(selected) {
 }
 
 /** Read every field, validate, and return a species payload (or null on error). */
+/** 다중 선택 select — enum 코드를 값으로 두고 화면에는 한글을 보여준다. */
+function fillMultiSelect(select, options, values) {
+  const chosen = new Set(values || []);
+  select.innerHTML = "";
+  for (const o of options) {
+    const opt = document.createElement("option");
+    opt.value = o.value;
+    opt.textContent = o.icon ? `${o.icon} ${o.label}` : o.label;
+    opt.selected = chosen.has(o.value);
+    select.appendChild(opt);
+  }
+}
+
 /** select 를 옵션 목록으로 채우고 현재 값을 고른다. 목록에 없는 값도 보존한다. */
 function fillSelect(select, options, value) {
   select.innerHTML = "";
@@ -389,11 +402,12 @@ function collectForm() {
     notes: els.fNotes.value.trim(),
     // 도감 메타데이터 — Species 레코드 안에 저장된다 (species.metadata).
     metadata: {
-      sunlight:      els.fSunlight.value,
+      sunlight:      [...els.fSunlight.selectedOptions].map(o => o.value).filter(Boolean),
       indoorOutdoor: els.fIndoorOutdoor.value,
       nativeStatus:  els.fNativeStatus.value,
       evergreen:     normalizeTriBool(els.fEvergreen.value),
-      description:   els.fDescription.value.trim(),
+      // 설명은 { summary, source } 구조. 사람이 고친 값이므로 출처는 비운다.
+      description:   { summary: els.fDescription.value.trim(), source: "" },
       // 외부 DB 연결 정보는 화면에서 만들지도 고치지도 않는다 — 그대로 보존한다.
       ...(formState.metaApi || {})
     }

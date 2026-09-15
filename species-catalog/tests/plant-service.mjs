@@ -14,8 +14,10 @@
  */
 
 const { search, providerLabel, PROVIDERS } = await import("../services/plantService.js");
-const { toPlantRecord, toSpeciesMetadata, toSpeciesPatch, emptyRecord, MAX_PHOTOS, PLANT_RECORD_FIELDS }
-  = await import("../services/plantRecord.js");
+const { toPlantRecord, toSpeciesMetadata, toSpeciesPatch, emptyRecord, primaryPhotoUrl,
+        MAX_PHOTOS, PLANT_RECORD_FIELDS } = await import("../services/plantRecord.js");
+const { normalizeSunlight, normalizeNativeStatus, normalizeDescription, normalizePhotos }
+  = await import("../services/plantNormalizer.js");
 const kna = await import("../services/plantProviders/knaProvider.js");
 
 let pass = 0, fail = 0; const failed = [];
@@ -32,8 +34,10 @@ const REC = {
   koreanName: "산수국", scientificName: "Hydrangea serrata",
   family: "Hydrangeaceae", genus: "Hydrangea",
   floweringMonths: [6, 7, 8], fruitingMonths: [9, 10],
-  sunlight: "반음지", soil: "습윤", plantType: "관목", evergreen: false,
-  description: "산지 계곡", photoUrls: ["https://x/1.jpg", "https://x/2.jpg"]
+  sunlight: "양지/반음지", soil: "습윤", plantType: "관목", evergreen: false,
+  nativeStatus: "자생종",
+  description: "<p>산지 <b>계곡</b>에 자란다</p>",
+  photos: [{ url: "https://x/1.jpg", type: "꽃" }, { url: "https://x/2.jpg", type: "잎" }]
 };
 
 // 테스트용 Provider — 계약만 따르면 무엇이든 꽂을 수 있음을 보인다.
@@ -129,9 +133,15 @@ section("5. PlantRecord 계약");
 // ============================================================
 const r = toPlantRecord(REC);
 check("필드 고정", Object.keys(r).sort(), [...PLANT_RECORD_FIELDS].sort());
-check("사진에서 대표 이미지 자동 채움", r.imageUrl, "https://x/1.jpg");
+check("Provider 원문이 enum 으로 정규화된다", r.sunlight, ["full_sun", "partial_shade"]);
+check("자생 enum", r.nativeStatus, "native");
+check("설명은 평문 구조로", r.description.summary, "산지 계곡에 자란다");
+check("사진 종류 enum", r.photos.map(p => p.type), ["flower", "leaf"]);
+check("대표 사진", primaryPhotoUrl(r.photos), "https://x/1.jpg");
 check(`사진 최대 ${MAX_PHOTOS}장`,
-      toPlantRecord({ photoUrls: Array.from({ length: 9 }, (_, i) => `u${i}`) }).photoUrls.length, MAX_PHOTOS);
+      toPlantRecord({ photos: Array.from({ length: 9 }, (_, i) => `u${i}`) }).photos.length, MAX_PHOTOS);
+check("photoUrls 로 들어와도 받는다",
+      toPlantRecord({ photoUrls: ["https://x/a.jpg"] }).photos[0].url, "https://x/a.jpg");
 check("월 범위 밖 제거", toPlantRecord({ floweringMonths: [0, 6, 13] }).floweringMonths, [6]);
 check("계약 밖 키는 버린다", toPlantRecord({ ...REC, evil: 1 }).evil, undefined);
 check("null 안전", toPlantRecord(null), emptyRecord());
@@ -146,6 +156,10 @@ check("과·속", [meta.family, meta.genus], ["Hydrangeaceae", "Hydrangea"]);
 check("개화월", meta.flowering_months, [6, 7, 8]);
 check("결실월", meta.fruiting_months, [9, 10]);
 check("낙엽", meta.evergreen, false);
+check("광 조건 배열", meta.sunlight, ["full_sun", "partial_shade"]);
+check("사진 배열", meta.photos.length, 2);
+check("image_url 은 photos 파생", meta.image_url, "https://x/1.jpg");
+check("설명 출처는 Provider 라벨", toSpeciesMetadata({ ...REC, descriptionSource: "국립수목원" }, AT).description.source, "국립수목원");
 check("출처 코드", meta.plant_api_source, "kna");
 check("동기화 시각", meta.plant_api_synced_at, AT);
 
@@ -161,6 +175,15 @@ const thin = toSpeciesPatch({ koreanName: "이름만" }, AT);
 check("빈 학명은 patch 에 없음", "latin" in thin, false);
 check("빈 개화월은 patch 에 없음", "bloomMonths" in thin, false);
 check("metadata 는 항상 포함", typeof thin.metadata, "object");
+
+// ============================================================
+section("7. 정규화는 한 곳에서만 — Provider 는 원문만 넘긴다");
+// ============================================================
+check("normalizeSunlight", normalizeSunlight("양지/반음지"), ["full_sun", "partial_shade"]);
+check("normalizeNativeStatus", normalizeNativeStatus("귀화종"), "naturalized");
+check("HTML 제거", normalizeDescription("<i>가</i>").summary, "가");
+check("사진 정규화", normalizePhotos([{ url: "u", type: "수형" }])[0].type, "habit");
+check("모르는 광 조건은 버린다", normalizeSunlight("우주"), []);
 
 // ============================================================
 console.log("\n" + "=".repeat(52));

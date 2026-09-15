@@ -20,12 +20,12 @@ import {
   iconFor,
   renderBloomMonths,
   metadataSource,
-  normalizeMonths,
   normalizeTriBool,
-  SUNLIGHT_OPTIONS,
-  INDOOR_OUTDOOR_OPTIONS,
-  NATIVE_STATUS_OPTIONS,
-  EVERGREEN_OPTIONS
+  labelForEnum,
+  SUNLIGHT_LABELS,
+  NATIVE_STATUS_LABELS,
+  PHOTO_TYPE_LABELS,
+  INDOOR_OUTDOOR_OPTIONS
 } from "./utils.js";
 
 // ============================================================
@@ -144,9 +144,12 @@ function fillGuideBlock(box, metadata) {
     return icon ? `${icon} ${value}` : value;
   };
 
-  add(withIcon(SUNLIGHT_OPTIONS,       meta.sunlight),      "sunlight");
+  // 광 조건은 enum 배열 — 해당하는 만큼 배지를 단다.
+  for (const code of meta.sunlight || []) add(labelForEnum(SUNLIGHT_LABELS, code), "sunlight");
+
   add(withIcon(INDOOR_OUTDOOR_OPTIONS, meta.indoorOutdoor), "indoorOutdoor");
-  add(withIcon(NATIVE_STATUS_OPTIONS,  meta.nativeStatus),  "nativeStatus");
+
+  if (meta.nativeStatus) add(labelForEnum(NATIVE_STATUS_LABELS, meta.nativeStatus), "nativeStatus");
 
   const ever = normalizeTriBool(meta.evergreen);
   if (ever === true)  add("🌿 상록", "evergreen");
@@ -161,28 +164,45 @@ function fillGuideBlock(box, metadata) {
         ? `동기화 ${String(meta.plant_api_synced_at).slice(0, 10)} · 읽기 전용`
         : src.kind === "api" ? "읽기 전용" : "사람이 입력한 값");
 
-  if (meta.description) { desc.textContent = meta.description; desc.hidden = false; }
-  else desc.hidden = true;
+  // 설명은 { summary, source } 구조다. 원문 HTML 은 저장 단계에서 이미 벗겨졌다.
+  const summary = meta.description?.summary || "";
+  if (summary) {
+    desc.textContent = summary;
+    desc.title = meta.description?.source ? `출처: ${meta.description.source}` : "";
+    desc.hidden = false;
+  } else desc.hidden = true;
 
   fillGuidePhotos(box.querySelector(".guide-photos"), meta);
 
   box.hidden = false;
 }
 
-/** 대표 사진 — 없으면 영역을 감춘다. */
+/**
+ * 사진 — `metadata.photos` 가 source of truth 다. 없으면 영역을 감춘다.
+ * 종류(꽃·잎·수형)를 alt 와 title 에 실어 스크린리더에서도 구분되게 한다.
+ */
 function fillGuidePhotos(strip, meta) {
   if (!strip) return;
-  const urls = [meta.thumbnail_url, meta.image_url].filter(Boolean);
+  const photos = (meta.photos || []).filter(p => p?.url);
   strip.innerHTML = "";
-  if (!urls.length) { strip.hidden = true; return; }
-  const img = document.createElement("img");
-  img.src = urls[0];
-  img.alt = "";
-  img.loading = "lazy";
-  img.className = "guide-photo";
-  // 외부 이미지가 깨져도 카드가 무너지지 않게 한다.
-  img.addEventListener("error", () => { strip.hidden = true; });
-  strip.appendChild(img);
+  if (!photos.length) { strip.hidden = true; return; }
+
+  for (const photo of photos) {
+    const label = PHOTO_TYPE_LABELS[photo.type] || "";
+    const img = document.createElement("img");
+    img.src = photo.url;
+    img.alt = photo.caption || label || "";
+    img.title = [label, photo.caption].filter(Boolean).join(" · ");
+    img.loading = "lazy";
+    img.className = "guide-photo";
+    if (photo.type) img.dataset.photoType = photo.type;
+    // 외부 이미지가 깨져도 카드가 무너지지 않게 한다.
+    img.addEventListener("error", () => {
+      img.remove();
+      if (!strip.querySelector("img")) strip.hidden = true;
+    });
+    strip.appendChild(img);
+  }
   strip.hidden = false;
 }
 

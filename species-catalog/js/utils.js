@@ -137,20 +137,44 @@ export function collectValidItems(items) {
 // ============================================================
 
 /**
- * 도감 메타데이터는 **Species 레코드 안(`species.metadata`)에 산다.**
- * 별도 저장소를 두지 않는다 — storage.js 가 species 배열을 통째로 직렬화하고
- * importExport 도 그대로 주고받으므로, 한 곳에 있으면 저장·불러오기·내보내기가
- * 자동으로 따라온다.
+ * 도감 메타데이터 필드 (T10.1).
  *
- * 이미 Species 에 있는 것은 중복하지 않는다:
- *   학명 → `species.latin` · 분류 → `species.category` · 개화 → `species.bloomMonths`
+ * metadata 는 **외부 식물 DB 스냅샷**이다. Species 본체 필드(latin · category ·
+ * bloomMonths)와 겹치는 항목이 있는데 의도된 것이다 — 본체는 앱이 관리하는
+ * 운영 값이고 metadata 는 출처가 준 원본이다.
+ *
+ * 값 정규화 규칙은 `services/plantNormalizer.js` 한 곳에 있다. 여기서는 그것을
+ * 다시 export 해 UI 가 같은 규칙을 쓰게 한다 — 규칙이 둘로 갈리지 않게.
  */
-export const SUNLIGHT_OPTIONS = [
-  { value: "",       label: "— 미지정 —" },
-  { value: "양지",   label: "양지",   icon: "☀️" },
-  { value: "반양지", label: "반양지", icon: "🌤" },
-  { value: "음지",   label: "음지",   icon: "🌑" }
-];
+export {
+  SUNLIGHT_ENUM, NATIVE_STATUS_ENUM, PHOTO_TYPES,
+  normalizeSunlight, normalizeNativeStatus, normalizeDescription,
+  normalizePhotos, normalizeMonths, normalizeEvergreen, stripHtml
+} from "../services/plantNormalizer.js";
+
+import {
+  normalizeSunlight as _sun, normalizeNativeStatus as _native,
+  normalizeDescription as _desc, normalizePhotos as _photos,
+  normalizeMonths as _months, normalizeEvergreen as _ever,
+  SUNLIGHT_ENUM as _SUN_ENUM, NATIVE_STATUS_ENUM as _NAT_ENUM
+} from "../services/plantNormalizer.js";
+
+/** enum 코드 → 화면 표기. 저장은 코드로, 표시만 한글로 한다. */
+export const SUNLIGHT_LABELS = {
+  full_sun:      { label: "양지",   icon: "☀️" },
+  partial_sun:   { label: "반양지", icon: "🌤" },
+  partial_shade: { label: "반음지", icon: "⛅" },
+  shade:         { label: "음지",   icon: "🌑" }
+};
+
+export const NATIVE_STATUS_LABELS = {
+  native:      { label: "자생종", icon: "🇰🇷" },
+  naturalized: { label: "귀화종", icon: "🌾" },
+  introduced:  { label: "외래종", icon: "🌍" },
+  cultivar:    { label: "재배품종", icon: "🌱" }
+};
+
+export const PHOTO_TYPE_LABELS = { flower: "꽃", leaf: "잎", habit: "수형" };
 
 export const INDOOR_OUTDOOR_OPTIONS = [
   { value: "",     label: "— 미지정 —" },
@@ -159,90 +183,82 @@ export const INDOOR_OUTDOOR_OPTIONS = [
   { value: "둘다", label: "둘다", icon: "🏡🌳" }
 ];
 
-export const NATIVE_STATUS_OPTIONS = [
-  { value: "",       label: "— 미지정 —" },
-  { value: "자생종", label: "자생종", icon: "🇰🇷" },
-  { value: "재배종", label: "재배종", icon: "🌱" },
-  { value: "외래종", label: "외래종", icon: "🌍" }
-];
-
+/** 모달 select 용 목록 — enum 코드를 값으로 쓴다. */
+export const SUNLIGHT_OPTIONS = _SUN_ENUM.map(v => ({ value: v, ...SUNLIGHT_LABELS[v] }));
+export const NATIVE_STATUS_OPTIONS =
+  [{ value: "", label: "— 미지정 —" }, ..._NAT_ENUM.map(v => ({ value: v, ...NATIVE_STATUS_LABELS[v] }))];
 export const EVERGREEN_OPTIONS = [
   { value: "",     label: "— 미지정 —" },
-  { value: "상록", label: "상록", icon: "🌿" },
-  { value: "낙엽", label: "낙엽", icon: "🍂" }
+  { value: "true", label: "상록", icon: "🌿" },
+  { value: "false", label: "낙엽", icon: "🍂" }
 ];
 
-/**
- * 도감 메타데이터 필드 (T10 · Provider 구조).
- *
- * metadata 는 **외부 식물 DB 스냅샷**이다. Species 본체 필드(latin · category ·
- * bloomMonths)와 이름이 겹치는 항목이 있는데, 의도된 것이다 — 본체는 앱이
- * 관리하는 운영 값이고 metadata 는 출처가 준 원본이다. 둘이 다르면 어느 쪽이
- * 원본인지 추적할 수 있어야 한다.
- */
+/** 평문 문자열 필드. */
 export const METADATA_TEXT_FIELDS = [
   "scientific_name", "family", "genus",
-  "sunlight", "soil", "plant_type",
-  "indoorOutdoor", "nativeStatus", "description",
+  "soil", "plant_type", "indoorOutdoor",
   "image_url", "thumbnail_url"
 ];
-
-/** 월 배열 필드 — 1~12 정수만 남긴다. */
 export const METADATA_MONTH_FIELDS = ["flowering_months", "fruiting_months"];
+export const METADATA_BOOL_FIELDS  = ["evergreen"];
+/** enum 배열 / enum 단일 / 구조체 / 사진 목록. */
+export const METADATA_ENUM_LIST_FIELDS = ["sunlight"];
+export const METADATA_ENUM_FIELDS      = ["nativeStatus"];
+export const METADATA_OBJECT_FIELDS    = ["description"];
+export const METADATA_PHOTO_FIELDS     = ["photos"];
 
-/** 3-상태 불리언 — true(상록) · false(낙엽) · ""(미지정). */
-export const METADATA_BOOL_FIELDS = ["evergreen"];
-
-/**
- * 외부 DB 연결 정보. 사용자가 입력하지 않는다 — Provider 가 채우고 앱은 읽는다.
- *   plant_api_source     출처 코드 (kna · nire · gbif)
- *   plant_api_id         출처 식별자
- *   plant_api_synced_at  마지막 동기화 시각 (ISO)
- */
+/** 외부 DB 연결 정보. 사용자가 입력하지 않는다. */
 export const API_FIELDS = ["plant_api_source", "plant_api_id", "plant_api_synced_at"];
 
-/** 카드·모달에 표시되는 항목 전체. */
 export const DISPLAY_FIELDS = [
-  ...METADATA_TEXT_FIELDS, ...METADATA_MONTH_FIELDS, ...METADATA_BOOL_FIELDS
+  ...METADATA_TEXT_FIELDS, ...METADATA_MONTH_FIELDS, ...METADATA_BOOL_FIELDS,
+  ...METADATA_ENUM_LIST_FIELDS, ...METADATA_ENUM_FIELDS,
+  ...METADATA_OBJECT_FIELDS, ...METADATA_PHOTO_FIELDS
 ];
-
-/** metadata 가 담는 필드 전체. */
 export const METADATA_FIELDS = [...DISPLAY_FIELDS, ...API_FIELDS];
 
-/** 모든 필드가 빈 값인 metadata — metadata 가 없는 기존 Species 의 기본값. */
+/** 모든 필드가 빈 값인 metadata — metadata 없는 기존 Species 의 기본값. */
 export function emptyMetadata() {
   const out = {};
   for (const f of METADATA_TEXT_FIELDS) out[f] = "";
+  for (const f of API_FIELDS) out[f] = "";
   for (const f of METADATA_MONTH_FIELDS) out[f] = [];
   for (const f of METADATA_BOOL_FIELDS) out[f] = "";
-  for (const f of API_FIELDS) out[f] = "";
+  for (const f of METADATA_ENUM_LIST_FIELDS) out[f] = [];
+  for (const f of METADATA_ENUM_FIELDS) out[f] = "";
+  for (const f of METADATA_OBJECT_FIELDS) out[f] = { summary: "", source: "" };
+  for (const f of METADATA_PHOTO_FIELDS) out[f] = [];
   return out;
 }
 
-/** 1~12 정수만 남긴 월 배열. */
-export function normalizeMonths(v) {
-  const list = Array.isArray(v) ? v : (v == null || v === "" ? [] : [v]);
-  return list.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 12);
-}
-
-/** true · false · "" 로 정규화. 문자열 "상록"/"낙엽" 도 받아 준다(구버전 데이터). */
-export function normalizeTriBool(v) {
-  if (v === true || v === "true" || v === "상록") return true;
-  if (v === false || v === "false" || v === "낙엽") return false;
-  return "";
-}
+/** 3-상태 불리언 정규화 (구버전 "상록"/"낙엽" 문자열도 읽는다). */
+export const normalizeTriBool = _ever;
 
 /**
- * 임의 입력을 metadata 모양으로 정규화한다. 알려진 필드만 남긴다 —
- * 폼이나 외부 응답에서 들어온 값을 그대로 믿지 않는다.
+ * 임의 입력을 metadata 모양으로 정규화한다. 알려진 필드만 남긴다.
+ * 구버전 값(한글 sunlight 문자열 · 문자열 description · image_url 만 있는 사진)도
+ * 새 구조로 옮겨 준다 — 기존 Species 가 그대로 열려야 하기 때문이다.
  */
 export function normalizeMetadata(raw) {
   const out = emptyMetadata();
   if (!raw || typeof raw !== "object") return out;
+
   for (const f of METADATA_TEXT_FIELDS) out[f] = String(raw[f] ?? "").trim();
   for (const f of API_FIELDS)           out[f] = String(raw[f] ?? "").trim();
-  for (const f of METADATA_MONTH_FIELDS) out[f] = normalizeMonths(raw[f]);
-  for (const f of METADATA_BOOL_FIELDS)  out[f] = normalizeTriBool(raw[f]);
+  for (const f of METADATA_MONTH_FIELDS) out[f] = _months(raw[f]);
+  for (const f of METADATA_BOOL_FIELDS)  out[f] = _ever(raw[f]);
+  out.sunlight     = _sun(raw.sunlight);
+  out.nativeStatus = _native(raw.nativeStatus);
+  out.description  = _desc(raw.description);
+
+  // photos 가 source of truth. 없고 image_url 만 있는 구버전 데이터는 그것으로 만든다.
+  out.photos = _photos(raw.photos);
+  if (!out.photos.length && out.image_url) {
+    out.photos = _photos([{ url: out.image_url }]);
+  }
+  // 반대로 photos 만 있으면 대표 이미지를 파생한다.
+  if (!out.image_url && out.photos.length) out.image_url = out.photos[0].url;
+  if (!out.thumbnail_url && out.image_url) out.thumbnail_url = out.image_url;
   return out;
 }
 
@@ -250,15 +266,18 @@ export function normalizeMetadata(raw) {
 export function hasMetadata(metadata) {
   const m = metadata || {};
   return METADATA_TEXT_FIELDS.some(f => String(m[f] || "").trim())
-      || METADATA_MONTH_FIELDS.some(f => normalizeMonths(m[f]).length)
-      || METADATA_BOOL_FIELDS.some(f => normalizeTriBool(m[f]) !== "");
+      || METADATA_MONTH_FIELDS.some(f => _months(m[f]).length)
+      || METADATA_BOOL_FIELDS.some(f => _ever(m[f]) !== "")
+      || _sun(m.sunlight).length > 0
+      || _native(m.nativeStatus) !== ""
+      || Boolean(_desc(m.description).summary)
+      || _photos(m.photos).length > 0;
 }
 
 /**
  * Species 하나가 metadata 를 갖도록 보장한다 (없으면 빈 객체를 붙인다).
  * Cloud 는 metadata 컬럼이 없어 읽어온 Species 에는 이 필드가 비어 있다 —
  * 그때도 모달·카드가 그대로 동작하게 하는 것이 목적이다.
- * @param {object} sp
  */
 export function withMetadata(sp) {
   return { ...sp, metadata: normalizeMetadata(sp?.metadata) };
@@ -269,15 +288,12 @@ export function isApiLinked(metadata) {
   return Boolean(String(metadata?.plant_api_source || "").trim());
 }
 
-/**
- * 연결된 도감 정보는 **읽기 전용**이다. 외부 DB 가 정본이므로 앱에서 고치면
- * 다음 동기화에 덮이고, 그 사이 두 값이 어긋난다.
- */
+/** 연결된 도감 정보는 읽기 전용이다 — 외부 DB 가 정본이다. */
 export function isMetadataReadOnly(metadata) {
   return isApiLinked(metadata);
 }
 
-/** 출처 코드 → 사람이 읽는 이름. 모르는 코드는 코드 그대로 보여준다. */
+/** 출처 코드 → 사람이 읽는 이름. */
 export const PROVIDER_LABELS = {
   kna:  "국립수목원",
   nire: "국립생물자원관",
@@ -285,11 +301,10 @@ export const PROVIDER_LABELS = {
 };
 
 /**
- * 도감 정보의 출처를 한 줄로 알려준다 — "정보 준비중" 보다 출처가 분명하다.
- *
- *   { kind: "api",  label: "국립수목원" }   외부 DB 에서 받아온 값
- *   { kind: "user", label: "사용자 추가" }  사람이 직접 입력한 값
- *   { kind: "none", label: "미연동" }       아직 아무 값도 없음
+ * 도감 정보의 출처를 한 줄로 알려준다.
+ *   { kind: "api",  label: "국립수목원" }
+ *   { kind: "user", label: "사용자 추가" }
+ *   { kind: "none", label: "미연동" }
  */
 export function metadataSource(metadata) {
   if (isApiLinked(metadata)) {
@@ -298,6 +313,13 @@ export function metadataSource(metadata) {
   }
   if (hasMetadata(metadata)) return { kind: "user", code: "", label: "사용자 추가" };
   return { kind: "none", code: "", label: "미연동" };
+}
+
+/** enum 코드 → "아이콘 한글". 모르는 코드는 코드 그대로. */
+export function labelForEnum(table, code) {
+  const e = table[code];
+  if (!e) return code || "";
+  return e.icon ? `${e.icon} ${e.label}` : e.label;
 }
 
 /** 선택지 값 → 아이콘. 목록에 없으면 빈 문자열. */
