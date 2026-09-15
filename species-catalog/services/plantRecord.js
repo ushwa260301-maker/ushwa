@@ -10,7 +10,8 @@
 
 import {
   normalizeSunlight, normalizeNativeStatus, normalizeDescription,
-  normalizePhotos, normalizeMonths, normalizeEvergreen
+  normalizePhotos, normalizeMonths, normalizeEvergreen, normalizeProvider,
+  METADATA_SCHEMA_VERSION
 } from "./plantNormalizer.js";
 
 /** 사진은 최대 5장까지만 보관한다. */
@@ -23,7 +24,7 @@ export const MAX_PHOTOS = 5;
  * 식별자다. 둘이 함께 있어야 어느 DB 의 무엇에서 온 값인지 되짚을 수 있다.
  */
 export const PLANT_RECORD_FIELDS = [
-  "source", "sourceId",
+  "source", "sourceId", "sourceVersion",
   "koreanName", "scientificName", "family", "genus",
   "floweringMonths", "fruitingMonths",
   "sunlight",        // string[] — SUNLIGHT_ENUM
@@ -37,7 +38,7 @@ export const PLANT_RECORD_FIELDS = [
 /** 빈 레코드 — Provider 가 부분만 채울 수 있게 기본값을 준다. */
 export function emptyRecord() {
   return {
-    source: "", sourceId: "",
+    source: "", sourceId: "", sourceVersion: "",
     koreanName: "", scientificName: "", family: "", genus: "",
     floweringMonths: [], fruitingMonths: [],
     sunlight: [], soil: "", plantType: "", indoorOutdoor: "",
@@ -57,7 +58,7 @@ export function toPlantRecord(partial) {
   const r = emptyRecord();
   if (!partial || typeof partial !== "object") return r;
 
-  for (const f of ["source", "sourceId", "koreanName", "scientificName",
+  for (const f of ["source", "sourceId", "sourceVersion", "koreanName", "scientificName",
                    "family", "genus", "soil", "plantType", "indoorOutdoor"]) {
     r[f] = str(partial[f]);
   }
@@ -67,7 +68,8 @@ export function toPlantRecord(partial) {
   r.nativeStatus    = normalizeNativeStatus(partial.nativeStatus);
   r.evergreen       = normalizeEvergreen(partial.evergreen);
   r.description     = normalizeDescription(partial.description, partial.descriptionSource);
-  r.photos          = normalizePhotos(partial.photos ?? partial.photoUrls, MAX_PHOTOS);
+  // 사진 출처가 없으면 Provider 코드를 쓴다 — 나중에 들어올 사용자 사진과 섞이지 않게.
+  r.photos          = normalizePhotos(partial.photos ?? partial.photoUrls, MAX_PHOTOS, r.source);
   return r;
 }
 
@@ -87,7 +89,12 @@ export function toSpeciesMetadata(record, syncedAt = new Date().toISOString()) {
   const r = toPlantRecord(record);
   const linked = Boolean(r.source);
   const primary = primaryPhotoUrl(r.photos);
+  const provider = normalizeProvider(linked
+    ? { name: r.source, record_id: r.sourceId, synced_at: syncedAt, version: r.sourceVersion }
+    : null);
   return {
+    schema_version: METADATA_SCHEMA_VERSION,
+    provider,
     scientific_name: r.scientificName,
     family:          r.family,
     genus:           r.genus,
@@ -104,9 +111,11 @@ export function toSpeciesMetadata(record, syncedAt = new Date().toISOString()) {
     // photos 에서 파생 — 기존 카드/외부 참조 호환을 위해 남긴다.
     image_url:     primary,
     thumbnail_url: primary,
-    plant_api_source:    linked ? r.source : "",
-    plant_api_id:        linked ? r.sourceId : "",
-    plant_api_synced_at: linked ? syncedAt : ""
+    // provider 가 정본이고 아래 셋은 그 파생이다 — Ticket #002 부터 쓰이는
+    // 이름이라 읽는 쪽을 한 번에 바꾸지 않고 남겨 둔다.
+    plant_api_source:    provider.name,
+    plant_api_id:        provider.record_id,
+    plant_api_synced_at: provider.synced_at
   };
 }
 

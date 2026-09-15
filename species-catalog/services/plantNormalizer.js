@@ -10,7 +10,26 @@
  *
  * 모르는 값은 **버린다.** 비슷해 보이는 enum 으로 밀어 넣지 않는다 —
  * 그것이 원본에 없는 데이터를 만드는 길이다.
+ *
+ * ⚠ **이 파일의 모든 함수는 순수 함수다.**
+ *   fetch · localStorage · Date · Math.random · console 을 쓰지 않는다.
+ *   같은 입력이면 언제 어디서 불러도 같은 출력이 나와야 한다 — 시각이 필요한
+ *   값(synced_at)은 호출자가 인자로 넘긴다. 테스트가 쉬워지는 것은 결과일 뿐,
+ *   이유는 정규화 결과가 실행 시점에 따라 달라지면 안 되기 때문이다.
+ *   (tests/plant-service.mjs 의 "순수 함수" 절이 이를 고정한다)
  */
+
+/**
+ * metadata 스키마 버전.
+ *
+ * 앞으로 flower_color · fall_color · growth_rate · hardiness_zone 같은 필드가
+ * 계속 붙는다. 그때 "이 레코드는 어느 시점 구조인가"를 알 수 있어야 마이그레이션
+ * 기준점이 생긴다. 필드를 더하거나 의미를 바꿀 때 이 숫자를 올린다.
+ */
+export const METADATA_SCHEMA_VERSION = 1;
+
+/** 사진 출처. 외부 DB 와 사용자 업로드가 섞이지 않게 한다. */
+export const PHOTO_SOURCES = ["kna", "nire", "gbif", "user"];
 
 /** 광 조건 enum. 앱 전체가 이 코드만 쓴다. 한글은 표시할 때만 붙인다. */
 export const SUNLIGHT_ENUM = ["full_sun", "partial_sun", "partial_shade", "shade"];
@@ -118,10 +137,15 @@ export function stripHtml(v) {
  * 문자열 배열(URL 만)도 받는다. type 을 모르면 **빈 값**으로 둔다 —
  * 임의로 "habit" 을 채우면 없는 정보를 만든 것이 된다.
  *
+ * `source` 는 그 사진이 어디서 왔는지다(kna · nire · gbif · user). 나중에
+ * 사용자가 올린 사진이 함께 들어오므로, 없으면 섞여서 구분할 수 없게 된다.
+ * 항목에 없으면 `defaultSource` 를 쓴다 — 보통 Provider 코드다.
+ *
  * @param {*} raw
  * @param {number} [max]
+ * @param {string} [defaultSource]
  */
-export function normalizePhotos(raw, max = 5) {
+export function normalizePhotos(raw, max = 5, defaultSource = "") {
   const out = [];
   const seen = new Set();
   for (const item of toList(raw)) {
@@ -131,7 +155,9 @@ export function normalizePhotos(raw, max = 5) {
     seen.add(url);
     const t = clean(obj.type).toLowerCase();
     const type = PHOTO_TYPES.includes(t) ? t : (PHOTO_TYPE_ALIASES[clean(obj.type)] || "");
-    out.push({ url, type, caption: stripHtml(obj.caption) });
+    const srcRaw = clean(obj.source) || clean(defaultSource);
+    const source = PHOTO_SOURCES.includes(srcRaw.toLowerCase()) ? srcRaw.toLowerCase() : "";
+    out.push({ url, type, caption: stripHtml(obj.caption), source });
     if (out.length >= max) break;
   }
   return out;
@@ -153,4 +179,26 @@ export function normalizeEvergreen(raw) {
   if (v === "상록" || v === "상록성" || v.toLowerCase() === "evergreen") return true;
   if (v === "낙엽" || v === "낙엽성" || v.toLowerCase() === "deciduous") return false;
   return "";
+}
+
+/**
+ * 출처 정보 → `{ name, record_id, synced_at, version }`.
+ *
+ * `name` 은 Provider 코드(kna · nire · gbif)이고 `version` 은 그 DB 의 데이터셋
+ * 판(예: "2026-09")이다. 판이 있어야 "언제 기준 데이터인가" 를 말할 수 있고,
+ * 출처가 개정됐을 때 재동기화 대상을 고를 수 있다.
+ *
+ * 순수 함수다 — 시각을 여기서 만들지 않고 인자로 받는다.
+ *
+ * @param {{name?:string, record_id?:string, synced_at?:string, version?:string}|null} raw
+ */
+export function normalizeProvider(raw) {
+  const name = clean(raw?.name);
+  if (!name) return { name: "", record_id: "", synced_at: "", version: "" };
+  return {
+    name,
+    record_id: clean(raw?.record_id),
+    synced_at: clean(raw?.synced_at),
+    version:   clean(raw?.version)
+  };
 }

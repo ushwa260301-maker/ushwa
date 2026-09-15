@@ -147,15 +147,17 @@ export function collectValidItems(items) {
  * 다시 export 해 UI 가 같은 규칙을 쓰게 한다 — 규칙이 둘로 갈리지 않게.
  */
 export {
-  SUNLIGHT_ENUM, NATIVE_STATUS_ENUM, PHOTO_TYPES,
+  SUNLIGHT_ENUM, NATIVE_STATUS_ENUM, PHOTO_TYPES, PHOTO_SOURCES,
+  METADATA_SCHEMA_VERSION,
   normalizeSunlight, normalizeNativeStatus, normalizeDescription,
-  normalizePhotos, normalizeMonths, normalizeEvergreen, stripHtml
+  normalizePhotos, normalizeMonths, normalizeEvergreen, normalizeProvider, stripHtml
 } from "../services/plantNormalizer.js";
 
 import {
   normalizeSunlight as _sun, normalizeNativeStatus as _native,
   normalizeDescription as _desc, normalizePhotos as _photos,
   normalizeMonths as _months, normalizeEvergreen as _ever,
+  normalizeProvider as _provider, METADATA_SCHEMA_VERSION as _SCHEMA_V,
   SUNLIGHT_ENUM as _SUN_ENUM, NATIVE_STATUS_ENUM as _NAT_ENUM
 } from "../services/plantNormalizer.js";
 
@@ -207,21 +209,28 @@ export const METADATA_ENUM_FIELDS      = ["nativeStatus"];
 export const METADATA_OBJECT_FIELDS    = ["description"];
 export const METADATA_PHOTO_FIELDS     = ["photos"];
 
-/** 외부 DB 연결 정보. 사용자가 입력하지 않는다. */
-export const API_FIELDS = ["plant_api_source", "plant_api_id", "plant_api_synced_at"];
+/**
+ * 외부 DB 연결 정보. 사용자가 입력하지 않는다.
+ * `provider` 가 정본이고 `plant_api_*` 는 그 파생이다 — 읽는 쪽을 한 번에
+ * 바꾸지 않으려고 남겨 둔다.
+ */
+export const API_FIELDS = ["provider", "plant_api_source", "plant_api_id", "plant_api_synced_at"];
+
+/** 구조 버전 필드 — 마이그레이션 기준점. */
+export const META_VERSION_FIELD = "schema_version";
 
 export const DISPLAY_FIELDS = [
   ...METADATA_TEXT_FIELDS, ...METADATA_MONTH_FIELDS, ...METADATA_BOOL_FIELDS,
   ...METADATA_ENUM_LIST_FIELDS, ...METADATA_ENUM_FIELDS,
   ...METADATA_OBJECT_FIELDS, ...METADATA_PHOTO_FIELDS
 ];
-export const METADATA_FIELDS = [...DISPLAY_FIELDS, ...API_FIELDS];
+export const METADATA_FIELDS = [META_VERSION_FIELD, ...DISPLAY_FIELDS, ...API_FIELDS];
 
 /** 모든 필드가 빈 값인 metadata — metadata 없는 기존 Species 의 기본값. */
 export function emptyMetadata() {
-  const out = {};
+  const out = { [META_VERSION_FIELD]: _SCHEMA_V, provider: _provider(null) };
   for (const f of METADATA_TEXT_FIELDS) out[f] = "";
-  for (const f of API_FIELDS) out[f] = "";
+  for (const f of API_FIELDS) { if (f !== "provider") out[f] = ""; }
   for (const f of METADATA_MONTH_FIELDS) out[f] = [];
   for (const f of METADATA_BOOL_FIELDS) out[f] = "";
   for (const f of METADATA_ENUM_LIST_FIELDS) out[f] = [];
@@ -244,7 +253,19 @@ export function normalizeMetadata(raw) {
   if (!raw || typeof raw !== "object") return out;
 
   for (const f of METADATA_TEXT_FIELDS) out[f] = String(raw[f] ?? "").trim();
-  for (const f of API_FIELDS)           out[f] = String(raw[f] ?? "").trim();
+  for (const f of API_FIELDS) { if (f !== "provider") out[f] = String(raw[f] ?? "").trim(); }
+
+  // provider 가 정본. 구버전(plant_api_* 만 있는 레코드)은 그것으로 복원한다.
+  out.provider = _provider(raw.provider?.name ? raw.provider : {
+    name: out.plant_api_source, record_id: out.plant_api_id, synced_at: out.plant_api_synced_at
+  });
+  out.plant_api_source    = out.provider.name;
+  out.plant_api_id        = out.provider.record_id;
+  out.plant_api_synced_at = out.provider.synced_at;
+
+  // 구조 버전은 있으면 보존하고(과거 판을 알아볼 수 있게), 없으면 현재 판으로 본다.
+  const v = Number(raw[META_VERSION_FIELD]);
+  out[META_VERSION_FIELD] = Number.isInteger(v) && v > 0 ? v : _SCHEMA_V;
   for (const f of METADATA_MONTH_FIELDS) out[f] = _months(raw[f]);
   for (const f of METADATA_BOOL_FIELDS)  out[f] = _ever(raw[f]);
   out.sunlight     = _sun(raw.sunlight);
@@ -285,7 +306,7 @@ export function withMetadata(sp) {
 
 /** 외부 DB 에 연결돼 있는가 — 출처 코드가 있으면 연결된 것으로 본다. */
 export function isApiLinked(metadata) {
-  return Boolean(String(metadata?.plant_api_source || "").trim());
+  return Boolean(String(metadata?.provider?.name || metadata?.plant_api_source || "").trim());
 }
 
 /** 연결된 도감 정보는 읽기 전용이다 — 외부 DB 가 정본이다. */
@@ -308,7 +329,7 @@ export const PROVIDER_LABELS = {
  */
 export function metadataSource(metadata) {
   if (isApiLinked(metadata)) {
-    const code = String(metadata.plant_api_source).trim();
+    const code = String(metadata.provider?.name || metadata.plant_api_source).trim();
     return { kind: "api", code, label: PROVIDER_LABELS[code] || code };
   }
   if (hasMetadata(metadata)) return { kind: "user", code: "", label: "사용자 추가" };

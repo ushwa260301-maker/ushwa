@@ -16,8 +16,10 @@
 const { search, providerLabel, PROVIDERS } = await import("../services/plantService.js");
 const { toPlantRecord, toSpeciesMetadata, toSpeciesPatch, emptyRecord, primaryPhotoUrl,
         MAX_PHOTOS, PLANT_RECORD_FIELDS } = await import("../services/plantRecord.js");
-const { normalizeSunlight, normalizeNativeStatus, normalizeDescription, normalizePhotos }
-  = await import("../services/plantNormalizer.js");
+const { normalizeSunlight, normalizeNativeStatus, normalizeDescription, normalizePhotos,
+        normalizeProvider, normalizeMonths, normalizeEvergreen, stripHtml,
+        METADATA_SCHEMA_VERSION } = await import("../services/plantNormalizer.js");
+const NORMALIZER = await import("../services/plantNormalizer.js");
 const kna = await import("../services/plantProviders/knaProvider.js");
 
 let pass = 0, fail = 0; const failed = [];
@@ -34,6 +36,7 @@ const REC = {
   koreanName: "산수국", scientificName: "Hydrangea serrata",
   family: "Hydrangeaceae", genus: "Hydrangea",
   floweringMonths: [6, 7, 8], fruitingMonths: [9, 10],
+  sourceVersion: "2026-09",
   sunlight: "양지/반음지", soil: "습윤", plantType: "관목", evergreen: false,
   nativeStatus: "자생종",
   description: "<p>산지 <b>계곡</b>에 자란다</p>",
@@ -137,6 +140,7 @@ check("Provider 원문이 enum 으로 정규화된다", r.sunlight, ["full_sun",
 check("자생 enum", r.nativeStatus, "native");
 check("설명은 평문 구조로", r.description.summary, "산지 계곡에 자란다");
 check("사진 종류 enum", r.photos.map(p => p.type), ["flower", "leaf"]);
+check("사진 출처는 Provider 코드로 채워진다", r.photos.map(p => p.source), ["kna", "kna"]);
 check("대표 사진", primaryPhotoUrl(r.photos), "https://x/1.jpg");
 check(`사진 최대 ${MAX_PHOTOS}장`,
       toPlantRecord({ photos: Array.from({ length: 9 }, (_, i) => `u${i}`) }).photos.length, MAX_PHOTOS);
@@ -162,6 +166,10 @@ check("image_url 은 photos 파생", meta.image_url, "https://x/1.jpg");
 check("설명 출처는 Provider 라벨", toSpeciesMetadata({ ...REC, descriptionSource: "국립수목원" }, AT).description.source, "국립수목원");
 check("출처 코드", meta.plant_api_source, "kna");
 check("동기화 시각", meta.plant_api_synced_at, AT);
+check("schema_version", meta.schema_version, METADATA_SCHEMA_VERSION);
+check("provider 구조", meta.provider,
+      { name: "kna", record_id: "KNA00012345", synced_at: AT, version: "2026-09" });
+check("plant_api_* 는 provider 파생", meta.plant_api_source, meta.provider.name);
 
 const noSrc = toSpeciesMetadata({ koreanName: "이름만" }, AT);
 check("출처 없으면 코드 비움", noSrc.plant_api_source, "");
@@ -184,6 +192,39 @@ check("normalizeNativeStatus", normalizeNativeStatus("귀화종"), "naturalized"
 check("HTML 제거", normalizeDescription("<i>가</i>").summary, "가");
 check("사진 정규화", normalizePhotos([{ url: "u", type: "수형" }])[0].type, "habit");
 check("모르는 광 조건은 버린다", normalizeSunlight("우주"), []);
+
+// ============================================================
+section("8. plantNormalizer 는 순수 함수다");
+// ============================================================
+// 부수효과 API 를 쓰지 않는다 — 쓰면 정규화 결과가 실행 시점에 따라 달라진다.
+const src = await (await import("node:fs/promises")).readFile(
+  new URL("../services/plantNormalizer.js", import.meta.url), "utf8");
+const codeOnly = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+for (const api of ["fetch(", "localStorage", "sessionStorage", "indexedDB",
+                   "new Date", "Date.now", "Math.random", "console."]) {
+  check(`${api} 를 쓰지 않는다`, codeOnly.includes(api), false);
+}
+
+// 같은 입력 → 같은 출력 (여러 번 불러도)
+const twice = f => JSON.stringify(f()) === JSON.stringify(f());
+check("normalizeSunlight 결정적", twice(() => normalizeSunlight("양지/반음지")), true);
+check("normalizePhotos 결정적", twice(() => normalizePhotos([{ url: "u", type: "꽃" }])), true);
+check("normalizeProvider 결정적", twice(() => normalizeProvider({ name: "kna" })), true);
+check("toPlantRecord 결정적", twice(() => toPlantRecord(REC)), true);
+
+// 입력을 변형하지 않는다
+const frozen = Object.freeze({ url: "u", type: "꽃" });
+const frozenList = Object.freeze([frozen]);
+check("얼린 입력도 처리한다", normalizePhotos(frozenList)[0].url, "u");
+const before = JSON.stringify(REC);
+toPlantRecord(REC);
+check("입력 객체를 바꾸지 않는다", JSON.stringify(REC), before);
+
+// export 된 함수가 전부 순수한지 — 인자만으로 동작
+check("normalizeMonths 결정적", twice(() => normalizeMonths("3,4")), true);
+check("normalizeEvergreen 결정적", twice(() => normalizeEvergreen("상록")), true);
+check("stripHtml 결정적", twice(() => stripHtml("<b>x</b>")), true);
+check("export 수", Object.keys(NORMALIZER).length > 0, true);
 
 // ============================================================
 console.log("\n" + "=".repeat(52));

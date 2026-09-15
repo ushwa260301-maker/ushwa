@@ -20,7 +20,8 @@ const {
   isApiLinked, isMetadataReadOnly, renderBloomMonths, iconFor,
   METADATA_FIELDS, DISPLAY_FIELDS, API_FIELDS,
   METADATA_TEXT_FIELDS, METADATA_MONTH_FIELDS, METADATA_BOOL_FIELDS,
-  SUNLIGHT_OPTIONS, PROVIDER_LABELS
+  SUNLIGHT_OPTIONS, PROVIDER_LABELS,
+  METADATA_SCHEMA_VERSION, META_VERSION_FIELD, PHOTO_SOURCES, normalizeProvider
 } = await import("../js/utils.js");
 
 function stubEl() {
@@ -49,11 +50,11 @@ check("기존 필드 보존", withMetadata(legacy).name, "느티나무");
 check("hasMetadata = false", hasMetadata(emptyMetadata()), false);
 check("null 안전", normalizeMetadata(null), emptyMetadata());
 check("문자열 입력 안전", normalizeMetadata("x"), emptyMetadata());
-check("필드 구성", METADATA_FIELDS.length, DISPLAY_FIELDS.length + API_FIELDS.length);
+check("필드 구성", METADATA_FIELDS.length, 1 /* schema_version */ + DISPLAY_FIELDS.length + API_FIELDS.length);
 check("표시 필드 구성", DISPLAY_FIELDS.length,
       METADATA_TEXT_FIELDS.length + METADATA_MONTH_FIELDS.length + METADATA_BOOL_FIELDS.length +
       1 /* sunlight */ + 1 /* nativeStatus */ + 1 /* description */ + 1 /* photos */);
-check("DISPLAY + API = 전체", DISPLAY_FIELDS.length + API_FIELDS.length, METADATA_FIELDS.length);
+check("DISPLAY + API + 버전 = 전체", 1 + DISPLAY_FIELDS.length + API_FIELDS.length, METADATA_FIELDS.length);
 
 // ============================================================
 section("2. T10 확장 필드");
@@ -64,9 +65,9 @@ const m = normalizeMetadata({
   sunlight: ["partial_shade"], soil: "습윤", plant_type: "관목", evergreen: false,
   indoorOutdoor: "실외", nativeStatus: "native",
   description: { summary: "산수국", source: "국립수목원" },
-  photos: [{ url: "https://x/1.jpg", type: "flower" }],
-  plant_api_source: "kna", plant_api_id: "KNA00012345",
-  plant_api_synced_at: "2026-09-15T07:30:00Z"
+  photos: [{ url: "https://x/1.jpg", type: "flower", source: "kna" }],
+  provider: { name: "kna", record_id: "KNA00012345",
+              synced_at: "2026-09-15T07:30:00Z", version: "2026-09" }
 });
 check("학명", m.scientific_name, "Hydrangea serrata");
 check("과", m.family, "Hydrangeaceae");
@@ -76,7 +77,8 @@ check("결실월", m.fruiting_months, [9, 10]);
 check("토양", m.soil, "습윤");
 check("분류", m.plant_type, "관목");
 check("낙엽(false)", m.evergreen, false);
-check("사진 배열이 source of truth", m.photos, [{ url: "https://x/1.jpg", type: "flower", caption: "" }]);
+check("사진 배열이 source of truth", m.photos,
+      [{ url: "https://x/1.jpg", type: "flower", caption: "", source: "kna" }]);
 check("image_url 은 photos 에서 파생", m.image_url, "https://x/1.jpg");
 check("thumbnail_url 도 파생", m.thumbnail_url, "https://x/1.jpg");
 check("광 조건 enum 배열", m.sunlight, ["partial_shade"]);
@@ -180,7 +182,7 @@ check("구조 그대로 받기", normalizeDescription({ summary: "가", source: 
       { summary: "가", source: "GBIF" });
 
 check("사진 문자열 배열도 받는다",
-      normalizePhotos(["https://x/a.jpg"]), [{ url: "https://x/a.jpg", type: "", caption: "" }]);
+      normalizePhotos(["https://x/a.jpg"]), [{ url: "https://x/a.jpg", type: "", caption: "", source: "" }]);
 check("종류 한글 → enum",
       normalizePhotos([{ url: "u", type: "꽃" }])[0].type, "flower");
 check("모르는 종류는 빈 값 (habit 으로 밀어 넣지 않는다)",
@@ -197,9 +199,43 @@ const legacyMeta = normalizeMetadata({
 check("구버전 sunlight 문자열", legacyMeta.sunlight, ["full_sun"]);
 check("구버전 nativeStatus", legacyMeta.nativeStatus, "introduced");
 check("구버전 description 문자열", legacyMeta.description.summary, "옛 설명");
-check("구버전 image_url → photos", legacyMeta.photos, [{ url: "https://x/old.jpg", type: "", caption: "" }]);
+check("구버전 image_url → photos", legacyMeta.photos, [{ url: "https://x/old.jpg", type: "", caption: "", source: "" }]);
 check("구버전 evergreen 문자열", legacyMeta.evergreen, false);
 check("구버전도 hasMetadata", hasMetadata(legacyMeta), true);
+
+// ============================================================
+section("9. P0 — schema_version · provider · photos[].source");
+// ============================================================
+check("빈 metadata 에도 버전", emptyMetadata()[META_VERSION_FIELD], METADATA_SCHEMA_VERSION);
+check("현재 버전은 1", METADATA_SCHEMA_VERSION, 1);
+check("버전 없으면 현재 판으로", normalizeMetadata({})[META_VERSION_FIELD], METADATA_SCHEMA_VERSION);
+check("정수가 아니면 현재 판", normalizeMetadata({ schema_version: 0.5 })[META_VERSION_FIELD], METADATA_SCHEMA_VERSION);
+check("정수 버전 보존", normalizeMetadata({ schema_version: 2 })[META_VERSION_FIELD], 2);
+
+check("provider 구조", m.provider,
+      { name: "kna", record_id: "KNA00012345", synced_at: "2026-09-15T07:30:00Z", version: "2026-09" });
+check("데이터셋 판 보존", m.provider.version, "2026-09");
+check("plant_api_* 는 provider 파생", [m.plant_api_source, m.plant_api_id],
+      ["kna", "KNA00012345"]);
+check("빈 provider", normalizeProvider(null), { name: "", record_id: "", synced_at: "", version: "" });
+check("name 없으면 나머지도 비운다", normalizeProvider({ record_id: "X" }).record_id, "");
+
+// 구버전(plant_api_* 만 있는 레코드) → provider 복원
+const legacyProvider = normalizeMetadata({
+  plant_api_source: "gbif", plant_api_id: "G-1", plant_api_synced_at: "2026-01-01T00:00:00Z"
+});
+check("구버전에서 provider 복원", legacyProvider.provider.name, "gbif");
+check("record_id 복원", legacyProvider.provider.record_id, "G-1");
+check("판 정보는 없으면 빈 값", legacyProvider.provider.version, "");
+check("구버전도 연동으로 인식", isApiLinked(legacyProvider), true);
+check("구버전 출처 라벨", metadataSource(legacyProvider).label, "GBIF");
+
+check("PHOTO_SOURCES 4종", PHOTO_SOURCES, ["kna", "nire", "gbif", "user"]);
+check("사진 출처 보존", normalizePhotos([{ url: "u", source: "user" }])[0].source, "user");
+check("모르는 출처는 빈 값", normalizePhotos([{ url: "u", source: "zzz" }])[0].source, "");
+check("기본 출처 주입", normalizePhotos([{ url: "u" }], 5, "nire")[0].source, "nire");
+check("항목 출처가 기본보다 우선",
+      normalizePhotos([{ url: "u", source: "user" }], 5, "kna")[0].source, "user");
 
 // ============================================================
 console.log("\n" + "=".repeat(52));
