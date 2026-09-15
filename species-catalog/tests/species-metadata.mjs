@@ -254,6 +254,35 @@ check("기본 출처 주입", normalizePhotos([{ url: "u" }], 5, "nire")[0].sour
 check("항목 출처가 기본보다 우선",
       normalizePhotos([{ url: "u", source: "user" }], 5, "kna")[0].source, "user");
 
+// ── 캡션 → 종류 승격 (T11-3.3) ──────────────────────────────
+/**
+ * 국립수목원은 종류를 별도 필드가 아니라 캡션에 담는다. 그래서 캡션도 보되
+ * **정확히 일치할 때만** 승격한다. 포함 검색을 하면 "꽃받침"이 꽃이 되고
+ * "꽃과 잎"은 순서에 따라 답이 달라진다 — 그건 추측이다.
+ */
+const capType = c => normalizePhotos([{ url: "u", caption: c }])[0].type;
+check("캡션 꽃 → flower", capType("꽃"), "flower");
+check("캡션 잎 → leaf", capType("잎"), "leaf");
+check("캡션 열매 → fruit", capType("열매"), "fruit");
+check("캡션 수형 → habit", capType("수형"), "habit");
+check("캡션 전체 → habit", capType("전체"), "habit");
+
+// 아래는 전부 빈 값 — 어느 종류인지 단정할 근거가 없다.
+for (const c of ["꽃 접사", "꽃받침", "꽃과 잎", "잎 뒷면", "전체 모습", "수피",
+                 "6월에 촬영한 모습"]) {
+  check(`부분 일치는 승격하지 않는다 — ${c}`, capType(c), "");
+}
+
+check("종류 필드가 캡션보다 우선",
+      normalizePhotos([{ url: "u", type: "잎", caption: "꽃" }])[0].type, "leaf");
+check("종류가 비면 캡션이 받는다",
+      normalizePhotos([{ url: "u", type: "", caption: "꽃" }])[0].type, "flower");
+check("승격해도 캡션은 그대로 남는다",
+      normalizePhotos([{ url: "u", caption: "꽃" }])[0].caption, "꽃");
+check("캡션이 HTML 이어도 벗기고 본다",
+      normalizePhotos([{ url: "u", caption: "<b>꽃</b>" }])[0].type, "flower");
+check("캡션이 없으면 빈 값", normalizePhotos([{ url: "u" }])[0].type, "");
+
 // ============================================================
 section("11. 멱등성 — normalizeMetadata 를 여러 번 지나간다");
 // ============================================================

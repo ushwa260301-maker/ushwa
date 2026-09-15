@@ -161,20 +161,19 @@ check("정규화하면 개화월", normalizeMonths(sRow.floweringMonthsRaw), [6,
 check("정규화하면 광 조건", normalizeSunlight(sRow.sunlightRaw), ["partial_shade"]);
 check("정규화하면 자생", normalizeNativeStatus(sRow.nativeStatusRaw), "native");
 /**
- * ⚠ 사진 종류가 비어 나온다 — 현재 동작을 고정해 둔다.
+ * 국립수목원은 종류를 별도 필드가 아니라 `caption` 에 담는다("꽃" · "잎").
+ * Provider 는 여전히 `type: null` 로 넘기고, 캡션을 읽어 종류로 올리는 일은
+ * normalizePhotos 가 한다 — 정확히 일치할 때만 (T11-3.3).
  *
- * 국립수목원은 종류를 `caption` 에 담는다("꽃" · "잎"). normalizePhotos 는
- * `type` 만 보므로 이 값이 닿지 않는다. mapRow 가 caption 을 type 에 넣는 건
- * 계약 위반이고(Provider 는 추측하지 않는다), normalizePhotos 를 고치려면
- * plantNormalizer 를 건드려야 하는데 이번 티켓에서 금지된 파일이다.
- *
- * 영향: 사진 병합 자리는 (출처, 종류)다. 종류가 전부 빈 값이면 kna 사진이
- * 모두 같은 자리가 되어 갱신 때 서로를 밀어낸다. 별도 판단 필요.
+ * 이게 중요한 이유: 사진 병합 자리가 (출처, 종류)다. 종류가 전부 빈 값이면
+ * kna 사진이 모두 같은 자리가 되어 갱신 때 서로를 밀어낸다.
  */
-check("현재는 종류를 읽지 못한다",
-      normalizePhotos(sRow.photosRaw, 5, "kna").map(p => p.type), ["", ""]);
-check("caption 에는 종류가 남아 있다",
+check("정규화하면 사진 종류",
+      normalizePhotos(sRow.photosRaw, 5, "kna").map(p => p.type), ["flower", "leaf"]);
+check("caption 도 그대로 남는다",
       normalizePhotos(sRow.photosRaw, 5, "kna").map(p => p.caption), ["꽃", "잎"]);
+check("꽃과 잎이 서로 다른 자리를 차지한다",
+      new Set(normalizePhotos(sRow.photosRaw, 5, "kna").map(p => `${p.source}/${p.type}`)).size, 2);
 
 const sCand = kna.toCandidate(sRow, "2026-09");
 check("PlantRecord 계약 필드만", Object.keys(sCand).sort(), [...PLANT_RECORD_FIELDS].sort());

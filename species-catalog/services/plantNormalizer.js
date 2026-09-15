@@ -168,6 +168,27 @@ export function stripHtml(v) {
  * @param {number} [max]
  * @param {string} [defaultSource]
  */
+/**
+ * 사진 종류 판정 — **정확히 일치할 때만.**
+ *
+ * 국립수목원은 종류를 별도 필드가 아니라 캡션("꽃" · "잎")에 담는다. 그래서
+ * 캡션도 본다. 다만 **포함 검색은 하지 않는다.**
+ *
+ *   "꽃받침"   꽃이 들어 있지만 꽃 사진이 아니다
+ *   "꽃과 잎"  둘 다 들어 있어 어느 쪽인지 정할 근거가 없다
+ *   "전체 모습" "전체" 가 들어 있지만 같은 말이라고 단정할 수 없다
+ *
+ * 애매하면 빈 값으로 둔다. 틀린 분류는 없는 분류보다 나쁘다 — 사진 병합 자리가
+ * (출처, 종류)라서, 잘못 붙은 종류는 엉뚱한 사진을 밀어낸다.
+ */
+function photoType(raw) {
+  const v = clean(raw);
+  if (!v) return "";
+  const low = v.toLowerCase();
+  if (PHOTO_TYPES.includes(low)) return low;
+  return PHOTO_TYPE_ALIASES[v] || PHOTO_TYPE_ALIASES[low] || "";
+}
+
 export function normalizePhotos(raw, max = 5, defaultSource = "") {
   const out = [];
   const seen = new Set();
@@ -176,11 +197,12 @@ export function normalizePhotos(raw, max = 5, defaultSource = "") {
     const url = clean(obj.url || obj.src || obj.image_url);
     if (!url || seen.has(url)) continue;
     seen.add(url);
-    const t = clean(obj.type).toLowerCase();
-    const type = PHOTO_TYPES.includes(t) ? t : (PHOTO_TYPE_ALIASES[clean(obj.type)] || "");
+    const caption = stripHtml(obj.caption);
+    // 종류 필드가 먼저다. 없을 때만 캡션을 본다 — 캡션은 설명이지 분류가 아니다.
+    const type = photoType(obj.type) || photoType(caption);
     const srcRaw = clean(obj.source) || clean(defaultSource);
     const source = PHOTO_SOURCES.includes(srcRaw.toLowerCase()) ? srcRaw.toLowerCase() : "";
-    out.push({ url, type, caption: stripHtml(obj.caption), source });
+    out.push({ url, type, caption, source });
     if (out.length >= max) break;
   }
   return out;
