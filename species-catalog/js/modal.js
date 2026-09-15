@@ -12,7 +12,8 @@ import { analyzeInvoice, parseInvoiceText } from "./vision.js";
 import { enrichSpecies } from "./stats.js";
 import {
   SUNLIGHT_OPTIONS, INDOOR_OUTDOOR_OPTIONS, NATIVE_STATUS_OPTIONS, EVERGREEN_OPTIONS,
-  normalizeMetadata, renderBloomMonths, isApiLinked, isMetadataReadOnly, API_FIELDS
+  normalizeMetadata, renderBloomMonths, isMetadataReadOnly, metadataSource,
+  normalizeTriBool, API_FIELDS
 } from "./utils.js";
 import {
   makePriceRow,
@@ -143,7 +144,8 @@ export function openModal(id) {
   fillSelect(els.fSunlight,      SUNLIGHT_OPTIONS,       meta.sunlight);
   fillSelect(els.fIndoorOutdoor, INDOOR_OUTDOOR_OPTIONS, meta.indoorOutdoor);
   fillSelect(els.fNativeStatus,  NATIVE_STATUS_OPTIONS,  meta.nativeStatus);
-  fillSelect(els.fEvergreen,     EVERGREEN_OPTIONS,      meta.evergreen);
+  const everVal = meta.evergreen === true ? "상록" : meta.evergreen === false ? "낙엽" : "";
+  fillSelect(els.fEvergreen,     EVERGREEN_OPTIONS,      everVal);
   els.fDescription.value = meta.description || "";
 
   // 외부 DB 에 연결된 Species 는 도감 정보를 앱에서 고치지 않는다 —
@@ -154,14 +156,13 @@ export function openModal(id) {
                     els.fEvergreen, els.fDescription]) {
     el.disabled = readOnly;
   }
-  if (isApiLinked(meta)) {
-    const src = meta.plant_api_source || "국가 식물 DB";
-    const at = meta.plant_api_synced_at ? ` · 동기화 ${meta.plant_api_synced_at.slice(0, 10)}` : "";
-    els.fGuideSource.textContent = `${src} 연동 — 읽기 전용${at}`;
-    els.fGuideSource.hidden = false;
-  } else {
-    els.fGuideSource.hidden = true;
-  }
+  const srcInfo = metadataSource(meta);
+  const at = meta.plant_api_synced_at ? ` · 동기화 ${String(meta.plant_api_synced_at).slice(0, 10)}` : "";
+  els.fGuideSource.textContent =
+    srcInfo.kind === "api"  ? `출처: ${srcInfo.label} — 읽기 전용${at}` :
+    srcInfo.kind === "user" ? "출처: 사용자 추가" :
+                              "출처: 미연동 — 직접 입력하거나 식물 DB 와 연동하세요";
+  els.fGuideSource.hidden = false;
 
   // 개화월은 입력하지 않는다 — 국가 식물 DB 가 정본이며 여기서는 읽기만 한다.
   // 저장 시 기존 bloomMonths 를 그대로 되돌려주기 위해 원본을 보관한다.
@@ -391,7 +392,7 @@ function collectForm() {
       sunlight:      els.fSunlight.value,
       indoorOutdoor: els.fIndoorOutdoor.value,
       nativeStatus:  els.fNativeStatus.value,
-      evergreen:     els.fEvergreen.value,
+      evergreen:     normalizeTriBool(els.fEvergreen.value),
       description:   els.fDescription.value.trim(),
       // 외부 DB 연결 정보는 화면에서 만들지도 고치지도 않는다 — 그대로 보존한다.
       ...(formState.metaApi || {})

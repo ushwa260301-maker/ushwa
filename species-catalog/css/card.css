@@ -371,3 +371,21 @@
 
 /* 모달의 읽기 전용 개화월 블록 — 카드와 같은 셀을 쓰되 폭만 맞춘다. */
 #fBloomView { max-width: 420px; }
+
+/* T10 — 출처 배지 · 대표 사진 */
+.guide-badge[data-kind="source"] {
+  background: rgba( 63,  81, 181, .14);
+  font-size: 11px;
+}
+.guide-badge[data-kind="soil"]      { background: rgba(  0, 150, 136, .13); }
+.guide-badge[data-kind="plantType"] { background: rgba(121,  85,  72, .13); }
+
+.guide-photos { display: flex; gap: 6px; }
+.guide-photo {
+  width: 100%;
+  max-height: 140px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--line, #8883);
+  background: var(--panel-2, #0001);
+}

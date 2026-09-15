@@ -172,22 +172,39 @@ export const EVERGREEN_OPTIONS = [
   { value: "낙엽", label: "낙엽", icon: "🍂" }
 ];
 
-/** 카드·모달에 **표시되는** 도감 항목. 모두 선택 입력이며 빈 문자열이 "미지정"이다. */
-export const DISPLAY_FIELDS = ["sunlight", "indoorOutdoor", "nativeStatus", "evergreen", "description"];
+/**
+ * 도감 메타데이터 필드 (T10 · Provider 구조).
+ *
+ * metadata 는 **외부 식물 DB 스냅샷**이다. Species 본체 필드(latin · category ·
+ * bloomMonths)와 이름이 겹치는 항목이 있는데, 의도된 것이다 — 본체는 앱이
+ * 관리하는 운영 값이고 metadata 는 출처가 준 원본이다. 둘이 다르면 어느 쪽이
+ * 원본인지 추적할 수 있어야 한다.
+ */
+export const METADATA_TEXT_FIELDS = [
+  "scientific_name", "family", "genus",
+  "sunlight", "soil", "plant_type",
+  "indoorOutdoor", "nativeStatus", "description",
+  "image_url", "thumbnail_url"
+];
+
+/** 월 배열 필드 — 1~12 정수만 남긴다. */
+export const METADATA_MONTH_FIELDS = ["flowering_months", "fruiting_months"];
+
+/** 3-상태 불리언 — true(상록) · false(낙엽) · ""(미지정). */
+export const METADATA_BOOL_FIELDS = ["evergreen"];
 
 /**
- * 국가 식물 DB(국립수목원 등) 연결 정보. 사용자가 입력하지 않는다 —
- * 동기화 기능이 채우고, 앱은 읽기만 한다.
- *
- *   plant_api_id         외부 DB 의 식물 식별자
- *   plant_api_source     출처 (예: "국립수목원")
+ * 외부 DB 연결 정보. 사용자가 입력하지 않는다 — Provider 가 채우고 앱은 읽는다.
+ *   plant_api_source     출처 코드 (kna · nire · gbif)
+ *   plant_api_id         출처 식별자
  *   plant_api_synced_at  마지막 동기화 시각 (ISO)
- *
- * 필드명은 외부 DB 계약을 그대로 따른다(snake_case). 표시 항목과 분리해 두는
- * 이유는 hasMetadata() 가 "보여줄 값이 있는가" 만 판단하게 하기 위해서다 —
- * 연결 정보만 있고 내용이 비면 배지 대신 "정보 준비중" 을 보여준다.
  */
-export const API_FIELDS = ["plant_api_id", "plant_api_source", "plant_api_synced_at"];
+export const API_FIELDS = ["plant_api_source", "plant_api_id", "plant_api_synced_at"];
+
+/** 카드·모달에 표시되는 항목 전체. */
+export const DISPLAY_FIELDS = [
+  ...METADATA_TEXT_FIELDS, ...METADATA_MONTH_FIELDS, ...METADATA_BOOL_FIELDS
+];
 
 /** metadata 가 담는 필드 전체. */
 export const METADATA_FIELDS = [...DISPLAY_FIELDS, ...API_FIELDS];
@@ -195,47 +212,46 @@ export const METADATA_FIELDS = [...DISPLAY_FIELDS, ...API_FIELDS];
 /** 모든 필드가 빈 값인 metadata — metadata 가 없는 기존 Species 의 기본값. */
 export function emptyMetadata() {
   const out = {};
-  for (const f of METADATA_FIELDS) out[f] = "";
+  for (const f of METADATA_TEXT_FIELDS) out[f] = "";
+  for (const f of METADATA_MONTH_FIELDS) out[f] = [];
+  for (const f of METADATA_BOOL_FIELDS) out[f] = "";
+  for (const f of API_FIELDS) out[f] = "";
   return out;
 }
 
+/** 1~12 정수만 남긴 월 배열. */
+export function normalizeMonths(v) {
+  const list = Array.isArray(v) ? v : (v == null || v === "" ? [] : [v]);
+  return list.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 12);
+}
+
+/** true · false · "" 로 정규화. 문자열 "상록"/"낙엽" 도 받아 준다(구버전 데이터). */
+export function normalizeTriBool(v) {
+  if (v === true || v === "true" || v === "상록") return true;
+  if (v === false || v === "false" || v === "낙엽") return false;
+  return "";
+}
+
 /**
- * 임의 입력을 metadata 모양으로 정규화한다. 알려진 필드만 남기고 문자열로
- * 맞춘다 — 폼이나 외부 JSON 에서 들어온 값을 그대로 믿지 않는다.
- * @param {object|null|undefined} raw
+ * 임의 입력을 metadata 모양으로 정규화한다. 알려진 필드만 남긴다 —
+ * 폼이나 외부 응답에서 들어온 값을 그대로 믿지 않는다.
  */
 export function normalizeMetadata(raw) {
   const out = emptyMetadata();
   if (!raw || typeof raw !== "object") return out;
-  for (const f of METADATA_FIELDS) out[f] = String(raw[f] ?? "").trim();
+  for (const f of METADATA_TEXT_FIELDS) out[f] = String(raw[f] ?? "").trim();
+  for (const f of API_FIELDS)           out[f] = String(raw[f] ?? "").trim();
+  for (const f of METADATA_MONTH_FIELDS) out[f] = normalizeMonths(raw[f]);
+  for (const f of METADATA_BOOL_FIELDS)  out[f] = normalizeTriBool(raw[f]);
   return out;
 }
 
 /** 카드에 **보여줄** 값이 하나라도 있는가. 연결 정보(API_FIELDS)는 세지 않는다. */
 export function hasMetadata(metadata) {
-  return DISPLAY_FIELDS.some(f => String(metadata?.[f] || "").trim());
-}
-
-/** 국가 식물 DB 에 연결돼 있는가 — plant_api_id 가 있으면 연결된 것으로 본다. */
-export function isApiLinked(metadata) {
-  return Boolean(String(metadata?.plant_api_id || "").trim());
-}
-
-/**
- * "정보 준비중" 상태인가 — 외부 DB 에 연결은 됐지만 아직 내려받은 내용이 없다.
- * 연결도 내용도 없는 Species 는 준비중이 아니라 **그냥 정보가 없는 것**이므로
- * 카드에 아무것도 그리지 않는다(Ticket #001 계약 유지).
- */
-export function isInfoPending(metadata) {
-  return isApiLinked(metadata) && !hasMetadata(metadata);
-}
-
-/**
- * 연결된 도감 정보는 **읽기 전용**이다. 외부 DB 가 정본이므로 앱에서 고치면
- * 다음 동기화에 덮이고, 그 사이 두 값이 어긋난다.
- */
-export function isMetadataReadOnly(metadata) {
-  return isApiLinked(metadata);
+  const m = metadata || {};
+  return METADATA_TEXT_FIELDS.some(f => String(m[f] || "").trim())
+      || METADATA_MONTH_FIELDS.some(f => normalizeMonths(m[f]).length)
+      || METADATA_BOOL_FIELDS.some(f => normalizeTriBool(m[f]) !== "");
 }
 
 /**
@@ -246,6 +262,42 @@ export function isMetadataReadOnly(metadata) {
  */
 export function withMetadata(sp) {
   return { ...sp, metadata: normalizeMetadata(sp?.metadata) };
+}
+
+/** 외부 DB 에 연결돼 있는가 — 출처 코드가 있으면 연결된 것으로 본다. */
+export function isApiLinked(metadata) {
+  return Boolean(String(metadata?.plant_api_source || "").trim());
+}
+
+/**
+ * 연결된 도감 정보는 **읽기 전용**이다. 외부 DB 가 정본이므로 앱에서 고치면
+ * 다음 동기화에 덮이고, 그 사이 두 값이 어긋난다.
+ */
+export function isMetadataReadOnly(metadata) {
+  return isApiLinked(metadata);
+}
+
+/** 출처 코드 → 사람이 읽는 이름. 모르는 코드는 코드 그대로 보여준다. */
+export const PROVIDER_LABELS = {
+  kna:  "국립수목원",
+  nire: "국립생물자원관",
+  gbif: "GBIF"
+};
+
+/**
+ * 도감 정보의 출처를 한 줄로 알려준다 — "정보 준비중" 보다 출처가 분명하다.
+ *
+ *   { kind: "api",  label: "국립수목원" }   외부 DB 에서 받아온 값
+ *   { kind: "user", label: "사용자 추가" }  사람이 직접 입력한 값
+ *   { kind: "none", label: "미연동" }       아직 아무 값도 없음
+ */
+export function metadataSource(metadata) {
+  if (isApiLinked(metadata)) {
+    const code = String(metadata.plant_api_source).trim();
+    return { kind: "api", code, label: PROVIDER_LABELS[code] || code };
+  }
+  if (hasMetadata(metadata)) return { kind: "user", code: "", label: "사용자 추가" };
+  return { kind: "none", code: "", label: "미연동" };
 }
 
 /** 선택지 값 → 아이콘. 목록에 없으면 빈 문자열. */

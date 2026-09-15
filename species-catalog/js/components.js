@@ -19,8 +19,9 @@ import {
   hasMetadata,
   iconFor,
   renderBloomMonths,
-  isApiLinked,
-  isInfoPending,
+  metadataSource,
+  normalizeMonths,
+  normalizeTriBool,
   SUNLIGHT_OPTIONS,
   INDOOR_OUTDOOR_OPTIONS,
   NATIVE_STATUS_OPTIONS,
@@ -121,52 +122,68 @@ function fillGuideBlock(box, metadata) {
   const desc = box.querySelector(".guide-desc");
   badges.innerHTML = "";
 
-  // 외부 DB 에 연결됐지만 아직 내려받은 내용이 없는 상태 — 빈 카드 대신
-  // 준비중임을 알린다. 연결도 내용도 없으면 아래에서 영역을 감춘다.
-  if (isInfoPending(meta)) {
-    const pending = document.createElement("span");
-    pending.className = "guide-badge";
-    pending.dataset.kind = "pending";
-    pending.textContent = "⏳ 정보 준비중";
-    pending.title = `${meta.plant_api_source || "국가 식물 DB"} 연동 대기`;
-    badges.appendChild(pending);
-    desc.hidden = true;
-    box.hidden = false;
-    return;
-  }
+  const src = metadataSource(meta);
+  // 값이 하나도 없는 Species 는 영역을 감춘다 — 모든 카드에 "미연동" 배지를
+  // 달면 기존 80종의 레이아웃이 전부 바뀐다 (Ticket #001 "빈 영역 금지").
+  // 출처는 모달에서 항상 볼 수 있다.
+  if (src.kind === "none") { box.hidden = true; return; }
 
-  if (!hasMetadata(meta)) { box.hidden = true; return; }
-
-  const add = (options, value, kind) => {
-    if (!value) return;
+  const add = (text, kind, title) => {
+    if (!text) return;
     const el = document.createElement("span");
     el.className = "guide-badge";
     el.dataset.kind = kind;
-    const icon = iconFor(options, value);
-    el.textContent = icon ? `${icon} ${value}` : value;
+    el.textContent = text;
+    if (title) el.title = title;
     badges.appendChild(el);
   };
-  add(SUNLIGHT_OPTIONS,       meta.sunlight,      "sunlight");
-  add(INDOOR_OUTDOOR_OPTIONS, meta.indoorOutdoor, "indoorOutdoor");
-  add(NATIVE_STATUS_OPTIONS,  meta.nativeStatus,  "nativeStatus");
-  add(EVERGREEN_OPTIONS,      meta.evergreen,     "evergreen");
 
-  // 외부 DB 가 정본인 Species 는 출처를 밝힌다 (읽기 전용 표시).
-  if (isApiLinked(meta)) {
-    const src = document.createElement("span");
-    src.className = "guide-badge";
-    src.dataset.kind = "source";
-    src.textContent = `🔗 ${meta.plant_api_source || "국가 식물 DB"}`;
-    src.title = meta.plant_api_synced_at
-      ? `동기화 ${meta.plant_api_synced_at.slice(0, 10)} · 읽기 전용`
-      : "읽기 전용";
-    badges.appendChild(src);
-  }
+  const withIcon = (options, value) => {
+    if (!value) return "";
+    const icon = iconFor(options, value);
+    return icon ? `${icon} ${value}` : value;
+  };
+
+  add(withIcon(SUNLIGHT_OPTIONS,       meta.sunlight),      "sunlight");
+  add(withIcon(INDOOR_OUTDOOR_OPTIONS, meta.indoorOutdoor), "indoorOutdoor");
+  add(withIcon(NATIVE_STATUS_OPTIONS,  meta.nativeStatus),  "nativeStatus");
+
+  const ever = normalizeTriBool(meta.evergreen);
+  if (ever === true)  add("🌿 상록", "evergreen");
+  if (ever === false) add("🍂 낙엽", "evergreen");
+
+  if (meta.soil)       add(`💧 ${meta.soil}`, "soil");
+  if (meta.plant_type) add(meta.plant_type, "plantType");
+
+  // 출처 — 값이 어디서 왔는지 항상 밝힌다.
+  add(src.kind === "api" ? `🔗 ${src.label}` : `✎ ${src.label}`, "source",
+      src.kind === "api" && meta.plant_api_synced_at
+        ? `동기화 ${String(meta.plant_api_synced_at).slice(0, 10)} · 읽기 전용`
+        : src.kind === "api" ? "읽기 전용" : "사람이 입력한 값");
 
   if (meta.description) { desc.textContent = meta.description; desc.hidden = false; }
   else desc.hidden = true;
 
+  fillGuidePhotos(box.querySelector(".guide-photos"), meta);
+
   box.hidden = false;
+}
+
+/** 대표 사진 — 없으면 영역을 감춘다. */
+function fillGuidePhotos(strip, meta) {
+  if (!strip) return;
+  const urls = [meta.thumbnail_url, meta.image_url].filter(Boolean);
+  strip.innerHTML = "";
+  if (!urls.length) { strip.hidden = true; return; }
+  const img = document.createElement("img");
+  img.src = urls[0];
+  img.alt = "";
+  img.loading = "lazy";
+  img.className = "guide-photo";
+  // 외부 이미지가 깨져도 카드가 무너지지 않게 한다.
+  img.addEventListener("error", () => { strip.hidden = true; });
+  strip.appendChild(img);
+  strip.hidden = false;
 }
 
 function fillFreqStrip(container, counts) {
