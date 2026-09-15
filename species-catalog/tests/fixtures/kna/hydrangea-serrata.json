@@ -1,0 +1,29 @@
+{
+  "resultCode": "00",
+  "resultMsg": "NORMAL SERVICE",
+  "items": [
+    {
+      "plantId": "KNA00000012345",
+      "koreanName": "산수국",
+      "scientificName": "Hydrangea serrata (Thunb.) Ser.",
+      "familyName": "Hydrangeaceae",
+      "genusName": "Hydrangea",
+      "floweringPeriod": "6~8월",
+      "fruitingPeriod": "9~10월",
+      "habitat": "반그늘",
+      "plantType": "낙엽활엽관목",
+      "nativeStatus": "자생",
+      "description": "우리나라 산지에서 자라는 낙엽성 관목.",
+      "images": [
+        {
+          "imageUrl": "https://example.kna.go.kr/images/hydrangea-serrata-flower.jpg",
+          "caption": "꽃"
+        },
+        {
+          "imageUrl": "https://example.kna.go.kr/images/hydrangea-serrata-leaf.jpg",
+          "caption": "잎"
+        }
+      ]
+    }
+  ]
+}

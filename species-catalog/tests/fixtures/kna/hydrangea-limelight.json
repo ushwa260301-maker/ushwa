@@ -1,0 +1,20 @@
+{
+  "resultCode": "00",
+  "resultMsg": "NORMAL SERVICE",
+  "items": [
+    {
+      "plantId": "KNA00000999999",
+      "koreanName": "라임라이트수국",
+      "scientificName": "Hydrangea paniculata 'Limelight'",
+      "familyName": "Hydrangeaceae",
+      "genusName": "Hydrangea",
+      "floweringPeriod": "7~9월",
+      "fruitingPeriod": null,
+      "habitat": "양지",
+      "plantType": "낙엽활엽관목",
+      "nativeStatus": "원예품종",
+      "description": "원예용으로 널리 재배되는 수국 품종.",
+      "images": []
+    }
+  ]
+}

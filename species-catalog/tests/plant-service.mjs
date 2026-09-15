@@ -129,13 +129,28 @@ check("빈 검색어", await search("   ", { allowRemote: true, invoke: counting
 // ============================================================
 section("4. 매핑 미설정 — 추측하지 않는다");
 // ============================================================
-check("kna 매핑 아직 비어 있음", kna.isReady(), false);
-const knaRes = await kna.search("산수국", { invoke: countingInvoke });
-check("notConfigured", knaRes.notConfigured, true);
-check("후보를 만들지 않는다", knaRes.candidates, undefined);
+/**
+ * T11-3.2 에서 kna 매핑이 채워졌다. "아직 비어 있다" 를 단언하던 자리는
+ * 그 시점의 상태였을 뿐 계약이 아니다 — 계약은 **매핑이 없는 Provider 는
+ * 조회하지 않는다** 쪽이고, 그건 아직 비어 있는 nire·gbif 로 확인한다.
+ * kna 자체의 매핑 검증은 tests/providers/knaProvider.mjs 가 맡는다.
+ */
+check("kna 매핑이 채워졌다", kna.isReady(), true);
 
-const realAll = await search("산수국", { allowRemote: true, invoke: countingInvoke });
-check("실 Provider 3종 전부 미설정", realAll.notConfigured, true);
+const unmapped = PROVIDERS.filter(p => !p.isReady());
+check("nire·gbif 는 아직 비어 있다", unmapped.map(p => p.SOURCE), ["nire", "gbif"]);
+for (const p of unmapped) {
+  const res = await p.search("산수국", { invoke: countingInvoke });
+  check(`${p.SOURCE} — notConfigured`, res.notConfigured, true);
+  check(`${p.SOURCE} — 후보를 만들지 않는다`, res.candidates, undefined);
+}
+check("매핑 없는 Provider 는 Edge Function 을 부르지 않는다", invoked, 0);
+
+// kna 는 이제 응답하므로, 캐스케이드는 kna 에서 멈춘다.
+const realAll = await search("산수국", {
+  allowRemote: true, invoke: async () => ({ records: [], version: "" })
+});
+check("전부 미설정은 아니다", realAll.notConfigured, undefined);
 check("실 Provider 는 3종", PROVIDERS.length, 3);
 check("출처 라벨", providerLabel("kna"), "국립수목원");
 check("모르는 코드", providerLabel("zzz"), "zzz");

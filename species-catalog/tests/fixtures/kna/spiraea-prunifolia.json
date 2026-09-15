@@ -1,0 +1,25 @@
+{
+  "resultCode": "00",
+  "resultMsg": "NORMAL SERVICE",
+  "items": [
+    {
+      "plantId": "KNA00000054321",
+      "koreanName": "설유화",
+      "scientificName": "Spiraea prunifolia Siebold & Zucc.",
+      "familyName": "Rosaceae",
+      "genusName": "Spiraea",
+      "floweringPeriod": "4월경",
+      "fruitingPeriod": "6월",
+      "habitat": "양지",
+      "plantType": "낙엽활엽관목",
+      "nativeStatus": "자생",
+      "description": "흰 꽃이 풍성하게 피는 관목.",
+      "images": [
+        {
+          "imageUrl": "https://example.kna.go.kr/images/spiraea-prunifolia-flower.jpg",
+          "caption": "꽃"
+        }
+      ]
+    }
+  ]
+}
