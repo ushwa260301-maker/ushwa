@@ -29,7 +29,35 @@ import { initDebugPanel } from "./debugPanel.js";
 import { initAuthGate } from "./auth.js";
 import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSaveSpecies, mirrorDeleteSpecies, mirrorSaveAttachment, mirrorSaveOcrCorrection, mirrorSaveSupplierAlias, fetchAll } from "./cloudStore.js";
 import { addPending, removePending, listPending, hasPending, setLastSync, replayAction } from "./syncManager.js";
+import { isCloudConfigured } from "./supabaseClient.js";
 import { nextId } from "./utils.js";
+
+// ============================================================
+// 신규 ID 발급 가드 (S1-P0-1 · P0-2)
+// ============================================================
+
+/**
+ * LOCAL_CACHE 상태에서 새 번호를 발급하려 할 때 사용자에게 보일 문구.
+ * 저장을 조용히 건너뛰지 않는다 — 문제를 숨기지 않는 것이 이 가드의 목적이다.
+ */
+const NEW_ID_BLOCKED_MSG =
+  "Cloud 동기화가 끝나지 않아 새 번호를 발급할 수 없습니다 — 동기화 후 다시 시도해 주세요";
+
+/**
+ * 새 `inv-` / `sp-` 번호를 지금 발급해도 안전한가.
+ *
+ * `nextId()` 는 로컬 배열의 최대 번호 + 1 로 채번한다(utils.js). 로컬이
+ * Cloud 보다 뒤처진 LOCAL_CACHE 상태에서 채번하면 이미 쓰인 번호가 다시
+ * 나온다 — inv-066~068 · sp-060~063 사고의 기전이다.
+ *
+ * Cloud 미설정(LocalStorage 단독 모드)에서는 비교 대상이 없으므로 기존
+ * 동작을 그대로 둔다. 그렇게 하지 않으면 로컬 전용 사용자는 아무것도
+ * 등록할 수 없게 된다.
+ */
+function canIssueNewId() {
+  if (!isCloudConfigured()) return true;
+  return state.dataSource === "CLOUD";
+}
 
 // ============================================================
 // Business-logic mutation helpers
@@ -63,6 +91,8 @@ async function saveSpecies(payload, id) {
       toast("수정되었습니다");
     }
   } else {
+    // 신규 수종 — 새 sp- 번호가 필요하다. LOCAL_CACHE 면 발급을 막는다.
+    if (!canIssueNewId()) { toast(NEW_ID_BLOCKED_MSG); return; }
     speciesId = nextId("sp", state.data.species);
     state.data.species.push({ id: speciesId, ...meta });
     toast("추가되었습니다");
@@ -427,6 +457,9 @@ async function saveInvoice(header, items, extras = {}) {
     }
 
     // (c) create new — "possible" without a user pick and "new" both land here
+    // 새 sp- 번호가 필요한 지점이다. LOCAL_CACHE 면 여기서 멈춘다 (S1-P0-2).
+    // 검사를 push 앞에 두어, 중단돼도 state.data.species 에 흔적이 남지 않는다.
+    if (!canIssueNewId()) throw new Error(NEW_ID_BLOCKED_MSG);
     const created = {
       id: nextSp(),
       name: trimmed,
@@ -445,6 +478,11 @@ async function saveInvoice(header, items, extras = {}) {
   });
 
   // 2. Create the Invoice header.
+  // 새 inv- 번호를 발급하는 유일한 지점이다. LOCAL_CACHE 면 로컬 목록이
+  // Cloud 보다 작을 수 있어 이미 쓰인 번호가 나온다 (S1-P0-1).
+  // 기존 거래 수정은 updateInvoice 가 담당하며 번호를 만들지 않으므로
+  // 이 검사와 무관하다 — LOCAL_CACHE 에서도 계속 허용된다.
+  if (!canIssueNewId()) throw new Error(NEW_ID_BLOCKED_MSG);
   const invoice = {
     id: nextId("inv", state.data.invoices),
     invoiceDate: header.invoiceDate,
@@ -552,10 +590,28 @@ async function saveInvoice(header, items, extras = {}) {
  * @param {string} invoiceId
  * @param {{invoiceDate,invoiceNumber,supplier,supplierPhone,supplierAddress}} header
  * @param {Array<{id?:string, speciesId?:string, speciesName:string, spec:string, unit:string, quantity:number, unitPrice:number, amount:number}>} items
+ * @returns {Promise<boolean>} 저장했으면 true. 거부하면 false — 거래를 못
+ *   찾았거나, LOCAL_CACHE 라 신규 수종을 만들 수 없는 경우다. 거부 사유는
+ *   여기서 toast 로 알리므로, 호출자는 성공 토스트만 억제하면 된다.
  */
 async function updateInvoice(invoiceId, header, items) {
   const inv = state.data.invoices.find(i => i.id === invoiceId);
-  if (!inv) { toast("거래를 찾을 수 없습니다"); return; }
+  if (!inv) { toast("거래를 찾을 수 없습니다"); return false; }
+
+  // 기존 거래 수정 자체는 LOCAL_CACHE 에서도 허용한다 — 번호를 만들지 않기
+  // 때문이다. 다만 이 함수는 매칭되지 않는 품목명을 만나면 **신규 species 를
+  // 자동 생성**한다(아래 (c) 분기). 그 경로만 막는다.
+  //
+  // 검사는 반드시 state 를 건드리기 전에 한다. 아래 2번에서 items 를 먼저
+  // 지우므로, 루프 도중에 중단하면 품목이 사라진 채로 남는다.
+  if (!canIssueNewId()) {
+    const needsNewSpecies = (items || []).some(raw => {
+      if (raw.speciesId && state.data.species.some(s => s.id === raw.speciesId)) return false;
+      const verdict = matchSpecies((raw.speciesName || "").trim(), state.data.species);
+      return !(verdict.status === "match" && verdict.species);
+    });
+    if (needsNewSpecies) { toast(NEW_ID_BLOCKED_MSG); return false; }
+  }
 
   // 1. Patch header
   inv.invoiceDate     = header.invoiceDate;
@@ -635,6 +691,7 @@ async function updateInvoice(invoiceId, header, items) {
     addPending("invoice", invoiceId);
     reportSync(await mirrorUpdateInvoice(inv, itemRows, refSpecies), "invoice", invoiceId, "거래 수정");
   }
+  return true;
 }
 
 /**
@@ -895,6 +952,7 @@ async function loadCloudFirst(localData) {
     if (hasPending()) {
       await flushPendingWrites(localData);
       if (hasPending()) {
+        state.dataSource = "LOCAL_CACHE";
         console.info("[app] data source: LOCAL_CACHE (pending 보호 — 미동기 변경 유지)");
         return localData;
       }
@@ -911,6 +969,7 @@ async function loadCloudFirst(localData) {
       };
       storage.save(merged);                        // 오프라인 대비 캐시 갱신
       setLastSync();
+      state.dataSource = "CLOUD";
       console.info("[app] data source: CLOUD");
       // 공급처 매칭용 런타임 데이터. storage.save 는 4개 키만 쓰므로
       // LocalStorage 스키마에는 들어가지 않는다 — 캐시 폴백 시에는 없다.
@@ -919,6 +978,7 @@ async function loadCloudFirst(localData) {
   } catch (err) {
     console.warn("[app] cloud read failed:", err?.message || err);
   }
+  state.dataSource = "LOCAL_CACHE";
   console.info("[app] data source: LOCAL_CACHE");
   return localData;
 }

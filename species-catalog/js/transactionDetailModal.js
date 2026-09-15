@@ -86,7 +86,9 @@ function wireEvents() {
 
   els.editBtn.addEventListener("click", enterEditMode);
   els.cancelBtn.addEventListener("click", cancelEdit);
-  els.saveBtn.addEventListener("click", commitSave);
+  els.saveBtn.addEventListener("click", () => { commitSave().catch(err => {
+    ctx.toast && ctx.toast("저장 실패: " + (err?.message || err));
+  }); });
   els.deleteBtn.addEventListener("click", confirmDelete);
   els.imageBtn.addEventListener("click", () => {
     if (!session.invoiceId) return;
@@ -361,7 +363,7 @@ function updateDirty() {
 // Save + delete
 // ============================================================
 
-function commitSave() {
+async function commitSave() {
   const header = readHeaderInputs();
 
   // Validation
@@ -377,16 +379,30 @@ function commitSave() {
 
   // Hand off to app.js — it rewrites Invoice + InvoiceItem records and reruns
   // enrichAllSpecies via ui.render, so Species stats and cards refresh.
-  ctx.onSave(session.invoiceId, header, session.items.map(it => ({
-    id:         it.id,
-    speciesId:  it.speciesId,
-    speciesName: (it.speciesName || "").trim(),
-    spec:       (it.spec || "").trim(),
-    unit:       (it.unit || "").trim() || "주",
-    quantity:   Number(it.quantity)  || 0,
-    unitPrice:  Number(it.unitPrice) || 0,
-    amount:     Number(it.amount)    || (Number(it.quantity) * Number(it.unitPrice)) || 0
-  })));
+  //
+  // **결과를 기다린다.** onSave 는 저장을 거부할 수 있다 (거래를 못 찾음 ·
+  // LOCAL_CACHE 라 신규 수종을 만들 수 없음). 예전에는 await 없이 곧바로
+  // "저장 완료" 를 띄워서, 거부됐는데도 저장된 것처럼 보였다.
+  let saved = false;
+  try {
+    saved = await ctx.onSave(session.invoiceId, header, session.items.map(it => ({
+      id:         it.id,
+      speciesId:  it.speciesId,
+      speciesName: (it.speciesName || "").trim(),
+      spec:       (it.spec || "").trim(),
+      unit:       (it.unit || "").trim() || "주",
+      quantity:   Number(it.quantity)  || 0,
+      unitPrice:  Number(it.unitPrice) || 0,
+      amount:     Number(it.amount)    || (Number(it.quantity) * Number(it.unitPrice)) || 0
+    })));
+  } catch (err) {
+    ctx.toast("저장 실패: " + (err?.message || err));
+    return;
+  }
+
+  // 거부됐으면 편집 상태를 그대로 둔다 — 사용자가 고쳐서 다시 시도할 수 있게.
+  // 거부 사유는 onSave 쪽에서 이미 toast 로 알렸다.
+  if (!saved) return;
 
   // Reload from the freshly-saved state so we show canonical numbers,
   // then flip back to view mode.
