@@ -86,7 +86,7 @@ check("image_url 은 photos 에서 파생", m.image_url, "https://x/1.jpg");
 check("thumbnail_url 도 파생", m.thumbnail_url, "https://x/1.jpg");
 check("광 조건 enum 배열", m.sunlight, ["partial_shade"]);
 check("자생 enum", m.nativeStatus, "native");
-check("설명 구조", m.description, { summary: "산수국", source: "국립수목원" });
+check("설명 구조", m.description, { summary: "산수국", source: "국립수목원", note: "" });
 check("출처 코드", m.plant_api_source, "kna");
 check("출처 id", m.plant_api_id, "KNA00012345");
 check("hasMetadata = true", hasMetadata(m), true);
@@ -184,14 +184,18 @@ check("모르는 값은 빈 문자열", normalizeNativeStatus("???"), "");
 check("자생 표기", labelForEnum(NATIVE_STATUS_LABELS, "naturalized"), "🌾 귀화종");
 
 check("설명 문자열 → 구조", normalizeDescription("설명입니다", "국립수목원"),
-      { summary: "설명입니다", source: "국립수목원" });
+      { summary: "설명입니다", source: "국립수목원", note: "" });
 check("HTML 은 저장하지 않는다",
       normalizeDescription("<p>산지 <b>계곡</b>에 자란다</p>").summary, "산지 계곡에 자란다");
 check("br 은 공백으로", normalizeDescription("가<br>나").summary, "가 나");
 check("엔티티 복원", normalizeDescription("가&amp;나").summary, "가&나");
-check("빈 설명은 출처도 비움", normalizeDescription("", "국립수목원"), { summary: "", source: "" });
+check("빈 설명은 출처도 비움", normalizeDescription("", "국립수목원"),
+      { summary: "", source: "", note: "" });
 check("구조 그대로 받기", normalizeDescription({ summary: "가", source: "GBIF" }),
-      { summary: "가", source: "GBIF" });
+      { summary: "가", source: "GBIF", note: "" });
+// note 는 사용자 메모다 — 출처가 주지 않고, 동기화가 지우지 않는다.
+check("사용자 메모 보존", normalizeDescription({ summary: "가", note: "현장 메모" }).note, "현장 메모");
+check("메모도 HTML 은 벗긴다", normalizeDescription({ note: "<b>메모</b>" }).note, "메모");
 
 check("사진 문자열 배열도 받는다",
       normalizePhotos(["https://x/a.jpg"]), [{ url: "https://x/a.jpg", type: "", caption: "", source: "" }]);

@@ -32,6 +32,7 @@ import {
   normalizePhotos, normalizeMonths, normalizeEvergreen, normalizeProvider
 } from "./plantNormalizer.js";
 import { CURRENT_SCHEMA_VERSION } from "./metadataMigration.js";
+import { mergeMetadata } from "./metadataMerge.js";
 
 /** 사진은 최대 5장까지만 보관한다. */
 export const MAX_PHOTOS = 5;
@@ -135,10 +136,10 @@ export function primaryPhotoUrl(photos) {
  * metadata 는 외부 DB 스냅샷이므로 받은 값을 옮기되, 여기서 enum · 월 배열 ·
  * 설명 구조로 바꾼다. 출처가 주지 않은 필드는 빈 값으로 남는다 — 채우지 않는다.
  *
- * ⚠ `soil` · `indoorOutdoor` 는 PlantRecord v1.0 계약에 없다. 출처가 주지
- *   않는 값이라 여기서는 항상 빈 값이고, 사람이 입력한 값이다. 그래서 이
- *   함수의 결과로 기존 metadata 를 **통째로 덮으면 사용자 입력이 지워진다** —
- *   동기화 경로(T11-4)는 덮어쓰기가 아니라 병합이어야 한다. [확인 필요]
+ * ⚠ 이 결과는 **출처가 아는 것만 담은 조각**이다. `soil` · `indoorOutdoor` ·
+ *   `description.note` 는 PlantRecord v1.0 계약에 없어 항상 빈 값으로 나온다.
+ *   그래서 이것으로 기존 metadata 를 덮으면 사용자 입력이 지워진다 —
+ *   기존 Species 에 반영할 때는 반드시 `toSpeciesPatch()` 를 쓴다(병합).
  *
  * @param {object} record
  * @param {string} [syncedAt]  ISO 시각. 테스트에서 고정하려고 인자로 뺐다.
@@ -189,16 +190,36 @@ function providerLabelFor(code) {
 }
 
 /**
- * PlantRecord → Species 본체에 덮을 값 + metadata.
- * **빈 필드는 아예 넣지 않는다** — 기존 학명·분류·개화월을 빈 값으로 지우지
- * 않기 위해서다.
+ * 기존 Species 위에 출처 결과를 얹을 patch 를 만든다. **Merge Patch 다.**
+ *
+ * metadata 는 교체하지 않고 병합한다 — 출처가 모르는 필드(토양 · 실내외 ·
+ * 사용자 메모 · 사용자가 올린 사진)를 동기화가 지우지 않게 하기 위해서다.
+ * 규칙은 metadataMerge 가 갖는다.
+ *
+ * Species 본체에서
+ *   latin        출처가 정본이다 — 학명은 객관적 사실이고 국가 DB 가 맞다.
+ *   bloomMonths  출처가 정본이다 — 개화월의 정본은 국가 식물 DB 라고 정했다.
+ *   category     **사람이 정한 값을 덮지 않는다.** 화면 분류·필터를 움직이는
+ *                값이라, 이미 정해 둔 분류가 있으면 그대로 두고 비어 있을
+ *                때만 채운다. [확인 필요] 출처 값으로 항상 덮기를 원하면
+ *                아래 조건 한 줄만 바꾸면 된다.
+ *
+ * @param {object|null} existing  기존 Species 레코드(또는 그 metadata). 없으면 null
+ * @param {object} incoming       Provider 가 준 PlantRecord
+ * @param {string} [syncedAt]     ISO 시각. 테스트에서 고정하려고 인자로 뺐다.
  */
-export function toSpeciesPatch(record, syncedAt = new Date().toISOString()) {
-  const r = toPlantRecord(record);
-  const metadata = toSpeciesMetadata(r, syncedAt);
+export function toSpeciesPatch(existing, incoming, syncedAt = new Date().toISOString()) {
+  const prev = existing && typeof existing === "object" ? existing : {};
+  // Species 를 받아도, metadata 만 받아도 동작한다.
+  const prevMeta = "metadata" in prev ? prev.metadata : prev;
+
+  const metadata = mergeMetadata(prevMeta, toSpeciesMetadata(incoming, syncedAt), MAX_PHOTOS);
   const patch = { metadata };
+
   if (metadata.scientific_name) patch.latin = metadata.scientific_name;
-  if (metadata.plant_type)      patch.category = metadata.plant_type;
   if (metadata.flowering_months.length) patch.bloomMonths = [...metadata.flowering_months];
+  if (metadata.plant_type && !String(prev.category || "").trim()) {
+    patch.category = metadata.plant_type;
+  }
   return patch;
 }

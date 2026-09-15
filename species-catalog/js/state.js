@@ -84,7 +84,9 @@ export const formState = {
    */
   bloomMonths: [],
   /** 같은 이유로 보존만 하는 외부 DB 연결 정보 (plant_api_*). */
-  metaApi: {}
+  metaApi: {},
+  /** 입력란이 없는 사용자 메모 (description.note) — 보관했다 그대로 돌려준다. */
+  descriptionNote: ""
 };
 
 /** Restore filter state to defaults. Called by the Reset button. */

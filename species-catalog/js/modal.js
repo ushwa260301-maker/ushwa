@@ -147,6 +147,9 @@ export function openModal(id) {
   const everVal = meta.evergreen === true ? "상록" : meta.evergreen === false ? "낙엽" : "";
   fillSelect(els.fEvergreen,     EVERGREEN_OPTIONS,      everVal);
   els.fDescription.value = meta.description?.summary || "";
+  // 사용자 메모는 이 화면에 입력란이 없다. 보관했다가 저장 시 그대로 되돌려준다 —
+  // 그러지 않으면 수종을 한 번 편집할 때마다 메모가 지워진다.
+  formState.descriptionNote = meta.description?.note || "";
 
   // 외부 DB 에 연결된 Species 는 도감 정보를 앱에서 고치지 않는다 —
   // 정본이 외부에 있어 수정해도 다음 동기화에 덮인다.
@@ -407,7 +410,8 @@ function collectForm() {
       nativeStatus:  els.fNativeStatus.value,
       evergreen:     els.fEvergreen.value || "UNKNOWN",
       // 설명은 { summary, source } 구조. 사람이 고친 값이므로 출처는 비운다.
-      description:   { summary: els.fDescription.value.trim(), source: "" },
+      description:   { summary: els.fDescription.value.trim(), source: "",
+                       note: formState.descriptionNote || "" },
       // 외부 DB 연결 정보는 화면에서 만들지도 고치지도 않는다 — 그대로 보존한다.
       ...(formState.metaApi || {}),
       // 사람이 저장했으면 사용자 값이다. 단 연동된 레코드는 읽기 전용이라

@@ -20,6 +20,8 @@ const { normalizeSunlight, normalizeNativeStatus, normalizeDescription, normaliz
         normalizeProvider, normalizeMonths, normalizeEvergreen, stripHtml }
   = await import("../services/plantNormalizer.js");
 const { CURRENT_SCHEMA_VERSION } = await import("../services/metadataMigration.js");
+const { mergePhotos, mergeMetadata, USER_OWNED_FIELDS }
+  = await import("../services/metadataMerge.js");
 const NORMALIZER = await import("../services/plantNormalizer.js");
 const kna = await import("../services/plantProviders/knaProvider.js");
 
@@ -222,14 +224,76 @@ const noSrc = toSpeciesMetadata({ koreanName: "이름만" }, AT);
 check("출처 없으면 코드 비움", noSrc.plant_api_source, "");
 check("출처 없으면 시각 비움", noSrc.plant_api_synced_at, "");
 
-const patch = toSpeciesPatch(REC, AT);
+const patch = toSpeciesPatch(null, REC, AT);
 check("학명 → species.latin", patch.latin, "Hydrangea serrata");
-check("분류 → species.category", patch.category, "관목");
+check("빈 분류는 출처가 채운다", patch.category, "관목");
 check("개화월 정렬", patch.bloomMonths, [6, 7, 8]);
-const thin = toSpeciesPatch({ koreanName: "이름만" }, AT);
+// 사람이 정한 분류는 덮지 않는다 — 화면 분류·필터를 움직이는 값이다.
+check("기존 분류는 유지", "category" in toSpeciesPatch({ category: "교목" }, REC, AT), false);
+const thin = toSpeciesPatch(null, { koreanName: "이름만" }, AT);
 check("빈 학명은 patch 에 없음", "latin" in thin, false);
 check("빈 개화월은 patch 에 없음", "bloomMonths" in thin, false);
 check("metadata 는 항상 포함", typeof thin.metadata, "object");
+
+// ============================================================
+section("6-1. Merge Patch — 동기화가 사용자 데이터를 지우지 않는다");
+// ============================================================
+/**
+ * 국립수목원은 토양·실내외·현장 메모를 모르고, 사용자가 올린 사진도 모른다.
+ * metadata 를 통째로 갈아 끼우면 그 전부가 조용히 사라진다 — 에러도 없고
+ * 되돌릴 방법도 없다. 그래서 동기화는 교체가 아니라 병합이다.
+ */
+const EXISTING = toSpeciesMetadata({}, AT);
+EXISTING.soil = "배수가 좋은 토양";
+EXISTING.indoorOutdoor = "INDOOR";
+EXISTING.description = { summary: "예전 설명", source: "사용자", note: "3년생부터 꽃이 잘 핀다" };
+EXISTING.photos = [{ url: "https://x/my.jpg", type: "flower", caption: "", source: "user" }];
+EXISTING.sync_status = "USER_EDITED";
+EXISTING.plant_type = "관목";
+
+const merged = toSpeciesPatch({ metadata: EXISTING }, REC, AT).metadata;
+check("토양 보존", merged.soil, "배수가 좋은 토양");
+check("실내외 보존", merged.indoorOutdoor, "INDOOR");
+check("사용자 메모 보존", merged.description.note, "3년생부터 꽃이 잘 핀다");
+check("설명 요약은 출처가 갱신", merged.description.summary, "산지 계곡에 자란다");
+check("사용자 사진은 남는다", merged.photos.some(p => p.source === "user"), true);
+check("출처 사진도 들어온다", merged.photos.filter(p => p.source === "kna").length, 2);
+check("사용자 사진이 대표로 남는다", merged.image_url, "https://x/my.jpg");
+check("출처가 아는 값은 갱신", merged.flowering_months, [6, 7, 8]);
+check("USER_EDITED 는 최우선", merged.sync_status, "USER_EDITED");
+check("동기화 사실은 새 값", merged.plant_api_synced_at, AT);
+check("provider 갱신", merged.provider.name, "kna");
+
+// 출처가 모르는 필드는 기존 값을 유지한다 — 빈 값은 "없다"가 아니라 "모른다".
+const silent = toSpeciesPatch({ metadata: EXISTING }, { recordId: "K9",
+  provider: { name: "kna", recordId: "K9", version: "2026-09" } }, AT).metadata;
+check("출처가 말 안 한 분류는 유지", silent.plant_type, "관목");
+check("출처가 말 안 한 개화월은 유지", silent.flowering_months, []);
+check("사진이 없으면 기존 사진 유지", silent.photos.length, 1);
+
+// 같은 출처를 다시 받으면 그 출처의 사진만 교체된다.
+const twoSources = { ...EXISTING, photos: [
+  { url: "https://x/my.jpg",  type: "", caption: "", source: "user" },
+  { url: "https://x/old.jpg", type: "", caption: "", source: "kna"  },
+  { url: "https://x/g.jpg",   type: "", caption: "", source: "gbif" }
+] };
+const rePhoto = mergePhotos(twoSources.photos,
+  [{ url: "https://x/new.jpg", type: "flower", caption: "", source: "kna" }], 5);
+check("kna 사진만 교체", rePhoto.map(p => p.url),
+      ["https://x/my.jpg", "https://x/g.jpg", "https://x/new.jpg"]);
+check("중복 URL 은 한 번만",
+      mergePhotos([{ url: "u", source: "user" }], [{ url: "u", source: "kna" }], 5).length, 1);
+check("입력을 변형하지 않는다", twoSources.photos.length, 3);
+
+// 소유권 목록은 계약이다 — 여기 없는 필드는 동기화가 덮는다.
+check("사람이 정본인 필드", USER_OWNED_FIELDS, ["soil", "indoorOutdoor"]);
+check("빈 기존 값도 안전", mergeMetadata(null, toSpeciesMetadata(REC, AT)).soil, "");
+const frozenExisting = Object.freeze({ ...EXISTING });
+check("얼린 기존 값 처리",
+      mergeMetadata(frozenExisting, toSpeciesMetadata(REC, AT)).soil, "배수가 좋은 토양");
+check("병합은 결정적",
+      JSON.stringify(mergeMetadata(EXISTING, toSpeciesMetadata(REC, AT))) ===
+      JSON.stringify(mergeMetadata(EXISTING, toSpeciesMetadata(REC, AT))), true);
 
 // ============================================================
 section("7. 정규화는 한 곳에서만 — Provider 는 원문만 넘긴다");
@@ -248,6 +312,8 @@ check("월을 양쪽에 쓴 표기", normalizeMonths("6월~8월"), [6, 7, 8]);
 check("붙임표 표기", normalizeMonths("6-8"), [6, 7, 8]);
 check("단일 월", normalizeMonths("7월"), [7]);
 check("여러 구간", normalizeMonths("4~5월, 9월"), [4, 5, 9]);
+check("가운뎃점 표기", normalizeMonths("6·7월"), [6, 7]);
+check("가운뎃점 + 범위", normalizeMonths("5·7~9월"), [5, 7, 8, 9]);
 check("해를 넘기는 범위", normalizeMonths("12~2월"), [1, 2, 12]);
 check("모르는 표기는 버린다 — 봄", normalizeMonths("봄"), []);
 check("모르는 표기는 버린다 — 연중", normalizeMonths("연중"), []);

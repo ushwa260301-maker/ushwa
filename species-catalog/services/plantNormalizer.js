@@ -119,17 +119,25 @@ export function normalizeNativeStatus(raw) {
 }
 
 /**
- * 설명 → `{ summary, source }`.
+ * 설명 → `{ summary, source, note }`.
  *
  * **원문 HTML 은 저장하지 않는다.** 태그를 지우고 공백을 정리한 평문만 남긴다.
  * 출처 표기가 없으면 빈 문자열이며, 지어내지 않는다.
+ *
+ * `note` 는 **사용자 메모**다. 출처는 이 값을 주지 않으므로 동기화가 덮어쓰지
+ * 않는다(metadataMerge 참조). summary 와 섞지 않는 이유가 그것이다 —
+ * 한 필드에 두면 갱신할 때 사람이 쓴 문장을 함께 지우게 된다.
  */
 export function normalizeDescription(raw, fallbackSource = "") {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-    return { summary: stripHtml(raw.summary), source: clean(raw.source) || clean(fallbackSource) };
+    return {
+      summary: stripHtml(raw.summary),
+      source:  clean(raw.source) || clean(fallbackSource),
+      note:    stripHtml(raw.note)
+    };
   }
   const summary = stripHtml(raw);
-  return { summary, source: summary ? clean(fallbackSource) : "" };
+  return { summary, source: summary ? clean(fallbackSource) : "", note: "" };
 }
 
 /** 태그 제거 + 엔티티 일부 복원 + 공백 정리. 평문만 남는다. */

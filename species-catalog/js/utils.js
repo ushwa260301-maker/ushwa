@@ -258,7 +258,7 @@ export function emptyMetadata() {
   for (const f of API_FIELDS) { if (f !== "provider") out[f] = ""; }
   for (const f of METADATA_MONTH_FIELDS) out[f] = [];
   for (const f of METADATA_ENUM_LIST_FIELDS) out[f] = [];
-  for (const f of METADATA_OBJECT_FIELDS) out[f] = { summary: "", source: "" };
+  for (const f of METADATA_OBJECT_FIELDS) out[f] = { summary: "", source: "", note: "" };
   for (const f of METADATA_PHOTO_FIELDS) out[f] = [];
   out.nativeStatus = "";
   out.evergreen = "UNKNOWN";
