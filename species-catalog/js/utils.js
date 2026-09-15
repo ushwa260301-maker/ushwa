@@ -148,25 +148,25 @@ export function collectValidItems(items) {
  */
 export {
   SUNLIGHT_ENUM, NATIVE_STATUS_ENUM, PHOTO_TYPES, PHOTO_SOURCES,
-  EVERGREEN_ENUM, METADATA_STATUS_ENUM, STORED_METADATA_STATUS,
+  EVERGREEN_ENUM, SYNC_STATUS_ENUM, STORED_SYNC_STATUS,
   normalizeSunlight, normalizeNativeStatus, normalizeDescription,
   normalizePhotos, normalizeMonths, normalizeEvergreen, normalizeProvider,
-  normalizeMetadataStatus, stripHtml
+  normalizeSyncStatus, stripHtml
 } from "../services/plantNormalizer.js";
 export {
-  CURRENT_SCHEMA_VERSION, upgradeMetadata, resolveMetadataStatus, versionOf
+  CURRENT_SCHEMA_VERSION, upgradeMetadata, resolveSyncStatus, versionOf
 } from "../services/metadataMigration.js";
 
 import {
   normalizeSunlight as _sun, normalizeNativeStatus as _native,
   normalizeDescription as _desc, normalizePhotos as _photos,
   normalizeMonths as _months, normalizeEvergreen as _ever,
-  normalizeProvider as _provider, normalizeMetadataStatus as _status,
+  normalizeProvider as _provider,
   SUNLIGHT_ENUM as _SUN_ENUM, NATIVE_STATUS_ENUM as _NAT_ENUM
 } from "../services/plantNormalizer.js";
 import {
   CURRENT_SCHEMA_VERSION as _SCHEMA_V, upgradeMetadata as _upgrade,
-  resolveMetadataStatus as _resolveStatus
+  resolveSyncStatus as _resolveStatus
 } from "../services/metadataMigration.js";
 
 /** enum 코드 → 화면 표기. 저장은 코드로, 표시만 한글로 한다. */
@@ -211,7 +211,7 @@ export const EVERGREEN_OPTIONS = [
 ];
 
 /** 상태 배지 표기. STALE 은 저장값이 아니라 계산 결과다. */
-export const METADATA_STATUS_LABELS = {
+export const SYNC_STATUS_LABELS = {
   PENDING:     { label: "미연동",     icon: "○" },
   SYNCED:      { label: "연동됨",     icon: "🔗" },
   USER_EDITED: { label: "사용자 추가", icon: "✎" },
@@ -225,12 +225,12 @@ export const METADATA_TEXT_FIELDS = [
   "image_url", "thumbnail_url"
 ];
 export const METADATA_MONTH_FIELDS = ["flowering_months", "fruiting_months"];
-export const METADATA_ENUM_FIELDS_SINGLE = ["evergreen", "metadata_status"];
+export const METADATA_ENUM_FIELDS_SINGLE = ["evergreen", "sync_status"];
 /** @deprecated schema v1 이름 — 호출부 호환용. */
 export const METADATA_BOOL_FIELDS = [];
 /** enum 배열 / enum 단일 / 구조체 / 사진 목록. */
 export const METADATA_ENUM_LIST_FIELDS = ["sunlight"];
-export const METADATA_ENUM_FIELDS      = ["nativeStatus", "evergreen", "metadata_status"];
+export const METADATA_ENUM_FIELDS      = ["nativeStatus", "evergreen", "sync_status"];
 export const METADATA_OBJECT_FIELDS    = ["description"];
 export const METADATA_PHOTO_FIELDS     = ["photos"];
 
@@ -262,7 +262,7 @@ export function emptyMetadata() {
   for (const f of METADATA_PHOTO_FIELDS) out[f] = [];
   out.nativeStatus = "";
   out.evergreen = "UNKNOWN";
-  out.metadata_status = "PENDING";
+  out.sync_status = "PENDING";
   return out;
 }
 
@@ -288,7 +288,9 @@ export function normalizeMetadata(raw) {
   out.nativeStatus   = _native(up.nativeStatus);
   out.evergreen      = _ever(up.evergreen);
   out.description    = _desc(up.description);
-  out.metadata_status = _status(up.metadata_status) || "PENDING";
+  // 저장값이 없으면 추론한다 — 기본값 PENDING 을 직접 박으면 이 경로만
+  // resolveSyncStatus 와 답이 갈린다. 상태를 정하는 규칙은 한 곳에만 둔다.
+  out.sync_status = _resolveStatus(up);
 
   out.provider = _provider(up.provider?.name ? up.provider : {
     name: out.plant_api_source, record_id: out.plant_api_id, synced_at: out.plant_api_synced_at

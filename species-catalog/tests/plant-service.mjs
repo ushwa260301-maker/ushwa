@@ -168,7 +168,7 @@ check("설명 출처는 Provider 라벨", toSpeciesMetadata({ ...REC, descriptio
 check("출처 코드", meta.plant_api_source, "kna");
 check("동기화 시각", meta.plant_api_synced_at, AT);
 check("schema_version", meta.schema_version, CURRENT_SCHEMA_VERSION);
-check("연동 레코드는 SYNCED", meta.metadata_status, "SYNCED");
+check("연동 레코드는 SYNCED", meta.sync_status, "SYNCED");
 check("provider 구조", meta.provider,
       { name: "kna", record_id: "KNA00012345", synced_at: AT, version: "2026-09" });
 check("plant_api_* 는 provider 파생", meta.plant_api_source, meta.provider.name);

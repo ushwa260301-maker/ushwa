@@ -14,8 +14,8 @@
  */
 
 import {
-  normalizeEvergreen, normalizeMetadataStatus, normalizeProvider,
-  normalizePhotos, STORED_METADATA_STATUS
+  normalizeEvergreen, normalizeSyncStatus, normalizeProvider,
+  normalizePhotos, STORED_SYNC_STATUS
 } from "./plantNormalizer.js";
 
 /** 현재 스키마 버전. 필드를 더하거나 의미를 바꿀 때 올린다. */
@@ -72,11 +72,11 @@ function upgradeV0toV1(meta) {
 }
 
 /**
- * v1 → v2 — evergreen 을 enum 으로, metadata_status 를 도입한다.
+ * v1 → v2 — evergreen 을 enum 으로, sync_status 를 도입한다.
  *
- *   evergreen        true → EVERGREEN · false → DECIDUOUS · 그 밖 → UNKNOWN
- *   metadata_status  provider 가 있으면 SYNCED, 표시값이 있으면 USER_EDITED,
- *                    아무것도 없으면 PENDING
+ *   evergreen    true → EVERGREEN · false → DECIDUOUS · 그 밖 → UNKNOWN
+ *   sync_status  provider 가 있으면 SYNCED, 표시값이 있으면 USER_EDITED,
+ *                아무것도 없으면 PENDING
  *
  * **SEMI_EVERGREEN 을 만들지 않는다.** 기존 불리언에는 그 정보가 없다.
  * 반상록은 출처가 그렇게 말할 때만 들어온다 — 없는 값을 추측으로 채우지 않는다.
@@ -84,15 +84,23 @@ function upgradeV0toV1(meta) {
 function upgradeV1toV2(meta) {
   const out = { ...meta };
   out.evergreen = normalizeEvergreen(out.evergreen);
-
-  if (!normalizeMetadataStatus(out.metadata_status)) {
-    out.metadata_status = inferStatus(out);
-  } else {
-    out.metadata_status = normalizeMetadataStatus(out.metadata_status);
-  }
+  out.sync_status = storedStatus(out) || inferStatus(out);
+  delete out.metadata_status;      // 옛 이름을 남겨 두면 둘이 갈라진다
 
   out.schema_version = 2;
   return out;
+}
+
+/**
+ * 저장된 상태를 읽는다 — 이름이 바뀌기 전 판까지 본다.
+ *
+ * @transitional `metadata_status` 는 schema v2 의 첫 이름이었다. 배포된 적은 없고
+ * feature 브랜치를 로컬에서 열어 본 브라우저에만 남아 있다. 그 레코드의 상태가
+ * 조용히 PENDING 으로 되돌아가지 않도록 한 판만 더 읽어 준다 —
+ * 로컬 캐시가 한 바퀴 돌고 나면 이 fallback 은 지워도 된다.
+ */
+function storedStatus(meta) {
+  return normalizeSyncStatus(meta?.sync_status) || normalizeSyncStatus(meta?.metadata_status);
 }
 
 /**
@@ -186,9 +194,8 @@ export function upgradeMetadata(metadata) {
  * @param {Record<string,string>} [latestVersions]  { kna: "2026-10", … }
  * @returns {"PENDING"|"SYNCED"|"USER_EDITED"|"STALE"}
  */
-export function resolveMetadataStatus(metadata, latestVersions = {}) {
-  const stored = normalizeMetadataStatus(metadata?.metadata_status);
-  const status = stored || inferStatus(metadata || {});
+export function resolveSyncStatus(metadata, latestVersions = {}) {
+  const status = storedStatus(metadata) || inferStatus(metadata || {});
   if (status !== "SYNCED") return status;
 
   const name = String(metadata?.provider?.name || "").trim();
@@ -199,4 +206,4 @@ export function resolveMetadataStatus(metadata, latestVersions = {}) {
   return have !== latest ? "STALE" : "SYNCED";
 }
 
-export { STORED_METADATA_STATUS };
+export { STORED_SYNC_STATUS };

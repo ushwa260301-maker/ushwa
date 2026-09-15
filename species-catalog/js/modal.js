@@ -412,7 +412,7 @@ function collectForm() {
       ...(formState.metaApi || {}),
       // 사람이 저장했으면 사용자 값이다. 단 연동된 레코드는 읽기 전용이라
       // 여기 도달해도 값이 바뀌지 않으므로 SYNCED 를 유지한다.
-      metadata_status: formState.metaApi?.plant_api_source ? "SYNCED" : "USER_EDITED"
+      sync_status: formState.metaApi?.plant_api_source ? "SYNCED" : "USER_EDITED"
     }
   };
 }

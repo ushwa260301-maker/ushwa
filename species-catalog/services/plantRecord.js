@@ -95,7 +95,7 @@ export function toSpeciesMetadata(record, syncedAt = new Date().toISOString()) {
   return {
     schema_version: CURRENT_SCHEMA_VERSION,
     // Provider 가 준 값이면 SYNCED. 사람이 고치면 modal 이 USER_EDITED 로 바꾼다.
-    metadata_status: linked ? "SYNCED" : "PENDING",
+    sync_status: linked ? "SYNCED" : "PENDING",
     provider,
     scientific_name: r.scientificName,
     family:          r.family,

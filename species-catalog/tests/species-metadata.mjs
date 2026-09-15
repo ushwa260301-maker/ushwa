@@ -22,7 +22,7 @@ const {
   METADATA_TEXT_FIELDS, METADATA_MONTH_FIELDS, EVERGREEN_ENUM,
   SUNLIGHT_OPTIONS, PROVIDER_LABELS,
   CURRENT_SCHEMA_VERSION, META_VERSION_FIELD, PHOTO_SOURCES, normalizeProvider,
-  upgradeMetadata, resolveMetadataStatus
+  upgradeMetadata, resolveSyncStatus
 } = await import("../js/utils.js");
 
 function stubEl() {
@@ -54,7 +54,7 @@ check("문자열 입력 안전", normalizeMetadata("x"), emptyMetadata());
 check("필드 구성", METADATA_FIELDS.length, 1 /* schema_version */ + DISPLAY_FIELDS.length + API_FIELDS.length);
 check("표시 필드 구성", DISPLAY_FIELDS.length,
       METADATA_TEXT_FIELDS.length + METADATA_MONTH_FIELDS.length +
-      1 /* sunlight */ + 3 /* nativeStatus · evergreen · metadata_status */ +
+      1 /* sunlight */ + 3 /* nativeStatus · evergreen · sync_status */ +
       1 /* description */ + 1 /* photos */);
 check("DISPLAY + API + 버전 = 전체", 1 + DISPLAY_FIELDS.length + API_FIELDS.length, METADATA_FIELDS.length);
 
@@ -70,7 +70,7 @@ const m = normalizeMetadata({
   photos: [{ url: "https://x/1.jpg", type: "flower", source: "kna" }],
   provider: { name: "kna", record_id: "KNA00012345",
               synced_at: "2026-09-15T07:30:00Z", version: "2026-09" },
-  schema_version: 2, metadata_status: "SYNCED"
+  schema_version: 2, sync_status: "SYNCED"
 });
 check("학명", m.scientific_name, "Hydrangea serrata");
 check("과", m.family, "Hydrangeaceae");
@@ -126,6 +126,12 @@ check("gbif 라벨", metadataSource({ plant_api_source: "gbif" }).label, "GBIF")
 check("모르는 코드는 그대로", metadataSource({ plant_api_source: "zzz" }).label, "zzz");
 check("사용자 입력", metadataSource(normalizeMetadata({ sunlight: "full_sun" })).kind, "user");
 check("미연동", metadataSource(emptyMetadata()).kind, "none");
+// 상태 필드 없이 v2 로 기록된 레코드도 정규화와 계산이 같은 답을 내야 한다.
+check("v2 인데 상태가 없으면 추론",
+      normalizeMetadata({ schema_version: 2, provider: { name: "kna" } }).sync_status, "SYNCED");
+check("정규화와 계산이 같은 답",
+      normalizeMetadata({ schema_version: 2, provider: { name: "kna" } }).sync_status,
+      resolveSyncStatus({ schema_version: 2, provider: { name: "kna" } }));
 check("PROVIDER_LABELS 3종", Object.keys(PROVIDER_LABELS).sort(), ["gbif", "kna", "nire"]);
 
 check("연동 = 읽기 전용", isMetadataReadOnly(m), true);
@@ -217,7 +223,7 @@ check("현재 버전은 2", CURRENT_SCHEMA_VERSION, 2);
 check("버전 없으면 현재 판으로", normalizeMetadata({})[META_VERSION_FIELD], CURRENT_SCHEMA_VERSION);
 check("정수가 아니면 현재 판", normalizeMetadata({ schema_version: 0.5 })[META_VERSION_FIELD], CURRENT_SCHEMA_VERSION);
 check("읽은 값은 항상 현재 판", normalizeMetadata({ schema_version: 1 })[META_VERSION_FIELD], CURRENT_SCHEMA_VERSION);
-check("업그레이드 후 상태 부여", normalizeMetadata({ schema_version: 1 }).metadata_status, "PENDING");
+check("업그레이드 후 상태 부여", normalizeMetadata({ schema_version: 1 }).sync_status, "PENDING");
 
 check("provider 구조", m.provider,
       { name: "kna", record_id: "KNA00012345", synced_at: "2026-09-15T07:30:00Z", version: "2026-09" });

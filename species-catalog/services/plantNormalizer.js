@@ -48,8 +48,8 @@ export const EVERGREEN_ENUM = ["EVERGREEN", "DECIDUOUS", "SEMI_EVERGREEN", "UNKN
  * 두면 그 값 자체가 낡아서, "STALE 이라고 저장돼 있지만 이미 최신"인 상태가
  * 생긴다. 저장은 PENDING · SYNCED · USER_EDITED 셋만 한다.
  */
-export const METADATA_STATUS_ENUM = ["PENDING", "SYNCED", "USER_EDITED", "STALE"];
-export const STORED_METADATA_STATUS = ["PENDING", "SYNCED", "USER_EDITED"];
+export const SYNC_STATUS_ENUM = ["PENDING", "SYNCED", "USER_EDITED", "STALE"];
+export const STORED_SYNC_STATUS = ["PENDING", "SYNCED", "USER_EDITED"];
 
 /** 사진 종류. 모르면 "habit"(수형)으로 두지 않고 빈 값으로 둔다. */
 export const PHOTO_TYPES = ["flower", "leaf", "habit"];
@@ -212,11 +212,11 @@ export function normalizeEvergreen(raw) {
 
 /**
  * 저장되는 metadata 상태 → enum. STALE 은 저장 대상이 아니므로 받아도 버린다
- * (화면에서 계산한다 — resolveMetadataStatus 참조).
+ * (화면에서 계산한다 — resolveSyncStatus 참조).
  */
-export function normalizeMetadataStatus(raw) {
+export function normalizeSyncStatus(raw) {
   const v = clean(raw).toUpperCase();
-  return STORED_METADATA_STATUS.includes(v) ? v : "";
+  return STORED_SYNC_STATUS.includes(v) ? v : "";
 }
 
 /**

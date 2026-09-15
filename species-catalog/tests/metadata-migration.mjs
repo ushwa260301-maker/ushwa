@@ -13,10 +13,10 @@
  */
 
 const {
-  upgradeMetadata, resolveMetadataStatus, versionOf,
-  CURRENT_SCHEMA_VERSION, UNVERSIONED, STORED_METADATA_STATUS
+  upgradeMetadata, resolveSyncStatus, versionOf,
+  CURRENT_SCHEMA_VERSION, UNVERSIONED, STORED_SYNC_STATUS
 } = await import("../services/metadataMigration.js");
-const { EVERGREEN_ENUM, METADATA_STATUS_ENUM, normalizeEvergreen, normalizeMetadataStatus }
+const { EVERGREEN_ENUM, SYNC_STATUS_ENUM, normalizeEvergreen, normalizeSyncStatus }
   = await import("../services/plantNormalizer.js");
 
 let pass = 0, fail = 0; const failed = [];
@@ -74,25 +74,36 @@ check("provider.name", up.metadata.provider.name, "kna");
 check("provider.record_id", up.metadata.provider.record_id, "KNA00001234");
 check("provider.synced_at", up.metadata.provider.synced_at, "2026-09-01T00:00:00Z");
 check("evergreen → DECIDUOUS", up.metadata.evergreen, "DECIDUOUS");
-check("metadata_status → SYNCED", up.metadata.metadata_status, "SYNCED");
+check("sync_status → SYNCED", up.metadata.sync_status, "SYNCED");
 check("입력을 변형하지 않는다", JSON.stringify(legacy), snapshotInput);
 
 // ============================================================
 section("3. 상태 추론 — 마이그레이션 시 1회");
 // ============================================================
-check("아무것도 없음 → PENDING", upgradeMetadata({}).metadata.metadata_status, "PENDING");
+check("아무것도 없음 → PENDING", upgradeMetadata({}).metadata.sync_status, "PENDING");
 check("사람이 넣은 값 → USER_EDITED",
-      upgradeMetadata({ soil: "습윤" }).metadata.metadata_status, "USER_EDITED");
+      upgradeMetadata({ soil: "습윤" }).metadata.sync_status, "USER_EDITED");
 check("사진만 있어도 USER_EDITED",
-      upgradeMetadata({ photos: [{ url: "u" }] }).metadata.metadata_status, "USER_EDITED");
+      upgradeMetadata({ photos: [{ url: "u" }] }).metadata.sync_status, "USER_EDITED");
 check("출처가 있으면 SYNCED",
-      upgradeMetadata({ plant_api_source: "gbif" }).metadata.metadata_status, "SYNCED");
+      upgradeMetadata({ plant_api_source: "gbif" }).metadata.sync_status, "SYNCED");
 check("저장된 상태가 있으면 그대로",
-      upgradeMetadata({ metadata_status: "USER_EDITED", plant_api_source: "kna" })
-        .metadata.metadata_status, "USER_EDITED");
-check("STALE 은 저장값으로 받지 않는다", normalizeMetadataStatus("STALE"), "");
-check("저장 가능한 상태 3종", STORED_METADATA_STATUS, ["PENDING", "SYNCED", "USER_EDITED"]);
-check("상태 enum 4종", METADATA_STATUS_ENUM,
+      upgradeMetadata({ sync_status: "USER_EDITED", plant_api_source: "kna" })
+        .metadata.sync_status, "USER_EDITED");
+check("STALE 은 저장값으로 받지 않는다", normalizeSyncStatus("STALE"), "");
+// v2 의 첫 이름. 배포된 적은 없지만 로컬 캐시에 남아 있을 수 있다 — 상태가
+// 조용히 PENDING 으로 되돌아가면 안 된다. (@transitional 과 함께 지울 것)
+check("옛 이름도 읽는다",
+      upgradeMetadata({ metadata_status: "USER_EDITED" }).metadata.sync_status, "USER_EDITED");
+check("옛 이름은 남기지 않는다",
+      "metadata_status" in upgradeMetadata({ metadata_status: "USER_EDITED" }).metadata, false);
+check("옛 이름 — 계산 경로도 같다",
+      resolveSyncStatus({ metadata_status: "USER_EDITED" }), "USER_EDITED");
+// 상태 없이 v2 로 기록된 레코드 — 저장값이 없으면 추론한다.
+check("v2 인데 상태가 없으면 추론",
+      resolveSyncStatus({ schema_version: 2, provider: { name: "kna" } }), "SYNCED");
+check("저장 가능한 상태 3종", STORED_SYNC_STATUS, ["PENDING", "SYNCED", "USER_EDITED"]);
+check("상태 enum 4종", SYNC_STATUS_ENUM,
       ["PENDING", "SYNCED", "USER_EDITED", "STALE"]);
 
 // ============================================================
@@ -122,19 +133,19 @@ const synced = upgradeMetadata({
 }).metadata;
 synced.provider.version = "2026-09";
 
-check("최신 판 정보 없으면 SYNCED", resolveMetadataStatus(synced, {}), "SYNCED");
-check("같은 판이면 SYNCED", resolveMetadataStatus(synced, { kna: "2026-09" }), "SYNCED");
-check("새 판이 있으면 STALE", resolveMetadataStatus(synced, { kna: "2026-10" }), "STALE");
-check("다른 출처의 판은 무관", resolveMetadataStatus(synced, { gbif: "2026-10" }), "SYNCED");
+check("최신 판 정보 없으면 SYNCED", resolveSyncStatus(synced, {}), "SYNCED");
+check("같은 판이면 SYNCED", resolveSyncStatus(synced, { kna: "2026-09" }), "SYNCED");
+check("새 판이 있으면 STALE", resolveSyncStatus(synced, { kna: "2026-10" }), "STALE");
+check("다른 출처의 판은 무관", resolveSyncStatus(synced, { gbif: "2026-10" }), "SYNCED");
 
 const noVersion = upgradeMetadata({ plant_api_source: "kna" }).metadata;
 check("우리 판 정보가 없으면 비교 불가 → SYNCED",
-      resolveMetadataStatus(noVersion, { kna: "2026-10" }), "SYNCED");
+      resolveSyncStatus(noVersion, { kna: "2026-10" }), "SYNCED");
 
 const userEdited = upgradeMetadata({ soil: "습윤" }).metadata;
 check("사용자 값은 STALE 이 되지 않는다",
-      resolveMetadataStatus(userEdited, { kna: "2026-10" }), "USER_EDITED");
-check("빈 레코드", resolveMetadataStatus({}, { kna: "2026-10" }), "PENDING");
+      resolveSyncStatus(userEdited, { kna: "2026-10" }), "USER_EDITED");
+check("빈 레코드", resolveSyncStatus({}, { kna: "2026-10" }), "PENDING");
 
 // ============================================================
 section("6. 순수 함수");
@@ -148,7 +159,7 @@ for (const api of ["fetch(", "localStorage", "sessionStorage", "indexedDB",
 }
 const twice = f => JSON.stringify(f()) === JSON.stringify(f());
 check("upgradeMetadata 결정적", twice(() => upgradeMetadata(legacy)), true);
-check("resolveMetadataStatus 결정적", twice(() => resolveMetadataStatus(synced, { kna: "2026-10" })), true);
+check("resolveSyncStatus 결정적", twice(() => resolveSyncStatus(synced, { kna: "2026-10" })), true);
 check("null 입력 안전", upgradeMetadata(null).metadata.schema_version, CURRENT_SCHEMA_VERSION);
 check("배열 입력 안전", upgradeMetadata([1, 2]).metadata.schema_version, CURRENT_SCHEMA_VERSION);
 check("얼린 입력 처리", upgradeMetadata(Object.freeze({ evergreen: true })).metadata.evergreen, "EVERGREEN");
