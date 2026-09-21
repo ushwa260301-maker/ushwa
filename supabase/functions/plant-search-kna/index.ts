@@ -50,10 +50,17 @@ export { PROVIDER_NAME, FUNCTION_NAME };
  */
 export const API_PROFILE = {
   key:    "serviceKey",
-  query:  "searchKeyword",
+  query:  "reqPlantGnrlNm",   // 국명으로 찾는다 (scnmSearch)
   rows:   "numOfRows",
   format: "_type"
 } as const;
+
+/**
+ * 조회 경로. `KNA_API_ENDPOINT` 는 서비스 기준 URL(…/KpniService)이고
+ * 오퍼레이션은 여기서 붙인다 — 다른 오퍼레이션을 쓸 때 환경변수를 바꾸지
+ * 않아도 되고, 어느 오퍼레이션을 부르는지가 코드에 남는다.
+ */
+export const SEARCH_PATH = "scnmSearch";
 
 /** 응답 형식. JSON 을 요청해 XML 파서에 의존하지 않는다 — XML 은 대비책이다. */
 export const FORMAT_JSON = "json";
@@ -148,9 +155,19 @@ function readConfig(opts: SearchOptions): Config {
   };
 }
 
+/**
+ * 기준 URL 에 오퍼레이션 경로를 붙인다.
+ * 환경변수에 이미 붙어 있으면 두 번 붙이지 않는다 — 설정하는 사람이 둘 중
+ * 어느 쪽으로 넣었든 같은 곳을 부르게 한다.
+ */
+export function endpointFor(base: string, path = SEARCH_PATH): string {
+  const trimmed = String(base ?? "").replace(/\/+$/, "");
+  return trimmed.endsWith(`/${path}`) ? trimmed : `${trimmed}/${path}`;
+}
+
 /** 호출 URL. 키가 들어가므로 이 문자열을 로그에 남기지 않는다. */
 export function buildUrl(cfg: Config, query: string, rows: number): string {
-  const url = new URL(cfg.endpoint);
+  const url = new URL(endpointFor(cfg.endpoint));
   url.searchParams.set(cfg.keyParam, cfg.serviceKey);
   url.searchParams.set(cfg.queryParam, query);
   url.searchParams.set(cfg.rowsParam, String(rows));
@@ -183,11 +200,28 @@ export async function searchPlants(query: string, opts: SearchOptions = {}): Pro
     return { ok: false, status: 500, error: "fetch 를 쓸 수 없습니다" };
   }
 
+  /**
+   * 요청 진단 로그 (P1).
+   *
+   * 조회 조건이 먹지 않는 원인을 가리려면 **무엇을 보냈는지**가 먼저 보여야
+   * 한다. 응답만 보면 "필터가 없는 결과"와 "필터가 무시된 결과"를 구분할 수 없다.
+   *
+   * 서비스 키는 두 번 막는다 — 파라미터 목록에서는 값을 갈아 끼우고,
+   * URL 은 redact 를 통과시킨다. 로그는 Supabase 로 나가는 출력이다.
+   */
+  const url = buildUrl(cfg, q, opts.rows ?? 10);
+  const sent = new URL(url).searchParams;
+  const shown = new URLSearchParams(sent);
+  shown.set(cfg.keyParam, "***");
+
+  log(opts, `${FUNCTION_NAME}: params ${shown.toString()}`);
+  log(opts, `${FUNCTION_NAME}: ${cfg.queryParam}=` +
+            `${sent.has(cfg.queryParam) ? sent.get(cfg.queryParam) : "(전달되지 않음)"}`);
+  log(opts, `${FUNCTION_NAME}: GET ${redact(url, cfg.serviceKey)}`);
+
   let res: Response;
   try {
-    res = await doFetch(buildUrl(cfg, q, opts.rows ?? 10), {
-      headers: { accept: "application/json" }
-    });
+    res = await doFetch(url, { headers: { accept: "application/json" } });
   } catch (err) {
     return { ok: false, status: 502, error: redact(err, cfg.serviceKey) };
   }
@@ -216,6 +250,20 @@ export async function searchPlants(query: string, opts: SearchOptions = {}): Pro
   }
 
   const body = buildResponse(payload, now);
+
+  /**
+   * 응답 진단 로그 (P1).
+   *
+   * `totalCount` 가 목록 전체 규모이고 첫 행이 가나다 순 앞머리라면 조회 조건이
+   * 걸리지 않은 것이다 — 보낸 파라미터와 나란히 찍어야 그 판단이 선다.
+   */
+  const totalCount =
+    (payload as any)?.response?.body?.totalCount ??
+    (payload as any)?.body?.totalCount ??
+    (payload as any)?.totalCount ?? "(없음)";
+  const firstName = (body.records[0] as any)?.plantGnrlNm ?? "(행 없음)";
+  log(opts, `${FUNCTION_NAME}: totalCount=${totalCount} ` +
+            `records=${body.records.length} item[0].plantGnrlNm=${firstName}`);
 
   /**
    * 0건은 **응답 스키마를 바꾸지 않는다.** 정상 200 과 똑같은 모양으로 나간다 —

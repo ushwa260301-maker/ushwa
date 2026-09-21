@@ -57,8 +57,8 @@ const JSON_BODY = JSON.stringify({
   resultCode: "00",
   resultMsg: "NORMAL SERVICE",
   items: [
-    { plantId: "KNA00000012345", koreanName: "산수국", floweringPeriod: "6~8월",
-      images: [{ imageUrl: "https://x/1.jpg", caption: "꽃" }] }
+    { plantScnmId: "31234", plantSpecsScnm: "Hydrangea serrata (Thunb.) Ser.",
+      plantGnrlNm: "산수국", stpltScnmRltnCdNm: "정명" }
   ]
 });
 
@@ -68,15 +68,14 @@ const XML_BODY = `<?xml version="1.0" encoding="UTF-8"?>
   <body>
     <items>
       <item>
-        <plantId>KNA00000012345</plantId>
-        <koreanName>산수국</koreanName>
-        <floweringPeriod>6~8월</floweringPeriod>
-        <description><![CDATA[산지 <b>계곡</b>에 자란다]]></description>
+        <plantScnmId>31234</plantScnmId>
+        <plantSpecsScnm>Hydrangea serrata (Thunb.) Ser.</plantSpecsScnm>
+        <stpltScnmRltnCdNm>정명</stpltScnmRltnCdNm>
       </item>
       <item>
-        <plantId>KNA00000054321</plantId>
-        <koreanName>설유화</koreanName>
-        <floweringPeriod>4월경</floweringPeriod>
+        <plantScnmId>42001</plantScnmId>
+        <plantSpecsScnm>Spiraea prunifolia Siebold &amp; Zucc.</plantSpecsScnm>
+        <stpltScnmRltnCdNm>정명</stpltScnmRltnCdNm>
       </item>
     </items>
   </body>
@@ -102,9 +101,10 @@ check("헤더 코드", P.resultCodeOf(parsed), "00");
 check("헤더 메시지", P.resultMessageOf(parsed), "NORMAL SERVICE");
 check("반복 엘리먼트는 배열", Array.isArray(parsed.response.body.items.item), true);
 check("행 2건", parsed.response.body.items.item.length, 2);
-check("값은 원문 그대로", parsed.response.body.items.item[0].floweringPeriod, "6~8월");
-check("CDATA 는 그대로 — 태그도 살린다",
-      parsed.response.body.items.item[0].description, "산지 <b>계곡</b>에 자란다");
+check("값은 원문 그대로", parsed.response.body.items.item[0].plantSpecsScnm,
+      "Hydrangea serrata (Thunb.) Ser.");
+check("엔티티가 섞인 학명도 복원", parsed.response.body.items.item[1].plantSpecsScnm,
+      "Spiraea prunifolia Siebold & Zucc.");
 
 check("엔티티 복원", P.decodeEntities("가&amp;나 &lt;b&gt; &#48; &#x31;"), "가&나 <b> 0 1");
 check("모르는 엔티티는 그대로", P.decodeEntities("&nope;"), "&nope;");
@@ -121,8 +121,8 @@ section("3. records 추출 — 형식이 달라도 같은 모양");
 check("JSON items", P.toRecords(JSON.parse(JSON_BODY)).length, 1);
 check("XML items.item", P.toRecords(parsed).length, 2);
 check("행이 하나여도 배열",
-      P.toRecords({ response: { body: { items: { item: { plantId: "K1" } } } } }).length, 1);
-check("계약 모양(records)도 받는다", P.toRecords({ records: [{ plantId: "K1" }] }).length, 1);
+      P.toRecords({ response: { body: { items: { item: { plantScnmId: "K1" } } } } }).length, 1);
+check("계약 모양(records)도 받는다", P.toRecords({ records: [{ plantScnmId: "K1" }] }).length, 1);
 check("행이 없으면 빈 배열", P.toRecords({ resultCode: "00" }), []);
 check("null 안전", P.toRecords(null), []);
 
@@ -212,7 +212,7 @@ check("코드와 메시지를 전한다",
 
 check("코드를 주지 않는 응답은 실패가 아니다",
       (await F.searchPlants("산수국", {
-        ...CFG, fetchImpl: async () => mockRes(JSON.stringify({ items: [{ plantId: "K1" }] }))
+        ...CFG, fetchImpl: async () => mockRes(JSON.stringify({ items: [{ plantScnmId: "K1" }] }))
       })).ok, true);
 
 check("깨진 본문도 던지지 않는다",
@@ -240,7 +240,17 @@ check("파라미터 이름은 누락 목록에 없다", noCfg.error.includes("KN
 section("7-1. API_PROFILE — 파라미터 이름은 한 곳에서만 정한다");
 // ============================================================
 check("계약값", { ...F.API_PROFILE },
-      { key: "serviceKey", query: "searchKeyword", rows: "numOfRows", format: "_type" });
+      { key: "serviceKey", query: "reqPlantGnrlNm", rows: "numOfRows", format: "_type" });
+check("조회 경로", F.SEARCH_PATH, "scnmSearch");
+
+// 기준 URL 에 오퍼레이션 경로를 붙인다. 둘 중 어느 쪽으로 설정하든 같은 곳.
+check("경로를 붙인다",
+      F.endpointFor("https://x/KpniService"), "https://x/KpniService/scnmSearch");
+check("끝 슬래시도 처리",
+      F.endpointFor("https://x/KpniService/"), "https://x/KpniService/scnmSearch");
+check("이미 붙어 있으면 두 번 붙이지 않는다",
+      F.endpointFor("https://x/KpniService/scnmSearch"), "https://x/KpniService/scnmSearch");
+check("실제 호출도 경로를 탄다", new URL(seenUrl).pathname.endsWith("/scnmSearch"), true);
 
 // 환경변수를 넣지 않아도 부를 수 있어야 한다 — 그게 기본값을 두는 이유다.
 let bare = null;
@@ -327,14 +337,35 @@ check("행이 있을 때와 키가 같다",
       Object.keys(emptyRes.body).sort(),
       Object.keys((await F.searchPlants("산수국", { ...CFG, fetchImpl: okFetch })).body).sort());
 
-check("0건이면 로그를 남긴다", logs.length, 1);
-check("어느 이름으로 물었는지 남긴다", logs[0].includes("plantName=없는식물"), true);
-check("로그에 키가 없다", logs[0].includes(KEY), false);
-check("로그에 URL 을 남기지 않는다", logs[0].includes("http"), false);
+/**
+ * 진단 로그 (P1) — 요청이 무엇을 보냈고 응답이 무엇을 돌려줬는지 남긴다.
+ * 조회 조건이 먹지 않을 때 "필터가 없는 결과"와 "필터가 무시된 결과"를 응답만
+ * 보고는 구분할 수 없어서, 보낸 파라미터를 나란히 찍는다.
+ */
+const joined = logs.join("\n");
+check("보낸 파라미터 목록을 남긴다", joined.includes("params "), true);
+check("조회 파라미터 이름과 값을 남긴다", joined.includes("plantName=없는식물"), true);
+check("최종 URL 을 남긴다", joined.includes("GET https://"), true);
+check("응답 요약을 남긴다", joined.includes("records=0"), true);
+check("0건이면 이름을 먼저 의심하라고 남긴다",
+      joined.includes("파라미터 이름을 먼저 확인"), true);
+
+// 키는 어떤 줄에도 나오면 안 된다 — 로그는 Supabase 로 나가는 출력이다.
+check("로그에 키가 없다", joined.includes(KEY), false);
+check("키 자리는 가려져 있다", joined.includes("***"), true);
+
+// Encoding 형태 키(%2B · %2F · %3D 포함)도 가려지는지 본다.
+const encLogs = [];
+await F.searchPlants("산수국", {
+  ...CFG, serviceKey: "AA%2BBB%2FCC%3D", log: m => encLogs.push(m), fetchImpl: okFetch
+});
+check("인코딩된 키도 가려진다", encLogs.join("\n").includes("AA%2BBB%2FCC%3D"), false);
 
 const quiet = [];
 await F.searchPlants("산수국", { ...CFG, log: m => quiet.push(m), fetchImpl: okFetch });
-check("행이 있으면 로그를 남기지 않는다", quiet.length, 0);
+check("행이 있으면 0건 안내는 남기지 않는다",
+      quiet.some(l => l.includes("파라미터 이름을 먼저 확인")), false);
+check("그래도 요청·응답 진단은 남긴다", quiet.length >= 4, true);
 
 // ============================================================
 section("9. handleRequest — HTTP 경계");
@@ -381,15 +412,85 @@ const e2e = await F.searchPlants("산수국", {
 });
 const mapped = e2e.body.records.map(r => kna.mapRow(r)).filter(Boolean);
 check("Provider 가 두 행을 다 읽는다", mapped.length, 2);
-check("recordId", mapped.map(m => m.recordId),
-      ["KNA00000012345", "KNA00000054321"]);
-check("원문 그대로 넘어온다", mapped.map(m => m.floweringMonthsRaw), ["6~8월", "4월경"]);
-check("CDATA 설명도 Provider 까지", mapped[0].descriptionRaw, "산지 <b>계곡</b>에 자란다");
+check("recordId", mapped.map(m => m.recordId), ["31234", "42001"]);
+check("학명이 원문 그대로 넘어온다", mapped[0].scientificName,
+      "Hydrangea serrata (Thunb.) Ser.");
+check("엔티티 복원도 Provider 까지", mapped[1].scientificName,
+      "Spiraea prunifolia Siebold & Zucc.");
 
 const cand = mapped.map(m => kna.toCandidate(m, e2e.body.version));
 check("판이 레코드에 실린다", cand.map(c => c.provider.version),
       ["2026-09-15", "2026-09-15"]);
 check("출처가 실린다", cand[0].provider.name, "kna");
+
+// ============================================================
+section("11. speciesService — Edge Function 까지 이어 붙인다");
+// ============================================================
+/**
+ * PENDING 인 수종만 골라 Edge Function 을 태우고, 받은 값을 기존 metadata 위에
+ * 얹는다. 여기서 보는 것은 세 계층(Edge Function → Provider → 병합)이 실제로
+ * 맞물리는지다 — 각자 통과해도 경계에서 어긋날 수 있다.
+ */
+const svc = await import("../services/speciesService.js");
+const { resolveSyncStatus } = await import("../services/metadataMigration.js");
+
+/** Edge Function 을 그대로 태우는 invoke — 네트워크만 Mock 이다. */
+const invokeVia = fetchImpl => async (_fn, body) => {
+  const r = await F.searchPlants(body.query, { ...CFG, fetchImpl });
+  if (!r.ok) throw new Error(r.error);
+  return r.body;
+};
+
+const SPECIES = [
+  { id: "sp-001", name: "산수국", metadata: { sync_status: "PENDING" } },
+  { id: "sp-002", name: "느티나무", metadata: { sync_status: "USER_EDITED", soil: "사질양토" } }
+];
+
+const applied = [];
+const okSync = await svc.syncMetadata(SPECIES, {
+  invoke: invokeVia(async () => mockRes(JSON_BODY)),
+  applyPatch: (id, patch) => applied.push({ id, patch }),
+  now: "2026-09-15T07:30:00.000Z"
+});
+check("PENDING 만 대상", okSync.updated.map(u => u.id), ["sp-001"]);
+check("USER_EDITED 는 건드리지 않는다", okSync.skipped.length + okSync.failed.length, 0);
+check("patch 는 1건", applied.length, 1);
+check("출처가 붙는다", applied[0].patch.metadata.provider.name, "kna");
+check("학명이 들어간다", applied[0].patch.metadata.scientific_name,
+      "Hydrangea serrata (Thunb.) Ser.");
+check("상태가 SYNCED 로", applied[0].patch.metadata.sync_status, "SYNCED");
+check("species.latin 도 채운다", applied[0].patch.latin, "Hydrangea serrata (Thunb.) Ser.");
+// UPDATE ONLY — 새 수종을 만들지 않는다.
+check("새 수종을 만들지 않는다", applied.every(a => a.id === "sp-001"), true);
+check("원본을 변형하지 않는다", SPECIES[0].metadata.sync_status, "PENDING");
+
+// resultCode 가 00 이 아니면 반영하지 않는다 — PENDING 으로 남는다.
+const failApplied = [];
+const errSync = await svc.syncMetadata(SPECIES, {
+  invoke: invokeVia(async () => mockRes(JSON.stringify({
+    resultCode: "30", resultMsg: "SERVICE KEY IS NOT REGISTERED"
+  }))),
+  applyPatch: (id, patch) => failApplied.push({ id, patch })
+});
+check("오류면 갱신하지 않는다", errSync.updated.length, 0);
+check("실패로 보고한다", errSync.failed.map(f => f.id), ["sp-001"]);
+check("patch 를 적용하지 않는다", failApplied.length, 0);
+check("PENDING 으로 남는다", resolveSyncStatus(SPECIES[0].metadata), "PENDING");
+
+// 후보가 둘이면 고르지 않는다 — 어느 쪽인지 정할 근거가 없다.
+const ambig = await svc.syncMetadata(SPECIES, {
+  invoke: invokeVia(async () => mockRes(JSON.stringify({
+    resultCode: "00",
+    items: [
+      { plantScnmId: "A", plantSpecsScnm: "X", stpltScnmRltnCdNm: "정명" },
+      { plantScnmId: "B", plantSpecsScnm: "Y", stpltScnmRltnCdNm: "정명" }
+    ]
+  }))),
+  applyPatch: () => { throw new Error("적용하면 안 된다"); }
+});
+check("후보가 둘이면 건너뛴다", ambig.skipped.map(s => s.reason),
+      [svc.SKIP_REASON.AMBIGUOUS]);
+check("건너뛰어도 PENDING", resolveSyncStatus(SPECIES[0].metadata), "PENDING");
 
 // ============================================================
 console.log("\n" + "=".repeat(52));

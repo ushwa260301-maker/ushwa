@@ -83,7 +83,12 @@ export async function search(query, ctx = {}) {
   }
 
   // ②~④ Provider 순회 — 하나가 실패해도 다음을 시도한다.
-  const problems = [];
+  //
+  // **"아직 매핑이 없다"와 "조회가 실패했다"를 섞지 않는다.** nire·gbif 는
+  // 지금 비어 있는 게 정상이라, 그걸 오류 목록에 담으면 정상적인 "결과 없음"이
+  // 매번 실패처럼 보인다 — 호출자가 키 만료 같은 진짜 실패를 구분할 수 없게 된다.
+  const problems = [];       // 실제 오류
+  const unconfigured = [];   // 매핑이 아직 없는 Provider (오류가 아니다)
   for (const p of providers) {
     const res = await p.search(q, { invoke: ctx.invoke });
     if (res?.ok && res.candidates?.length) {
@@ -93,18 +98,16 @@ export async function search(query, ctx = {}) {
       return { ok: true, source: p.SOURCE, candidates: res.candidates,
                latestVersions: res.latestVersions || null };
     }
-    if (res?.notConfigured) problems.push(`${p.LABEL}: 매핑 미설정`);
+    if (res?.notConfigured) unconfigured.push(p.LABEL);
     else if (res?.error)    problems.push(`${p.LABEL}: ${res.error}`);
   }
 
   // 전부 "설정 안 됨"이면 실패가 아니라 아직 준비가 안 된 것이다.
-  const allUnconfigured = problems.length === providers.length &&
-                          problems.every(m => m.endsWith("매핑 미설정"));
-  if (allUnconfigured) {
+  if (!problems.length && unconfigured.length === providers.length) {
     return { ok: false, notConfigured: true, source: "none", candidates: [],
-             error: "식물 DB 연동이 아직 설정되지 않았습니다", problems };
+             error: "식물 DB 연동이 아직 설정되지 않았습니다", unconfigured };
   }
-  return { ok: true, source: "none", candidates: [], problems };
+  return { ok: true, source: "none", candidates: [], problems, unconfigured };
 }
 
 /** 출처 코드 → Provider 표시 이름. 모르는 코드는 그대로 돌려준다. */

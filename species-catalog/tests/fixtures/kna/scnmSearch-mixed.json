@@ -1,0 +1,33 @@
+{
+  "_fixture_source": "contract_shape",
+  "_note": "scnmSearch 계약 모양. 필드명은 확정된 매핑표 기준이나 **실제 서버 응답을 캡처한 것이 아니다** — 응답 껍데기 구조와 값은 미확인. 실호출 응답을 받으면 이 파일을 통째로 교체하고 두 _ 키를 지운다.",
+  "resultCode": "00",
+  "resultMsg": "NORMAL SERVICE",
+  "totalCount": 2,
+  "items": [
+    {
+      "plantScnmId": "61001",
+      "plantSpecsScnm": "Spiraea prunifolia var. simpliciflora Nakai",
+      "plantGnrlNm": "조팝나무",
+      "falmKorNm": "장미과",
+      "falmNm": "Rosaceae",
+      "genusKorNm": "조팝나무속",
+      "genusNm": "Spiraea",
+      "plantSpecsClsscCdNm": "속씨식물",
+      "stpltScnmRltnCdNm": "이명",
+      "lastUpdtDtm": "2026-08-31 09:12:44"
+    },
+    {
+      "plantScnmId": "61002",
+      "plantSpecsScnm": "Spiraea prunifolia Siebold & Zucc.",
+      "plantGnrlNm": "조팝나무",
+      "falmKorNm": "장미과",
+      "falmNm": "Rosaceae",
+      "genusKorNm": "조팝나무속",
+      "genusNm": "Spiraea",
+      "plantSpecsClsscCdNm": "속씨식물",
+      "stpltScnmRltnCdNm": "정명",
+      "lastUpdtDtm": "2026-08-31 09:12:44"
+    }
+  ]
+}

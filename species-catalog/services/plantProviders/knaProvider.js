@@ -26,20 +26,25 @@ export const FUNCTION_NAME = "plant-search-kna";
 /**
  * 응답 레코드 1건 → PlantRecord 원본 필드. **값은 원문 그대로 넘긴다.**
  *
- * ⚠ 이 매핑은 **명세 기반 Fixture** 로 맞춘 것이다 (T11-3.2). 실제 국립수목원
- *   서버에서 받아 온 응답으로 검증한 것이 아니다 — Edge Function 을 붙이는
- *   T11-4 에서 실제 응답과 대조하고, 필드명이 다르면 여기만 고치면 된다.
- *   Fixture 도 같은 성격이라 `tests/fixtures/kna_examples/` 에 두고 파일마다
- *   `_fixture_source: "spec_example"` 로 표시해 두었다.
+ * 대상은 **국가표준식물목록 `scnmSearch`** 다 (T11-5). 이름으로 학명을 찾아
+ * 주는 오퍼레이션이라 분류 정보까지는 주지만 **개화기 · 생육환경 · 사진은 없다.**
+ * 그래서 그쪽 `*Raw` 필드는 비운다 — 없는 값을 다른 필드에서 유추하지 않는다.
  *
- * 하는 일은 **이름 바꾸기뿐이다.**
- *   월 배열 변환 · enum 변환 · HTML 제거 · 사진 타입 추측을 하지 않는다.
- *   `"6~8월"` 은 `"6~8월"` 로, `"반그늘"` 은 `"반그늘"` 로 넘어간다.
- *   전부 plantNormalizer 가 한다.
+ *   plantScnmId          → recordId (→ metadata.source_id)
+ *   plantSpecsScnm       → scientificName
+ *   plantGnrlNm          → koreanName
+ *   falmKorNm · falmNm   → familyNameKo · familyNameLatin
+ *   genusKorNm · genusNm → genusNameKo · genusNameLatin
+ *   plantSpecsClsscCdNm  → classification
+ *   stpltScnmRltnCdNm    → scientificNameStatus  ("정명" · "이명")
+ *   lastUpdtDtm          → sourceUpdatedAt
  *
- * `plantType` 에서 상록/낙엽을 뽑지 않는다. `"낙엽활엽관목"` 에 낙엽이라는
- * 글자가 있어도 그건 **추론**이다 — 출처가 별도 필드로 말해 줄 때만 받는다.
- * 그래서 `evergreenRaw` 는 비운다.
+ * **이명(synonym)도 버리지 않고 넘긴다.** 여기서 거르면 "후보가 아예 없었다"와
+ * "정명이 없었다"를 호출부가 구분할 수 없다 — 지위를 그대로 실어 보내고,
+ * 무엇을 채택할지는 speciesService 가 정한다.
+ *
+ * 하는 일은 **이름 바꾸기뿐이다.** 학명에 명명자가 붙어 와도
+ * (`"Hydrangea serrata (Thunb.) Ser."`) 자르지 않는다 — 원문 그대로 넘긴다.
  *
  * `recordId` 가 없는 행은 `null` 을 돌려준다 — 학명을 대신 쓰지 않는다.
  * 같은 학명에 여러 행이 있을 수 있어 학명은 식별자가 못 된다.
@@ -52,37 +57,31 @@ export const FUNCTION_NAME = "plant-search-kna";
  */
 export function mapRow(row) {
   if (!row || typeof row !== "object") return null;
-  const recordId = String(row.plantId ?? "").trim();
+  const recordId = String(row.plantScnmId ?? "").trim();
   if (!recordId) return null;
 
   return {
-    recordId,
-    koreanName:         row.koreanName,
-    scientificName:     row.scientificName,
-    family:             row.familyName,
-    genus:              row.genusName,
-    floweringMonthsRaw: row.floweringPeriod,
-    fruitingMonthsRaw:  row.fruitingPeriod,
-    sunlightRaw:        row.habitat,
-    plantTypeRaw:       row.plantType,
-    nativeStatusRaw:    row.nativeStatus,
-    descriptionRaw:     row.description,
-    photosRaw: (Array.isArray(row.images) ? row.images : []).map(img => ({
-      url:     img?.imageUrl,
-      caption: img?.caption ?? null,
-      type:    null            // 꽃·잎 판정은 normalizePhotos 가 한다
-    }))
+    recordId,                                      // plantScnmId → metadata.source_id
+    scientificName:       row.plantSpecsScnm,      // 명명자까지 붙어 올 수 있다
+    koreanName:           row.plantGnrlNm,
+    familyNameKo:         row.falmKorNm,
+    familyNameLatin:      row.falmNm,
+    genusNameKo:          row.genusKorNm,
+    genusNameLatin:       row.genusNm,
+    classification:       row.plantSpecsClsscCdNm,
+    scientificNameStatus: row.stpltScnmRltnCdNm,   // "정명" · "이명"
+    sourceUpdatedAt:      row.lastUpdtDtm
   };
 }
 
 /**
  * 매핑이 채워졌는가 — 안 채워졌으면 조회하지 않는다.
  *
- * 탐침에 `plantId` 를 넣는다. mapRow 는 ID 없는 행을 **정당하게** 거절하므로,
+ * 탐침에 `plantScnmId` 를 넣는다. mapRow 는 ID 없는 행을 **정당하게** 거절하므로,
  * 빈 탐침으로는 "매핑이 아직 없다" 와 "이 행에 ID 가 없다" 를 구분할 수 없다.
  */
 export function isReady() {
-  return mapRow({ plantId: "probe" }) !== null;
+  return mapRow({ plantScnmId: "probe" }) !== null;
 }
 
 /**
