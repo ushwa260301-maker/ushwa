@@ -307,6 +307,36 @@ const allText = JSON.stringify(await F.searchPlants("산수국", { ...CFG, fetch
 check("성공 응답에도 키가 없다", allText.includes(KEY), false);
 
 // ============================================================
+section("8-1. 0건이어도 계약은 그대로 — 진단은 로그로만");
+// ============================================================
+/**
+ * 200 에 0건이 오는 가장 흔한 원인은 "검색 결과 없음"이 아니라 파라미터 이름이
+ * 틀린 것이다. 그래도 **응답 스키마는 바뀌지 않는다** — API 계약은 디버깅
+ * 때문에 바뀌지 않는다. 진단은 Edge Function 로그에만 남긴다.
+ */
+const CONTRACT_KEYS = ["latestVersions", "provider", "records", "version"];
+const logs = [];
+const emptyRes = await F.searchPlants("없는식물", {
+  ...CFG, log: m => logs.push(m),
+  fetchImpl: async () => mockRes(JSON.stringify({ resultCode: "00", items: [] }))
+});
+check("0건도 성공", emptyRes.ok, true);
+check("0건도 같은 계약 키", Object.keys(emptyRes.body).sort(), CONTRACT_KEYS);
+check("진단 필드를 붙이지 않는다", "diagnostics" in emptyRes.body, false);
+check("행이 있을 때와 키가 같다",
+      Object.keys(emptyRes.body).sort(),
+      Object.keys((await F.searchPlants("산수국", { ...CFG, fetchImpl: okFetch })).body).sort());
+
+check("0건이면 로그를 남긴다", logs.length, 1);
+check("어느 이름으로 물었는지 남긴다", logs[0].includes("plantName=없는식물"), true);
+check("로그에 키가 없다", logs[0].includes(KEY), false);
+check("로그에 URL 을 남기지 않는다", logs[0].includes("http"), false);
+
+const quiet = [];
+await F.searchPlants("산수국", { ...CFG, log: m => quiet.push(m), fetchImpl: okFetch });
+check("행이 있으면 로그를 남기지 않는다", quiet.length, 0);
+
+// ============================================================
 section("9. handleRequest — HTTP 경계");
 // ============================================================
 const post = (body, opts = { ...CFG, fetchImpl: okFetch }) =>

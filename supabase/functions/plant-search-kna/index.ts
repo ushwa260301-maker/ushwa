@@ -87,6 +87,8 @@ export interface SearchOptions {
   rows?: number;
   /** 판 생성 기준 시각. 테스트에서 고정하려고 뺐다. */
   now?: Date;
+  /** 로그 출력처. 기본은 console.info — 테스트가 가로채려고 뺐다. */
+  log?: (message: string) => void;
 }
 
 export interface SearchResult {
@@ -213,7 +215,30 @@ export async function searchPlants(query: string, opts: SearchOptions = {}): Pro
              error: redact(`국립수목원 오류 ${code}${msg ? `: ${msg}` : ""}`, cfg.serviceKey) };
   }
 
-  return { ok: true, status: 200, body: buildResponse(payload, now) };
+  const body = buildResponse(payload, now);
+
+  /**
+   * 0건은 **응답 스키마를 바꾸지 않는다.** 정상 200 과 똑같은 모양으로 나간다 —
+   * API 계약은 디버깅 때문에 바뀌지 않는다.
+   *
+   * 대신 로그에 남긴다. 200 에 0건이 오는 가장 흔한 원인은 "검색 결과 없음" 이
+   * 아니라 **파라미터 이름이 틀린 것**이고, 그 둘은 응답만 봐서는 구분되지
+   * 않는다. 어느 이름으로 물었는지가 로그에 있으면 먼저 그것부터 의심할 수 있다.
+   *
+   * 이름만 남긴다. URL 은 남기지 않는다 — 거기엔 서비스 키가 들어 있다.
+   */
+  if (body.records.length === 0) {
+    log(opts, `${FUNCTION_NAME}: 0건 — 파라미터 이름을 먼저 확인하세요 ` +
+              `(${cfg.queryParam}=${q}, ${cfg.rowsParam}, ${cfg.formatParam})`);
+  }
+
+  return { ok: true, status: 200, body };
+}
+
+/** 로그 한 줄. 테스트가 가로챌 수 있게 주입 가능하게 둔다. */
+function log(opts: SearchOptions, message: string): void {
+  const sink = opts.log ?? (globalThis as Record<string, any>).console?.info;
+  if (typeof sink === "function") sink(message);
 }
 
 /** 요청 1건 처리. Deno.serve 가 이 함수를 부른다. */
