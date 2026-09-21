@@ -220,7 +220,9 @@ export const SYNC_STATUS_LABELS = {
 
 /** 평문 문자열 필드. */
 export const METADATA_TEXT_FIELDS = [
-  "scientific_name", "family", "genus",
+  // `family` 는 학명(Hydrangeaceae), `family_ko` 는 국명(수국과).
+  // 출처가 둘 다 주므로 한쪽을 버리지 않는다 — 버리면 되살릴 수 없다.
+  "scientific_name", "family", "family_ko", "genus",
   "soil", "plant_type", "indoorOutdoor",
   "image_url", "thumbnail_url"
 ];
@@ -231,7 +233,7 @@ export const METADATA_BOOL_FIELDS = [];
 /** enum 배열 / enum 단일 / 구조체 / 사진 목록. */
 export const METADATA_ENUM_LIST_FIELDS = ["sunlight"];
 export const METADATA_ENUM_FIELDS      = ["nativeStatus", "evergreen", "sync_status"];
-export const METADATA_OBJECT_FIELDS    = ["description"];
+export const METADATA_OBJECT_FIELDS    = ["description", "guide"];
 export const METADATA_PHOTO_FIELDS     = ["photos"];
 
 /**
@@ -239,7 +241,8 @@ export const METADATA_PHOTO_FIELDS     = ["photos"];
  * `provider` 가 정본이고 `plant_api_*` 는 그 파생이다 — 읽는 쪽을 한 번에
  * 바꾸지 않으려고 남겨 둔다.
  */
-export const API_FIELDS = ["provider", "plant_api_source", "plant_api_id", "plant_api_synced_at"];
+export const API_FIELDS = ["provider", "plant_api_source", "plant_api_id",
+                           "plant_api_synced_at", "source_id"];
 
 /** 구조 버전 필드 — 마이그레이션 기준점. */
 export const META_VERSION_FIELD = "schema_version";

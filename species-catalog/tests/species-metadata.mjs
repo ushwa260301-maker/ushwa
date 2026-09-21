@@ -55,7 +55,7 @@ check("필드 구성", METADATA_FIELDS.length, 1 /* schema_version */ + DISPLAY_
 check("표시 필드 구성", DISPLAY_FIELDS.length,
       METADATA_TEXT_FIELDS.length + METADATA_MONTH_FIELDS.length +
       1 /* sunlight */ + 3 /* nativeStatus · evergreen · sync_status */ +
-      1 /* description */ + 1 /* photos */);
+      2 /* description · guide */ + 1 /* photos */);
 check("DISPLAY + API + 버전 = 전체", 1 + DISPLAY_FIELDS.length + API_FIELDS.length, METADATA_FIELDS.length);
 
 // ============================================================

@@ -47,6 +47,33 @@ export const MAX_PHOTOS = 5;
  */
 export const PLANT_RECORD_FIELDS = [
   "koreanName", "scientificName", "family", "genus",
+  // 국가표준식물목록은 과·속을 국명과 학명 두 벌로 준다. 한쪽을 버리면
+  // 되살릴 수 없으므로 둘 다 나른다 — `family`·`genus` 는 학명 쪽 별칭이다.
+  "familyNameKo", "familyNameLatin",
+  "genusNameKo", "genusNameLatin",
+  "classification",                            // "속씨식물" 같은 분류 체계 표기
+  /**
+   * 학명 지위 — `"정명"` · `"이명"` 원문.
+   *
+   * 이 값이 자동 채택을 가른다. 이명(synonym)은 같은 식물을 가리키는 옛
+   * 이름이라 **후보로는 유효하지만 정본이 아니다.** 이명을 그대로 채워 넣으면
+   * 그 뒤의 모든 갱신이 폐기된 이름을 따라간다.
+   */
+  "scientificNameStatus",
+  "sourceUpdatedAt",                           // 출처가 이 행을 마지막으로 고친 때
+  /**
+   * 도감 서술 (plantPilbkInfo). 전부 **자연어 문장**이다 — enum 도 배열도 아니다.
+   * 개화기가 `formRaw` 안에 섞여 오지만 문장에서 월을 뽑는 것은 추론이라
+   * 하지 않는다. 원문을 그대로 보관해 사람이 읽게 한다.
+   */
+  "formRaw",                                   // shpe — 형태
+  "distributionRaw",                           // dstrb — 분포
+  "originRaw",                                 // orplcNm — 원산지
+  "propagationRaw",                            // brdMthdDesc — 번식 방법
+  "cultivationRaw",                            // farmSpftDesc — 재배 특성
+  "growthEnvironmentRaw",                      // grwEvrntDesc — 생육 환경
+  "notRecommendedNameRaw",                     // notRcmmGnrlNm — 비추천 국명
+  "sourceNoteRaw",                             // note — 출처 비고
   "floweringMonthsRaw", "fruitingMonthsRaw",   // "6~8월" 같은 원문
   "sunlightRaw",                               // "양지/반음지" 원문
   "nativeStatusRaw",                           // "자생" 원문
@@ -56,10 +83,19 @@ export const PLANT_RECORD_FIELDS = [
   "provider"                                   // { name, recordId, version }
 ];
 
+/** 자동 채택되는 학명 지위. 이 값이 아니면 정본으로 쓰지 않는다. */
+export const ACCEPTED_NAME_STATUS = "정명";
+
 /** 빈 레코드 — Provider 가 부분만 채울 수 있게 기본값을 준다. */
 export function emptyRecord() {
   return {
     koreanName: null, scientificName: null, family: null, genus: null,
+    familyNameKo: null, familyNameLatin: null,
+    genusNameKo: null, genusNameLatin: null,
+    classification: null, scientificNameStatus: null, sourceUpdatedAt: null,
+    formRaw: null, distributionRaw: null, originRaw: null,
+    propagationRaw: null, cultivationRaw: null, growthEnvironmentRaw: null,
+    notRecommendedNameRaw: null, sourceNoteRaw: null,
     floweringMonthsRaw: null, fruitingMonthsRaw: null,
     sunlightRaw: null, nativeStatusRaw: null,
     plantTypeRaw: null, evergreenRaw: null,
@@ -72,6 +108,10 @@ export function emptyRecord() {
 /** 원문 문자열 필드 — 다듬기만 하고 내용은 건드리지 않는다. */
 const RAW_TEXT_FIELDS = [
   "koreanName", "scientificName", "family", "genus",
+  "familyNameKo", "familyNameLatin", "genusNameKo", "genusNameLatin",
+  "classification", "scientificNameStatus", "sourceUpdatedAt",
+  "formRaw", "distributionRaw", "originRaw", "propagationRaw",
+  "cultivationRaw", "growthEnvironmentRaw", "notRecommendedNameRaw", "sourceNoteRaw",
   "floweringMonthsRaw", "fruitingMonthsRaw",
   "sunlightRaw", "nativeStatusRaw",
   "plantTypeRaw", "evergreenRaw", "descriptionRaw"
@@ -159,8 +199,11 @@ export function toSpeciesMetadata(record, syncedAt = new Date().toISOString()) {
     sync_status: linked ? "SYNCED" : "PENDING",
     provider,
     scientific_name: r.scientificName || "",
-    family:          r.family || "",
-    genus:           r.genus || "",
+    // `family`·`genus` 는 **학명**이 정본이다(Hydrangeaceae). 국명은 따로 둔다 —
+    // 한 칸에 섞으면 어느 쪽이 들어 있는지 읽는 쪽이 알 수 없다.
+    family:          r.family || r.familyNameLatin || "",
+    family_ko:       r.familyNameKo || "",
+    genus:           r.genus  || r.genusNameLatin  || "",
     flowering_months: normalizeMonths(r.floweringMonthsRaw),
     fruiting_months:  normalizeMonths(r.fruitingMonthsRaw),
     sunlight:      normalizeSunlight(r.sunlightRaw),
@@ -169,6 +212,21 @@ export function toSpeciesMetadata(record, syncedAt = new Date().toISOString()) {
     evergreen:     normalizeEvergreen(r.evergreenRaw),
     description:   normalizeDescription(r.descriptionRaw, providerLabelFor(r.provider.name)),
     photos,
+    /**
+     * 도감 원문 블록. 출처가 준 **자연어 서술**을 구조화하지 않고 그대로 담는다.
+     * enum·월 배열로 바꾸려면 문장을 해석해야 하고 그건 추론이다.
+     * 값이 없으면 빈 문자열 — 키는 항상 있어 읽는 쪽이 분기하지 않는다.
+     */
+    guide: {
+      form:              r.formRaw || "",
+      distribution:      r.distributionRaw || "",
+      origin:            r.originRaw || "",
+      propagation:       r.propagationRaw || "",
+      cultivation:       r.cultivationRaw || "",
+      growthEnvironment: r.growthEnvironmentRaw || "",
+      notRecommendedName: r.notRecommendedNameRaw || "",
+      sourceNote:        r.sourceNoteRaw || ""
+    },
     // 출처가 주지 않는 값 — 사람이 입력한다. 여기서는 비워 둔다.
     soil: "",
     indoorOutdoor: "",
@@ -179,7 +237,13 @@ export function toSpeciesMetadata(record, syncedAt = new Date().toISOString()) {
     // 이름이라 읽는 쪽을 한 번에 바꾸지 않고 남겨 둔다.
     plant_api_source:    provider.name,
     plant_api_id:        provider.record_id,
-    plant_api_synced_at: provider.synced_at
+    plant_api_synced_at: provider.synced_at,
+    /**
+     * 출처 DB 안의 식별자. `provider.record_id` 와 같은 값이며, 읽는 쪽이
+     * provider 구조를 몰라도 되게 평평한 이름으로도 둔다
+     * (plant_api_* 와 같은 이유).
+     */
+    source_id: provider.record_id
   };
 }
 

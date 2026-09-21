@@ -42,6 +42,7 @@ import { normalizePhotos } from "./plantNormalizer.js";
 export const FIELD_OWNERSHIP = {
   scientific_name:  "provider",
   family:           "provider",
+  family_ko:        "provider",
   genus:            "provider",
   flowering_months: "provider",
   fruiting_months:  "provider",
@@ -53,6 +54,7 @@ export const FIELD_OWNERSHIP = {
   soil:          "user",
   indoorOutdoor: "user",
 
+  guide:                  "provider",
   description:            "merge",
   "description.summary":  "provider",
   "description.source":   "provider",
@@ -65,6 +67,7 @@ export const FIELD_OWNERSHIP = {
   plant_api_source:    "system",
   plant_api_id:        "system",
   plant_api_synced_at: "system",
+  source_id:           "system",
 
   image_url:     "derived",
   thumbnail_url: "derived"
