@@ -31,6 +31,7 @@ import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSave
 import { addPending, removePending, listPending, hasPending, setLastSync, replayAction } from "./syncManager.js";
 import { isCloudConfigured } from "./supabaseClient.js";
 import { nextId, normalizeMetadata, withMetadata } from "./utils.js";
+import { syncAfterSave, SYNC_OUTCOME } from "./plantSync.js";
 
 // ============================================================
 // 신규 ID 발급 가드 (S1-P0-1 · P0-2)
@@ -123,6 +124,20 @@ async function saveSpecies(payload, id) {
     // pending 선기록 — 미러 중 브라우저가 종료돼도 유실되지 않게 한다.
     addPending("species", speciesId);
     reportSync(await mirrorSaveSpecies(savedSpecies), "species", speciesId, "수종 저장");
+
+    // 저장이 끝난 뒤 도감 정보를 채운다 (T11-5).
+    // 부가 작업이므로 실패해도 저장을 되돌리지 않는다 — 다음 저장 때 다시
+    // 시도된다(실패하면 sync_status 가 PENDING 으로 남기 때문).
+    const synced = await syncAfterSave(state.data.species.find(s => s.id === speciesId));
+    if (synced.outcome === SYNC_OUTCOME.SYNCED) {
+      persistAndRerender();
+      toast("식물 정보를 불러왔습니다");
+    } else if (synced.outcome === SYNC_OUTCOME.AMBIGUOUS) {
+      // 후보가 여럿이면 고르지 않는다 — 사람이 정해야 한다.
+      toast("식물 DB 에 같은 이름이 여러 건입니다 — 직접 선택해 주세요");
+    } else if (synced.outcome === SYNC_OUTCOME.FAILED) {
+      toast("식물 정보를 불러오지 못했습니다 — 저장은 완료됐습니다");
+    }
   }
 }
 
