@@ -40,10 +40,17 @@
 -- 테이블
 -- ------------------------------------------------------------
 create table if not exists public.plant_images (
-  -- 조회 키. 공백만 정리된 형태로 적재한다(앞뒤 공백 제거 + 연속 공백 1칸).
-  -- 대소문자·명명자 표기는 건드리지 않는다 — 학명에서 그것들은 의미가 있다.
-  -- 적재 쪽 정규화와 조회 쪽 normalizeScientificName() 이 같은 규칙이어야
-  -- `eq` 가 맞는다. 어긋나면 조회가 조용히 0건이 된다.
+  -- 원본 학명. **명명자를 포함한 그대로** 보관한다 (Lavandula angustifolia Mill.).
+  -- 공백만 정리해 넣는다(앞뒤 제거 + 연속 공백 1칸).
+  --
+  -- ⚠ 이 컬럼은 조회 키가 아니다. 우리 species.latin 은 명명자를 붙이지 않아
+  --   원문끼리는 맞지 않는다(실측: 4,565종 × 77종에서 정확 매칭 0건).
+  --   조회는 명명자를 뗀 canonical 로 하며, 그 값은 **저장하지 않는다** —
+  --   파생값이라 원문과 어긋날 수 있고 규칙을 고칠 때마다 전량 재계산해야 한다.
+  --   services/scientificName.js 가 조회 시점에 계산한다.
+  --
+  --   조회 경로: like 'Genus%' 로 후보를 받고 → JS 가 canonical 완전 일치 판정
+  --   like 는 후보를 넓히기만 하고 어느 행이 붙을지 정하지 않는다.
   scientific_name text not null,
 
   -- 사진 캡션으로 쓴다. 조회 키가 아니다.
@@ -62,8 +69,35 @@ create table if not exists public.plant_images (
   primary key (scientific_name, image_url)
 );
 
+-- TODO(T12): 대표 이미지 · 갤러리 기능에서 아래 컬럼을 추가한다.
+--
+--   is_primary    boolean not null default false
+--       수종 카드에 내걸 한 장. 지금은 photos[0] 을 대표로 쓰는데, 그건 적재
+--       순서일 뿐 "가장 잘 보여 주는 사진" 이 아니다.
+--       ※ 한 학명에 true 가 둘 이상이면 안 된다 — 부분 유니크 인덱스로 막는다:
+--         create unique index … on plant_images (scientific_name) where is_primary;
+--
+--   sort_order    int not null default 0
+--       갤러리 배치 순서. 지금 순서는 CSV 행 순서라 의미가 없다.
+--
+--   review_status text not null default 'PENDING'
+--       사람이 확인했는가 (PENDING · APPROVED · REJECTED).
+--       이 목록의 image_type 이 전량 "사진" 이라 부위를 자동 판정할 수 없고,
+--       품종/원종 오연결도 사람이 봐야 걸러진다.
+--
+-- 지금 넣지 않는 이유: 셋 다 **사람의 판단을 담는 컬럼**인데, 그 판단을 입력할
+-- 화면이 아직 없다. 화면 없이 만들면 전량 기본값으로 남아 "검토했다"와
+-- "검토한 적 없다"가 구분되지 않는다 — 없느니만 못한 상태다.
+--
+-- 추가는 신규 마이그레이션 파일로 한다. 이 파일은 수정하지 않는다(적용 완료).
+
 -- 조회는 학명 단일 조건이다. PK 선두 컬럼이라 이미 인덱스가 서지만,
 -- 명시해 두어야 PK 구성이 바뀌어도 조회 경로가 살아남는다.
+--
+-- [확인 필요] 조회가 like 'Genus%' 라서, 기본 collation 에서는 이 btree 가
+--   쓰이지 않고 seq scan 이 된다. text_pattern_ops 인덱스를 따로 걸면 쓰이지만,
+--   4,763행 규모에서는 seq scan 도 1ms 수준이라 지금 추가하지 않는다.
+--   행 수가 크게 늘면 그때 별도 마이그레이션으로 추가한다.
 create index if not exists idx_plant_images_scientific_name
   on public.plant_images (scientific_name);
 

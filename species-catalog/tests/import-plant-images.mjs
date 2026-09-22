@@ -141,12 +141,11 @@ export function resolveHeaders(header, override = {}) {
 // ------------------------------------------------------------
 
 /**
- * 학명 정규화 — **공백만** 정리한다.
- * `plantImageProvider.normalizeScientificName()` 과 같은 규칙이어야 한다.
+ * 학명 정규화 — **공백만** 정리한다. 조회 쪽과 같은 함수를 쓴다.
+ * 두 규칙이 어긋나면 에러 없이 사진만 0건이 된다.
  */
-export function normalizeScientificName(name) {
-  return String(name ?? "").trim().replace(/\s+/g, " ");
-}
+import { normalizeScientificName } from "../services/scientificName.js";
+export { normalizeScientificName };
 
 /**
  * 데이터 행들 → `plant_images` 행들.

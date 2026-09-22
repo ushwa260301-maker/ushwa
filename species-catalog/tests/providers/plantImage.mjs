@@ -26,6 +26,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const img = await import("../../services/plantProviders/plantImageProvider.js");
+const sn  = await import("../../services/scientificName.js");
 const imp = await import("../import-plant-images.mjs");
 const { toPlantRecord } = await import("../../services/plantRecord.js");
 const { toSpeciesMetadata } = await import("../../services/plantRecord.js");
@@ -176,11 +177,12 @@ check("한도는 넘겨받는다",
       (await img.findPhotos(PINE, { select: async () => manyRows, max: 2 })).photos.length, 2);
 
 // ============================================================
-section("5. 조회 SQL 은 eq 하나뿐");
+section("5. 조회 SQL 은 속명으로 후보만 받는다");
 // ============================================================
 /**
- * 여기서 `like` 가 들어오면 위의 모든 방어가 무의미해진다.
- * 가짜 client 로 호출된 연산자를 그대로 받아 고정한다.
+ * canonical 을 DB 가 모르므로 `eq` 로는 걸 수 없다. 속명 접두사로 후보를 받고
+ * 판정은 JS 가 한다 — `like` 는 후보를 **넓히기만** 하고 어느 행이 붙을지
+ * 정하지 않는다. 호출된 연산자를 그대로 받아 고정한다.
  */
 const ops = [];
 const fakeClient = {
@@ -188,8 +190,8 @@ const fakeClient = {
     ops.push(["from", table]);
     const q = {
       select(cols) { ops.push(["select", cols]); return q; },
-      eq(col, val) { ops.push(["eq", col, val]); return Promise.resolve({ data: [TABLE_ROWS[4]] }); },
-      like() { ops.push(["like"]); return q; },
+      like(col, val) { ops.push(["like", col, val]); return Promise.resolve({ data: [TABLE_ROWS[4]] }); },
+      eq(col, val) { ops.push(["eq", col, val]); return q; },
       ilike() { ops.push(["ilike"]); return q; },
       contains() { ops.push(["contains"]); return q; }
     };
@@ -197,15 +199,28 @@ const fakeClient = {
   }
 };
 const rows = await img.selectFromSupabase(fakeClient)(PINE);
-check("연산자는 from · select · eq 뿐",
-      ops.map(o => o[0]), ["from", "select", "eq"]);
-check("eq 대상은 scientific_name", [ops[2][1], ops[2][2]], ["scientific_name", PINE]);
+check("연산자는 from · select · like 뿐",
+      ops.map(o => o[0]), ["from", "select", "like"]);
+check("like 는 속명 접두사만", [ops[2][1], ops[2][2]], ["scientific_name", "Pinus%"]);
 check("select 는 컬럼을 명시한다", ops[1][1], img.COLUMNS);
 check("행을 그대로 돌려준다", rows, [TABLE_ROWS[4]]);
 
+/** 명명자가 붙어 와도 속명은 같으므로 같은 후보 집합을 받는다. */
+check("명명자가 있어도 같은 접두사", await (async () => {
+  ops.length = 0;
+  await img.selectFromSupabase(fakeClient)("Pinus densiflora Siebold & Zucc.");
+  return ops[2][2];
+})(), "Pinus%");
+
+check("이름이 없으면 조회하지 않는다 (SQL)", await (async () => {
+  ops.length = 0;
+  const r = await img.selectFromSupabase(fakeClient)("   ");
+  return [ops.length, r];
+})(), [0, []]);
+
 check("조회 오류는 던진다", await (async () => {
   const errClient = { from: () => ({ select: () => ({
-    eq: () => Promise.resolve({ error: { message: "permission denied" } }) }) }) };
+    like: () => Promise.resolve({ error: { message: "permission denied" } }) }) }) };
   try { await img.selectFromSupabase(errClient)(PINE); return "안 던짐"; }
   catch (e) { return e.message; }
 })(), "permission denied");
@@ -366,13 +381,30 @@ for (const s of ["  Pinus densiflora  ", "Pinus  densiflora", "Hydrangea panicul
   check(`정규화 일치: ${JSON.stringify(s)}`,
         imp.normalizeScientificName(s), img.normalizeScientificName(s));
 }
-check("적재 행이 그대로 조회에 걸린다", await (async () => {
+/**
+ * 운영 조회자는 **속명으로 후보를 받는다.** 여기서도 그렇게 흉내 내야
+ * Provider 의 판정을 시험하는 것이 된다 — 가짜가 이름으로 먼저 거르면
+ * 가짜를 시험하는 꼴이 된다.
+ */
+const genusSelect = rowsIn => async name => {
+  const g = sn.genusOf(name);
+  return rowsIn.filter(r => String(r.scientific_name).startsWith(g));
+};
+
+check("명명자가 붙은 이름으로도 적재 행에 걸린다", await (async () => {
+  const loaded = imp.toRows(DATA, MAP).rows;      // scientific_name = "Pinus densiflora"
+  const found = await img.findPhotos("Pinus densiflora Siebold & Zucc.",
+                                     { select: genusSelect(loaded) });
+  return found.photos.map(p => p.url);
+})(), ["https://x/pine-bark.jpg"]);
+
+check("같은 속의 다른 종에는 붙지 않는다", await (async () => {
   const loaded = imp.toRows(DATA, MAP).rows;
-  const found = await img.findPhotos("Pinus densiflora Siebold & Zucc.", {
-    select: async n => loaded.filter(r => r.scientific_name === n)
-  });
+  const found = await img.findPhotos("Pinus koraiensis Siebold & Zucc.",
+                                     { select: genusSelect(loaded) });
   return found.matched;
 })(), false);
+
 check("적재한 학명 그대로면 걸린다", await (async () => {
   const loaded = imp.toRows(DATA, MAP).rows;
   const found = await img.findPhotos("Pinus  densiflora", {
@@ -524,11 +556,12 @@ check("공백 정리가 기여한 몫을 따로 센다", CMP.whitespaceHelped, 1
 check("latin 이 빈 행은 대조에서 뺀다", CMP.species.noLatin, 1);
 
 const diffOf = n => CMP.nearMiss.find(m => m.csv === n)?.diff;
-check("저자명 차이", diffOf("Stipa tenuissima Trin."), "저자명");
+check("저자명 차이", diffOf("Stipa tenuissima Trin."), "명명자");
 check("품종명은 저자명으로 겹쳐 세지 않는다",
-      diffOf("Spiraea thunbergii 'Mount Fuji'"), "따옴표 · 품종명");
-check("대소문자 차이", diffOf("HYDRANGEA MACROPHYLLA"), "대소문자");
-check("교배종 기호 차이", diffOf("Abies x koreana"), "교배종 기호");
+      diffOf("Spiraea thunbergii 'Mount Fuji'"), "품종명");
+check("전부 대문자는 판정을 미룬다", diffOf("HYDRANGEA MACROPHYLLA"),
+      "전부 대문자 — 표기를 먼저 고쳐야 판정할 수 있음");
+check("교배종 기호 차이", diffOf("Abies x koreana"), "명명자 · 교배종 기호");
 check("연결된 species 를 함께 알려 준다",
       CMP.nearMiss.find(m => m.csv === "Stipa tenuissima Trin.").speciesId, "sp-001");
 
@@ -586,6 +619,451 @@ check("species 에 metadata 컬럼도 없다",
       /^\s*metadata\s/m.test(SPECIES_DDL.slice(0, SPECIES_DDL.indexOf(");"))), false);
 check("학명은 latin 컬럼",
       /^\s*latin\s+text/m.test(SPECIES_DDL.slice(0, SPECIES_DDL.indexOf(");"))), true);
+
+// ============================================================
+section("17. canonical — 명명자는 떼고 품종은 남긴다");
+// ============================================================
+/**
+ * 실측에서 정확 매칭이 0건이었던 이유가 명명자다. 이 절이 그 처리를 고정한다.
+ * 가장 중요한 단언은 "붙는다" 가 아니라 **품종이 원종으로 뭉치지 않는다** 이다.
+ */
+const CANON = [
+  ["Stipa tenuissima Trin.",                       "Stipa tenuissima"],
+  ["Pinus densiflora Siebold & Zucc.",             "Pinus densiflora"],
+  ["Lavandula angustifolia Mill.",                 "Lavandula angustifolia"],
+  ["Hibiscus syriacus L.",                         "Hibiscus syriacus"],
+  ["Acer palmatum var. dissectum (Thunb.) K.Koch", "Acer palmatum var. dissectum"],
+  ["Abies x koreana E.H.Wilson",                   "Abies × koreana"],
+  ["Abies × koreana",                              "Abies × koreana"],
+  ["Prunus × yedoensis Matsum.",                   "Prunus × yedoensis"],
+  ["Spiraea thunbergii 'Mount Fuji'",              "Spiraea thunbergii 'Mount Fuji'"],
+  ["Hosta 'Frances Williams'",                     "Hosta 'Frances Williams'"],
+  ["Rhododendron schlippenbachii Maxim.",          "Rhododendron schlippenbachii"],
+  ["  Cornus   officinalis  ",                     "Cornus officinalis"],
+  ["Cornus officinalis",                           "Cornus officinalis"]
+];
+for (const [raw, want] of CANON) {
+  check(`canonical: ${raw}`, sn.canonicalScientificName(raw), want);
+}
+
+/** 명명자 뒤에 품종이 오는 표기 — 순서대로 훑으면 품종을 잃는다. */
+check("명명자 뒤의 품종도 지킨다",
+      sn.canonicalScientificName("Spiraea thunbergii Siebold ex Blume 'Mount Fuji'"),
+      "Spiraea thunbergii 'Mount Fuji'");
+check("빈 이름은 빈 canonical", sn.canonicalScientificName("   "), "");
+check("속명만 있어도 살아남는다", sn.canonicalScientificName("Hosta Tratt."), "Hosta");
+
+check("baseName 은 하위 분류군을 뗀다",
+      ["Spiraea thunbergii 'Mount Fuji'", "Acer palmatum var. dissectum (Thunb.) K.Koch",
+       "Abies x koreana E.H.Wilson"].map(sn.baseName),
+      ["Spiraea thunbergii", "Acer palmatum", "Abies × koreana"]);
+check("genusOf", ["Pinus densiflora Siebold", "Hosta 'X'"].map(sn.genusOf), ["Pinus", "Hosta"]);
+
+// --- 분류 ---------------------------------------------------
+const C = sn.MATCH_CLASS;
+const cls = (a, b) => sn.classifyDifference(a, b);
+check("EXACT",       cls("Pinus densiflora", "Pinus densiflora"), C.EXACT);
+check("AUTHOR_ONLY", cls("Stipa tenuissima Trin.", "Stipa tenuissima"), C.AUTHOR_ONLY);
+check("AUTHOR_ONLY — 교배종 기호 표기 차이",
+      cls("Abies x koreana E.H.Wilson", "Abies × koreana"), C.AUTHOR_ONLY);
+check("AUTHOR_ONLY — 속명 대소문자만 다를 때",
+      cls("hydrangea macrophylla", "Hydrangea macrophylla"), C.AUTHOR_ONLY);
+/**
+ * 전부 대문자인 이름은 **풀지 않는다.** 종소명과 명명자를 가를 근거가
+ * 사라지기 때문이다(`MACROPHYLLA` 가 소명인지 저자인지 모른다). 억지로
+ * 추측해 붙이는 것보다 사람에게 넘기는 편이 안전하다 —
+ * POSSIBLE_SYNONYM 으로 떨어져 리포트에 남는다.
+ */
+check("전부 대문자면 판정하지 않는다",
+      cls("HYDRANGEA MACROPHYLLA", "Hydrangea macrophylla"), C.POSSIBLE_SYNONYM);
+check("CULTIVAR — 품종",
+      cls("Spiraea thunbergii 'Mount Fuji'", "Spiraea thunbergii"), C.CULTIVAR);
+check("CULTIVAR — 변종",
+      cls("Acer palmatum var. dissectum (Thunb.) K.Koch", "Acer palmatum"), C.CULTIVAR);
+check("CULTIVAR — 서로 다른 품종끼리도",
+      cls("Hosta 'Frances Williams'", "Hosta 'Sum and Substance'"), C.CULTIVAR);
+check("POSSIBLE_SYNONYM — 종이 다르다",
+      cls("Pinus koraiensis", "Pinus densiflora"), C.POSSIBLE_SYNONYM);
+check("POSSIBLE_SYNONYM — 속이 바뀌었다",
+      cls("Chrysanthemum zawadskii", "Dendranthema zawadskii"), C.POSSIBLE_SYNONYM);
+check("빈 값은 판정하지 않는다", cls("", "Pinus densiflora"), C.POSSIBLE_SYNONYM);
+
+check("자동 연결 대상은 EXACT · AUTHOR_ONLY 뿐",
+      [...sn.AUTO_LINKABLE].sort(), ["AUTHOR_ONLY", "EXACT"]);
+check("품종은 자동 연결 대상이 아니다", sn.AUTO_LINKABLE.has(C.CULTIVAR), false);
+
+// --- Provider 연결 ------------------------------------------
+const KNA_ROWS = [
+  { scientific_name: "Spiraea thunbergii Siebold ex Blume", korean_name: "가는잎조팝나무",
+    image_type: "사진", image_url: "http://www.nature.go.kr/st.JPG" },
+  { scientific_name: "Spiraea thunbergii 'Mount Fuji'", korean_name: "가는잎조팝나무 '마운트 후지'",
+    image_type: "사진", image_url: "http://www.nature.go.kr/st-mf.JPG" }
+];
+const knaSelect = genusSelect(KNA_ROWS);
+
+check("명명자가 붙은 원종에 원종 사진이 붙는다",
+      (await img.findPhotos("Spiraea thunbergii", { select: knaSelect })).photos.map(p => p.url),
+      ["http://www.nature.go.kr/st.JPG"]);
+check("원종에 품종 사진은 붙지 않는다",
+      (await img.findPhotos("Spiraea thunbergii", { select: knaSelect })).photos.length, 1);
+check("품종에는 품종 사진만",
+      (await img.findPhotos("Spiraea thunbergii 'Mount Fuji'", { select: knaSelect }))
+        .photos.map(p => p.url), ["http://www.nature.go.kr/st-mf.JPG"]);
+check("isSameTaxon 은 명명자만 무시한다", [
+  img.isSameTaxon("Stipa tenuissima Trin.", "Stipa tenuissima"),
+  img.isSameTaxon("Spiraea thunbergii 'Mount Fuji'", "Spiraea thunbergii")
+], [true, false]);
+check("isExactMatch 는 원문 그대로 (과거 경로용)",
+      img.isExactMatch("Stipa tenuissima Trin.", "Stipa tenuissima"), false);
+
+/** 과거 Edge Function 경로는 canonical 을 쓰지 않는다 — 계약을 바꾸지 않는다. */
+check("invoke 경로는 여전히 원문 완전 일치",
+      (await img.findPhotos("Stipa tenuissima", { invoke: async () => ({ records: [
+        { plantSpecsScnm: "Stipa tenuissima Trin.", imgUrl: "https://x/a.jpg" }
+      ] }) })).matched, false);
+
+// ============================================================
+section("18. 차이 설명은 등급과 같은 이야기를 한다");
+// ============================================================
+/**
+ * 변종인데 "저자명"이라고 적히면 검토 화면에서 잘못된 결정을 유도한다.
+ * 설명이 판정과 어긋나면 그건 설명이 아니라 소음이다.
+ */
+const desc = (a, b) => sn.describeDifference(a, b);
+check("같으면 설명할 것이 없다", desc("Pinus densiflora", "Pinus densiflora"), "");
+check("명명자", desc("Stipa tenuissima Trin.", "Stipa tenuissima"), "명명자");
+check("명명자 · 교배종 기호",
+      desc("Abies x koreana E.H.Wilson", "Abies × koreana"), "명명자 · 교배종 기호");
+check("품종명", desc("Spiraea thunbergii 'Mount Fuji'", "Spiraea thunbergii"), "품종명");
+check("변종은 변종이라고 말한다",
+      desc("Acer palmatum var. dissectum (Thunb.) K.Koch", "Acer palmatum"), "변종 표기");
+check("아종", desc("Pinus densiflora subsp. ussuriensis", "Pinus densiflora"), "아종 표기");
+check("서로 다른 품종",
+      desc("Hosta 'Frances Williams'", "Hosta 'Sum and Substance'"), "서로 다른 품종");
+check("속이 다르면 학명 변경 가능성",
+      desc("Chrysanthemum zawadskii", "Dendranthema zawadskii"), "속이 다름 — 학명 변경 가능성");
+check("종소명이 다르면 동의어 가능성",
+      desc("Pinus koraiensis", "Pinus densiflora"), "종소명이 다름 — 동의어 가능성");
+check("전부 대문자는 표기부터 고치라고 말한다",
+      desc("HYDRANGEA MACROPHYLLA", "Hydrangea macrophylla"),
+      "전부 대문자 — 표기를 먼저 고쳐야 판정할 수 있음");
+
+check("rankOf", ["Acer palmatum var. dissectum K.Koch", "Pinus densiflora",
+                 "Pinus densiflora subsp. ussuriensis"].map(sn.rankOf),
+      ["var.", "", "subsp."]);
+
+/** 설명과 등급이 서로 다른 이야기를 하지 않는지 전수로 확인한다. */
+check("CULTIVAR 설명에 '명명자'가 섞이지 않는다", [
+  desc("Spiraea thunbergii 'Mount Fuji'", "Spiraea thunbergii"),
+  desc("Acer palmatum var. dissectum (Thunb.) K.Koch", "Acer palmatum")
+].some(d => d.includes("명명자")), false);
+
+// ============================================================
+section("19. report.json — Admin 검토 화면용 구조");
+// ============================================================
+const vfr = vf.toReviewReport(CMP, [{ at: 4, reason: "URL 없음" }], {
+  csv: "a.csv", species: "b.json",
+  csvHash: "ab".repeat(32), csvVersion: "2026-09-21", csvBytes: 804
+});
+
+check("스키마는 객체", vfr.schema, { name: "plant-image-review", major: 4, minor: 1 });
+check("스키마 상수와 출력이 같다", vfr.schema, vf.SCHEMA);
+check("요약 숫자", {
+  authorOnly: vfr.summary.authorOnly, cultivar: vfr.summary.cultivar,
+  possibleSynonym: vfr.summary.possibleSynonym, reviewTotal: vfr.summary.reviewTotal,
+  autoLinkable: vfr.summary.autoLinkable
+}, { authorOnly: 2, cultivar: 1, possibleSynonym: 1, reviewTotal: 4, autoLinkable: 2 });
+
+/** 사람 손이 필요한 것이 위로 온다 — 화면을 스크롤하지 않아도 보이게. */
+check("사람 확인이 먼저 정렬된다", vfr.review[0].matchClass, "CULTIVAR");
+check("등급별 id 색인을 함께 준다", Object.keys(vfr.index).sort(),
+      ["AUTHOR_ONLY", "CULTIVAR", "EXACT", "POSSIBLE_SYNONYM"]);
+check("색인 건수와 목록 건수가 맞는다",
+      vfr.index.AUTHOR_ONLY.length + vfr.index.CULTIVAR.length +
+      vfr.index.POSSIBLE_SYNONYM.length, vfr.review.length);
+
+const one = vfr.review.find(x => x.matchClass === "AUTHOR_ONLY");
+check("행 하나가 한 결정", Object.keys(one).sort(),
+      ["alternatives", "autoLinkable", "csv", "decision", "diff", "id", "matchClass",
+       "reviewReason", "species"]);
+check("결정은 비워 둔다 — 이 파일은 판단하지 않는다", one.decision, null);
+/**
+ * `matchClass` 는 "무엇이 다른가"를 말하지만 "왜 그렇게 정했는가"는 사람만
+ * 안다. 그 메모가 없으면 다음 검토에서 같은 판단을 처음부터 다시 한다.
+ */
+check("메모 자리도 비워 둔다", one.reviewReason, null);
+check("모든 행에 메모 자리가 있다",
+      vfr.review.every(x => "reviewReason" in x && x.reviewReason === null), true);
+/**
+ * 키는 읽히라고 있는 게 아니라 **같은 것을 같다고 말하라고** 있다.
+ * URL 파라미터·JSON Patch·Windows 콘솔을 거쳐도 깨지지 않아야 한다.
+ */
+check("id 는 <speciesId>::<CSV 학명>",
+      one.id, `${one.species.id}::${one.csv.scientificName}`);
+check("id 는 ASCII 구분자만 쓴다",
+      vfr.review.every(x => /^[\x20-\x7EÀ-ɏ'×]+$/.test(x.id.split("::")[0])), true);
+check("화살표를 쓰지 않는다", vfr.review.some(x => x.id.includes("→")), false);
+check("구분자 상수와 일치", vf.ID_SEPARATOR, "::");
+check("id 는 같은 입력에 같은 값",
+      vf.reviewId(one.species.id, `  ${one.csv.scientificName}  `), one.id);
+
+/**
+ * 등급을 키에 넣지 않는다. 분류 규칙을 고치면 등급이 바뀌는데, 등급이 키에
+ * 있으면 같은 항목이 다른 키가 되어 **사람이 내린 판단을 찾지 못한다.**
+ */
+check("등급이 키에 섞이지 않는다",
+      vfr.review.some(x => x.id.toLowerCase().includes(x.matchClass.toLowerCase())), false);
+check("speciesId 가 앞에 와서 정렬하면 같은 수종이 모인다",
+      one.id.startsWith(one.species.id + "::"), true);
+check("사진 장수를 함께 준다", typeof one.csv.photoCount, "number");
+check("우리 쪽 국명·학명이 들어 있다",
+      [typeof one.species.name, typeof one.species.latin], ["string", "string"]);
+
+check("동의어 확인 대상을 따로 싣는다",
+      vfr.speciesUnmatched.map(s => s.id), ["sp-007"]);
+check("CSV 전용은 표본만 (전량은 수천 건)", vfr.csvOnlySample.length <= 100, true);
+check("이미지 종류 분포", vfr.imageTypes, { "사진": 7, "꽃": 1 });
+check("URL 집계", [vfr.url.http, vfr.url.https], [7, 1]);
+check("건너뛴 행도 싣는다", vfr.skipped.length, 1);
+check("JSON 으로 직렬화된다", typeof JSON.stringify(vfr), "string");
+
+// ============================================================
+section("20. 계약 — dataset · decision enum · 스키마 판");
+// ============================================================
+/**
+ * 검토 결과를 나중에 적재와 대조하려면 **같은 CSV 였는지** 를 말할 수 있어야
+ * 한다. 파일명은 바뀌고 날짜는 겹치므로 해시가 유일하게 믿을 수 있는 식별자다.
+ */
+check("dataset 필드", Object.keys(vfr.dataset).sort(),
+      ["csvBytes", "generatedAt", "hash", "source", "version"]);
+check("source 기본값", vfr.dataset.source, "KNA_IMAGE_CSV");
+check("판은 넘겨받은 값", vfr.dataset.version, "2026-09-21");
+check("generatedAt 은 dataset 안에만 있다",
+      ["generatedAt" in vfr, "generatedAt" in vfr.dataset], [false, true]);
+check("생성 시각은 ISO", /^\d{4}-\d{2}-\d{2}T.*Z$/.test(vfr.dataset.generatedAt), true);
+
+/** 알고리즘과 값을 함께 둔다 — 값만 두면 나중에 무엇으로 계산했는지 추측해야 한다. */
+check("hash 는 {algorithm, value}", Object.keys(vfr.dataset.hash).sort(),
+      ["algorithm", "value"]);
+check("알고리즘 이름", vfr.dataset.hash.algorithm, "sha256");
+check("값에 알고리즘을 겹쳐 넣지 않는다",
+      vfr.dataset.hash.value.includes(":"), false);
+check("sha256 은 64 hex", [vfr.dataset.hash.value.length,
+      /^[0-9a-f]+$/.test(vfr.dataset.hash.value)], [64, true]);
+
+check("메타를 안 주면 빈 값으로 둔다 — 지어내지 않는다", await (async () => {
+  const bare = vf.toReviewReport(CMP, []);
+  return [bare.dataset.version, bare.dataset.hash, bare.dataset.csvBytes];
+})(), ["", { algorithm: "", value: "" }, null]);
+
+check("사람이 읽는 표기", vf.schemaLabel(), "plant-image-review/4.1");
+
+// --- decision enum ------------------------------------------
+check("허용 값은 넷뿐", vf.DECISIONS, [null, "APPROVED", "REJECTED", "SKIPPED"]);
+check("보고서가 값 목록을 함께 싣는다", vfr.decisionValues, vf.DECISIONS);
+check("모든 행의 초기값은 null", [...new Set(vfr.review.map(x => x.decision))], [null]);
+
+for (const v of [null, undefined, "APPROVED", "REJECTED", "SKIPPED"]) {
+  check(`유효한 결정: ${JSON.stringify(v)}`, vf.isValidDecision(v), true);
+}
+for (const v of ["LINK", "approved", "DEFER", "", 0, true, "PENDING"]) {
+  check(`거부하는 결정: ${JSON.stringify(v)}`, vf.isValidDecision(v), false);
+}
+
+/**
+ * REJECTED 와 SKIPPED 를 합치지 않는다 — 둘 다 "지금 연결 안 함" 이지만
+ * REJECTED 는 결론이고 SKIPPED 는 보류다. 합치면 다음 검토 때 무엇을 다시
+ * 봐야 하는지 알 수 없다.
+ */
+check("보류와 거부가 따로 있다",
+      [vf.DECISIONS.includes("REJECTED"), vf.DECISIONS.includes("SKIPPED")], [true, true]);
+
+// --- stats.reviewProgress -----------------------------------
+/**
+ * 화면이 배열을 다시 훑지 않아도 되게 숫자를 미리 센다. 편집된 보고서를
+ * 다시 읽었을 때도 같은 함수로 같은 숫자가 나와야 한다.
+ */
+check("진행률 자리", Object.keys(vfr.stats.reviewProgress).sort(),
+      ["approved", "rejected", "remaining", "reviewed", "skipped", "total"]);
+check("생성 시점에는 전부 미검토", vfr.stats.reviewProgress,
+      { total: 4, reviewed: 0, approved: 0, rejected: 0, skipped: 0, remaining: 4 });
+
+/** SKIPPED 도 "본 것"이다 — 보류는 판단을 미룬 것이지 안 본 것이 아니다. */
+const decided = vfr.review.map((x, i) =>
+  ({ ...x, decision: [null, "APPROVED", "REJECTED", "SKIPPED"][i] }));
+check("결정을 채우면 진행률이 따라온다", vf.reviewStats(decided),
+      { total: 4, reviewed: 3, approved: 1, rejected: 1, skipped: 1, remaining: 1 });
+check("합이 맞는다", await (async () => {
+  const s = vf.reviewStats(decided);
+  return [s.approved + s.rejected + s.skipped === s.reviewed,
+          s.reviewed + s.remaining === s.total];
+})(), [true, true]);
+check("빈 목록도 0으로 답한다", vf.reviewStats([]),
+      { total: 0, reviewed: 0, approved: 0, rejected: 0, skipped: 0, remaining: 0 });
+
+// --- URL 유일성 (T11-6.3 완료 조건 D 의 기댓값) ----------------
+/**
+ * `(학명, URL)` 중복이 0인 것과 URL 이 전체에서 유일한 것은 다른 사실이다.
+ * 원종과 품종이 같은 사진을 쓰면 `count(distinct image_url)` 은 행 수보다 작다.
+ * 그걸 모르고 4763 을 검증 기준으로 걸면 정상 적재가 실패로 보고된다.
+ */
+check("고유 URL 수를 센다", vfr.url.distinct, 8);
+const SHARED = vf.compare([
+  row("Spiraea thunbergii", "사진", "http://www.nature.go.kr/same.JPG"),
+  row("Spiraea thunbergii 'Mount Fuji'", "사진", "http://www.nature.go.kr/same.JPG"),
+  row("Pinus densiflora", "사진", "http://www.nature.go.kr/pine.JPG")
+], SP);
+check("학명이 다른데 같은 사진이면 고유 URL 이 줄어든다",
+      [SHARED.url.distinct, SHARED.csv.rows], [2, 3]);
+check("어느 학명끼리 공유하는지 말해 준다", SHARED.url.shared.map(s => s.names),
+      [["Spiraea thunbergii", "Spiraea thunbergii 'Mount Fuji'"]]);
+check("공유가 없으면 빈 배열", SHARED.url.shared.length > 0, true);
+
+// ============================================================
+section("21. T12 TODO 가 마이그레이션에 남아 있다");
+// ============================================================
+for (const col of ["is_primary", "sort_order", "review_status"]) {
+  check(`TODO(T12): ${col}`, new RegExp(`TODO\\(T12\\)[\\s\\S]*${col}`).test(MIGRATION), true);
+}
+check("아직 컬럼으로 만들지는 않았다",
+      /^\s{2}(is_primary|sort_order|review_status)\s/m.test(
+        MIGRATION.slice(0, MIGRATION.indexOf("TODO(T12)"))), false);
+
+// ============================================================
+section("22. T11-6.3 전 검증 TODO 가 남아 있다");
+// ============================================================
+/**
+ * 적재한 뒤에 발견하면 4,763행을 되돌려야 한다. 무엇을 먼저 세야 하는지
+ * 검증기 본문에 남겨 두고, 빠지면 여기서 걸린다.
+ */
+const VERIFIER = await readFile(join(HERE, "..", "verify-plant-images.mjs"), "utf8");
+const TODO_BLOCK = VERIFIER.slice(VERIFIER.indexOf("TODO(T11-6.3 전)"),
+                                  VERIFIER.indexOf("import fs from"));
+check("TODO 블록이 있다", TODO_BLOCK.length > 0, true);
+for (const [label, needle] of [
+  ["HTTP URL 샘플 검사", "HTTP URL 샘플"],
+  ["이미지 확장자 검사", "이미지 확장자"],
+  ["국명 빈 값 검사",    "국명 빈 값"],
+  ["Unicode 공백 검사",  "Unicode 공백"],
+  ["이미지 중복 해시 검사", "이미지 중복(Hash)"]
+]) {
+  check(`TODO: ${label}`, TODO_BLOCK.includes(needle), true);
+}
+check("전부 읽기 전용임을 명시한다", TODO_BLOCK.includes("읽기 전용"), true);
+check("전량 요청을 하지 말라고 적혀 있다", TODO_BLOCK.includes("전량"), true);
+
+/** 적재 후 통과해야 하는 네 가지. 기댓값은 전부 적재 **전에** 정해진다. */
+check("완료 조건 블록이 있다", TODO_BLOCK.includes("T11-6.3 완료 조건"), true);
+for (const [label, needle] of [
+  ["A · CSV SHA256 재계산",            "SHA256 재계산"],
+  ["B · count(*)",                     "count(*) from plant_images"],
+  ["C · count(distinct scientific_name)", "count(distinct scientific_name)"],
+  ["D · count(distinct image_url)",    "count(distinct image_url)"]
+]) {
+  check(`완료 조건 ${label}`, TODO_BLOCK.includes(needle), true);
+}
+/**
+ * D 의 기댓값을 4763 으로 못박지 않았는지 — 못박으면 정상 적재가 사고로
+ * 오인된다. 기댓값은 `[9] 고유 URL` 이 실측으로 알려 준다.
+ */
+check("D 의 기댓값을 단정하지 않는다",
+      /count\(distinct image_url\)[^\n]*=\s*\?/.test(TODO_BLOCK), true);
+check("해시가 다르면 중단하라고 적혀 있다", TODO_BLOCK.includes("적재를 중단"), true);
+
+// ============================================================
+section("23. 적재 후 검증 — A~H 판정 (T11-6.3)");
+// ============================================================
+const ld = await import("../verify-plant-images-loaded.mjs");
+
+const LOADED = [
+  { scientific_name: "Stipa tenuissima Trin.",            korean_name: "가는잎나래새",
+    image_url: "http://www.nature.go.kr/a.JPG" },
+  { scientific_name: "Spiraea thunbergii 'Mount Fuji'",   korean_name: "가는잎조팝나무 '마운트 후지'",
+    image_url: "http://www.nature.go.kr/b.JPG" },
+  { scientific_name: "Lavandula angustifolia Mill.",      korean_name: "라벤더",
+    image_url: "http://www.nature.go.kr/c.JPG" },
+  { scientific_name: "Pinus densiflora Siebold & Zucc.",  korean_name: "소나무",
+    image_url: "http://www.nature.go.kr/c.JPG" }          // 학명이 다른데 같은 사진
+];
+const M = ld.measure(LOADED);
+check("집계", [M.total, M.distinctNames, M.distinctUrls, M.sharedCount], [4, 4, 3, 1]);
+check("공유하는 학명을 말해 준다", M.shared[0].names,
+      ["Lavandula angustifolia Mill.", "Pinus densiflora Siebold & Zucc."]);
+
+const REPORT = {
+  schema: { name: "plant-image-review", major: 4, minor: 1 },
+  dataset: { hash: { algorithm: "sha256", value: "ab".repeat(32) } },
+  source: { csvRows: 5, csvValidRows: 4, csvNames: 4 },
+  url: { distinct: 3, sharedCount: 1 }
+};
+const CHECKS = ld.judge(M, REPORT);
+check("A~H 여덟 개", CHECKS.map(c => c.id), ["A", "B", "C", "D", "E", "F", "G", "H"]);
+check("전부 통과", CHECKS.every(c => c.pass), true);
+
+/**
+ * A 의 기댓값은 `csvValidRows` 다. `csvRows` 는 건너뛴 행(빈 URL 등)을 포함하고
+ * 그 행들은 애초에 적재되지 않는다 — 그걸 기준으로 삼으면 정상 적재가 실패로
+ * 보고된다. 위 REPORT 는 csvRows 5 · csvValidRows 4 로 둘을 일부러 다르게 뒀다.
+ */
+check("A 는 유효 행 수를 본다 (건너뛴 행 제외)",
+      CHECKS.find(c => c.id === "A").expected, 4);
+
+check("행이 모자라면 A 가 걸린다",
+      ld.judge(ld.measure(LOADED.slice(0, 3)), REPORT).find(c => c.id === "A").pass, false);
+check("보고서에 기댓값이 없으면 통과시키지 않는다",
+      ld.judge(M, { source: {}, url: {} }).every(c => c.pass), false);
+
+// --- F · G · H ------------------------------------------------
+const LOADED_BAD = ld.measure([
+  ...LOADED,
+  { scientific_name: "X y", korean_name: "", image_url: "" },                    // F
+  { scientific_name: "X z", korean_name: "", image_url: "ftp://x/a.JPG" },       // G
+  { scientific_name: "X w", korean_name: "", image_url: "https://cdn.example.com/a.JPG" } // H
+]);
+check("빈 URL 을 센다", LOADED_BAD.empty, 1);
+check("형식 이상을 센다", LOADED_BAD.malformed, 1);
+check("외부 호스트를 센다", [LOADED_BAD.offsiteCount, LOADED_BAD.offsiteHosts["cdn.example.com"]], [1, 1]);
+check("국명 빈 값도 함께 센다", LOADED_BAD.emptyKorean, 3);
+check("F·G·H 가 실패로 잡힌다",
+      ld.judge(LOADED_BAD, REPORT).filter(c => ["F", "G", "H"].includes(c.id)).map(c => c.pass),
+      [false, false, false]);
+
+// --- 사전 조건 ------------------------------------------------
+const PRE_OK = ld.checkPreconditions(REPORT, "ab".repeat(32));
+check("같은 파일이면 사전 조건 통과", PRE_OK.every(p => p.pass), true);
+check("해시가 다르면 막는다",
+      ld.checkPreconditions(REPORT, "cd".repeat(32)).at(-1).pass, false);
+check("--csv 를 안 주면 '확인 못 함' 으로 막는다", await (async () => {
+  const p = ld.checkPreconditions(REPORT, "").at(-1);
+  return [p.pass, p.detail.includes("알 수 없다")];
+})(), [false, true]);
+check("모르는 major 는 거부한다",
+      ld.checkPreconditions({ ...REPORT, schema: { name: "plant-image-review", major: 3, minor: 0 } },
+                            "ab".repeat(32))[0].pass, false);
+check("minor 가 높은 것은 받아들인다",
+      ld.checkPreconditions({ ...REPORT, schema: { name: "plant-image-review", major: 4, minor: 9 } },
+                            "ab".repeat(32))[0].pass, true);
+
+// --- 샘플 ------------------------------------------------------
+const S = ld.sampleCheck(LOADED);
+check("샘플 셋", S.map(s => s.pass), [true, true, true]);
+check("품종은 품종으로 남는다",
+      S.find(s => s.name.includes("Mount Fuji")).canonicalHits, 1);
+check("없는 학명은 실패로", ld.sampleCheck(LOADED, [{ name: "Nothing here", want: "" }])[0].pass, false);
+/** "적재가 안 됐다"와 "표기가 다르다"는 다른 사고라 나눠 센다. */
+check("원문은 없고 canonical 만 맞으면 구분해 보여 준다", await (async () => {
+  const s = ld.sampleCheck(LOADED, [{ name: "Stipa tenuissima", want: "" }])[0];
+  return [s.rawHits, s.canonicalHits, s.pass];
+})(), [0, 1, false]);
+
+/** 이 파일은 읽기만 한다 — 쓰기 경로가 있으면 "검증만 돌린다"가 보증되지 않는다. */
+const LOADED_SRC = await readFile(join(HERE, "..", "verify-plant-images-loaded.mjs"), "utf8");
+check("GET 외의 method 가 없다",
+      /method:\s*"(POST|PATCH|PUT|DELETE)"/i.test(LOADED_SRC), false);
+check("Prefer: resolution=merge-duplicates 같은 적재 헤더가 없다",
+      /merge-duplicates/i.test(LOADED_SRC), false);
+check("페이지네이션을 한다 — max-rows 1000 을 넘긴다",
+      /offset=\$\{offset\}/.test(LOADED_SRC), true);
 
 // ============================================================
 console.log("\n" + "=".repeat(52));

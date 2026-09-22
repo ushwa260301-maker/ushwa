@@ -23,18 +23,38 @@
  * 식물이면, 없는 것보다 나쁘다.
  *
  * 그래서 앞부분 일치(prefix)·속명 일치·유사도 매칭을 **하지 않는다.**
- * SQL 도 `eq` 만 쓴다 — `like` · `ilike` · `contains` 를 쓰지 않는다.
  * 못 찾으면 `[]` 를 돌려주고 metadata 의 나머지는 그대로 둔다.
  *
- * ## 공백 정리는 일치 판정의 일부다
+ * ## 다만 명명자는 뗀다 (T11-6.2)
  *
- * 앞뒤 공백과 연속 공백만 정리한다. 대소문자·명명자 표기는 건드리지 않는다 —
- * 학명에서 그것들은 의미가 있다(`Ser.` 와 `ser.` 는 다르다). 적재 쪽
- * (`tests/import-plant-images.mjs`)도 같은 규칙으로 정규화해 넣는다.
- * 두 규칙이 어긋나면 `eq` 가 조용히 0건이 된다.
+ * KNA 는 학명에 명명자를 붙이고(`Stipa tenuissima Trin.`) 우리는 붙이지
+ * 않는다(`Stipa tenuissima`). 원문 완전 일치를 고집하면 **한 장도 붙지
+ * 않는다** — 실측에서 4,565종 × 77종의 정확 매칭이 0건이었다.
+ *
+ * 명명자는 "누가 이 이름을 발표했는가" 라는 서지 정보라 떼어도 같은
+ * 분류군이다. 품종은 다른 분류군이라 그대로 둔다. 그 구분은
+ * `scientificName.js` 의 `canonicalScientificName()` 한 곳에서만 한다.
+ *
+ *     Stipa tenuissima Trin.           ─┐
+ *     Stipa tenuissima                 ─┴→ 같은 canonical → 연결
+ *     Spiraea thunbergii 'Mount Fuji'  ─── 다른 canonical → 연결 안 함
+ *
+ * canonical 은 저장하지 않는다. 파생값이라 원문과 어긋날 수 있고, 규칙을
+ * 고칠 때마다 전량 재계산해야 한다. 조회할 때 계산한다.
+ *
+ * ## SQL 의 `like` 는 후보를 좁히기만 한다
+ *
+ * canonical 을 DB 가 모르므로 `eq` 로는 걸 수 없다. 속명으로 후보를 받아
+ * **판정은 JS 에서 canonical 완전 일치로** 한다. `like` 는 후보 집합을
+ * 넓히기만 할 뿐 어느 행이 붙을지 정하지 않는다 — 유사도 매칭이 아니다.
  */
 
 import { toPlantRecord } from "../plantRecord.js";
+import {
+  normalizeScientificName, canonicalScientificName, canonicalKey, genusOf
+} from "../scientificName.js";
+
+export { normalizeScientificName, canonicalScientificName, canonicalKey };
 
 export const SOURCE = "kna";
 export const LABEL = "국립수목원 표준식물목록 이미지";
@@ -53,21 +73,21 @@ export const COLUMNS = "scientific_name, korean_name, image_type, image_url";
  */
 export const FUNCTION_NAME = "plant-image-kna";
 
-/**
- * 학명 비교용 정규화 — **공백만** 정리한다.
- *
- * 대소문자를 내리거나 명명자를 떼면 다른 분류군이 같아 보인다.
- * 그건 일치가 아니라 추측이다.
- */
-export function normalizeScientificName(name) {
-  return String(name ?? "").trim().replace(/\s+/g, " ");
-}
-
-/** 두 학명이 **완전히** 같은가. 이 함수가 품종 오연결을 막는 유일한 지점이다. */
+/** 두 학명이 원문까지 **완전히** 같은가. 과거 Edge Function 경로가 쓴다. */
 export function isExactMatch(a, b) {
   const x = normalizeScientificName(a);
   const y = normalizeScientificName(b);
   return x !== "" && x === y;
+}
+
+/**
+ * 같은 분류군인가 — **명명자만 무시한다.**
+ * 이 함수가 품종 오연결을 막는 유일한 지점이다. 품종명은 canonical 에 남으므로
+ * `'Limelight'` 는 원종과 끝내 같아지지 않는다.
+ */
+export function isSameTaxon(a, b) {
+  const x = canonicalKey(a);
+  return x !== "" && x === canonicalKey(b);
 }
 
 /**
@@ -116,13 +136,20 @@ export function scientificNameOf(row) {
 /**
  * Supabase client → `ctx.select`.
  *
- * `eq` 하나뿐이다. 이 줄이 "완전 일치만" 을 SQL 레벨에서 보증한다 —
- * 여기에 `like` 가 들어오면 위의 모든 방어가 무의미해진다.
+ * **속명으로 후보만 받는다.** canonical 을 DB 가 모르기 때문이고, 어느 행이
+ * 붙을지는 `findPhotos` 가 canonical 완전 일치로 정한다. 여기서 넓게 받아도
+ * 판정이 좁으므로 안전하다 — 반대로 여기서 좁히면 명명자가 붙은 행을
+ * 통째로 놓친다.
+ *
+ * 속명 접두사는 canonical 의 첫 토큰이라 **어떤 명명자 표기에도 살아남는다.**
+ * `Acer%` 가 `Aceriphyllum` 까지 데려오지만 판정에서 떨어진다.
  */
 export function selectFromSupabase(client, table = TABLE) {
   return async scientificName => {
+    const genus = genusOf(scientificName);
+    if (!genus) return [];
     const { data, error } = await client.from(table).select(COLUMNS)
-      .eq("scientific_name", scientificName);
+      .like("scientific_name", `${genus}%`);
     if (error) throw error;
     return Array.isArray(data) ? data : [];
   };
@@ -169,9 +196,14 @@ export async function findPhotos(scientificName, ctx = {}) {
     return { ok: false, photos: [], matched: false, error: err?.message || String(err) };
   }
 
-  // eq 로 걸러 오지만 응답을 그대로 믿지 않는다 — 여기서 **완전 일치만** 남긴다.
+  /**
+   * **판정은 여기서만.** 조회가 무엇을 데려오든 canonical 이 같은 행만 남는다.
+   * 과거 Edge Function 경로는 원문 완전 일치를 유지한다 — 그쪽 응답에는
+   * 명명자가 붙지 않아 canonical 을 적용할 이유가 없고, 계약을 바꾸지 않는다.
+   */
+  const match = useSelect ? isSameTaxon : isExactMatch;
   const exact = (Array.isArray(rows) ? rows : [])
-    .filter(r => isExactMatch(scientificNameOf(r), want));
+    .filter(r => match(scientificNameOf(r), want));
   if (!exact.length) return { ok: true, photos: [], matched: false };
 
   const max = Number.isInteger(ctx.max) && ctx.max > 0 ? ctx.max : 5;
