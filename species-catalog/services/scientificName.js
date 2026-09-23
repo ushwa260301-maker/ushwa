@@ -48,6 +48,22 @@ const CONNECTOR = new Set(["&", "ex", "et", "and", "in"]);
 /** 전부 소문자인 토큰만 종소명으로 본다. 명명자는 대문자로 시작한다. */
 const EPITHET = /^[a-zà-öø-ÿœæ][a-zà-öø-ÿœæ-]*$/;
 
+/**
+ * 계급 표시 뒤에 올 수 있는 이름인가.
+ *
+ * 속 아래 계급(`subsp.` · `var.` · `f.`)은 **소문자** 소명을 취하고,
+ * 속 안 계급(`sect.` · `ser.`)은 **대문자** 이름을 취한다 — `Carex sect.
+ * Phacocystis`. 그래서 대소문자로 거르면 안 된다.
+ *
+ * 거르는 것은 **점이 섞인 토큰**이다. `K.Koch` · `Sieb.` 처럼 축약점이 있으면
+ * 명명자이지 분류군 이름이 아니다. 잇는 말(`ex` · `et`)도 이름이 아니다.
+ */
+function isRankedName(token) {
+  const t = String(token ?? "");
+  if (t === "" || CONNECTOR.has(t.toLowerCase()) || HYBRID.has(t)) return false;
+  return /^[A-Za-zÀ-ÖØ-Þà-öø-ÿŒœÆæ][a-zà-öø-ÿœæ-]*$/.test(t);
+}
+
 /** 품종명 — 따옴표로 묶인 부분. 여는·닫는 따옴표 모양이 달라도 받는다. */
 const CULTIVAR = /['"‘“]([^'"‘’“”]*)['"’”]/g;
 
@@ -91,10 +107,22 @@ export function canonicalScientificName(name) {
   const out = [tokens[0]];          // 속명은 언제나 남는다
   let keepNext = false;             // 계급 표시·교배종 기호 바로 뒤는 소명이다
 
-  for (const t of tokens.slice(1)) {
+  for (let i = 1; i < tokens.length; i++) {
+    const t = tokens[i];
     if (HYBRID.has(t)) { out.push("×"); keepNext = true; continue; }
     const low = t.toLowerCase();
-    if (RANK.has(low)) { out.push(low); keepNext = true; continue; }
+    // 계급 표시는 **뒤에 이름이 따라와야** 계급이다.
+    //
+    //   Hydrangea serrata (Thunb.) Ser.   ← Ser. 는 Seringe, 명명자다
+    //   Carex sect. Phacocystis           ← sect. 는 계급이다
+    //
+    // `Ser.`(명명자)와 `ser.`(열)은 철자가 같다. 가르는 것은 대소문자가 아니라
+    // **뒤에 무엇이 오는가** 다 — 계급은 이름을 꾸미는 말이라 홀로 끝에 설 수
+    // 없다. 이 확인이 없으면 명명자가 canonical 에 남아, 같은 식물인
+    // `Hydrangea serrata` 와 짝이 되지 못한다.
+    if (RANK.has(low) && isRankedName(tokens[i + 1])) {
+      out.push(low); keepNext = true; continue;
+    }
     if (keepNext) { out.push(t); keepNext = false; continue; }
     if (CONNECTOR.has(low)) break;
     if (!EPITHET.test(t)) break;    // 대문자로 시작하면 명명자다
