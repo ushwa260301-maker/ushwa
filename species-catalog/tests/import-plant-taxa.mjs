@@ -159,18 +159,45 @@ async function callApi(op, params, key) {
  * `fetchJson` 을 주입받으면 네트워크 없이 검사할 수 있다.
  */
 export async function fetchTaxon(koreanName, ctx) {
+  const want = String(koreanName ?? "").trim();
   const call = ctx.call;
-  const found = await call(SEARCH_OP, { reqSearchWrd: koreanName, numOfRows: "5" });
-  const no = found.map(mapSearchRow).find(Boolean);
-  if (!no) return { row: null, reason: "검색 결과 없음" };
+  const limit = String(ctx.limit ?? 5);
 
-  const detail = (await call(DETAIL_OP, { reqPlantPilbkNo: no }))[0];
-  const mapped = mapDetailRow(detail || {});
-  if (!mapped) return { row: null, reason: "상세 응답에 도감번호 없음" };
+  const found = await call(SEARCH_OP, { reqSearchWrd: want, numOfRows: limit });
+  const numbers = found.map(mapSearchRow).filter(Boolean);
+  if (!numbers.length) return { row: null, reason: "검색 결과 없음", candidates: 0, seen: [] };
 
-  const row = toTaxonRow(mapped, { syncedAt: ctx.syncedAt });
-  if (!row) return { row: null, reason: "학명 없음" };
-  return { row, reason: "" };
+  const seen = [];
+  for (const no of numbers) {
+    const detail = (await call(DETAIL_OP, { reqPlantPilbkNo: no }))[0];
+    const mapped = mapDetailRow(detail || {});
+    if (!mapped) { seen.push({ no, name: "" }); continue; }
+
+    const name = String(mapped.koreanName ?? "").trim();
+    seen.push({ no, name });
+
+    // 국명이 **정확히** 같을 때만 채택한다.
+    //
+    // `plantPilbkSearch("산수국")` 은 떡잎산수국(`Hydrangea serrata f.
+    // coreana`)을 먼저 돌려준다. 첫 결과를 그냥 받으면 **다른 분류군이
+    // 조용히 들어온다** — 화면은 산수국이라 적고 값은 품종의 것이 된다.
+    //
+    // 부분 일치·유사도는 쓰지 않는다. "산수국" 이 "떡잎산수국" 에 들어
+    // 있다는 사실은 두 식물이 같다는 뜻이 아니다.
+    if (name !== want) continue;
+
+    const row = toTaxonRow(mapped, { syncedAt: ctx.syncedAt });
+    if (!row) {
+      return { row: null, reason: `국명은 맞으나 학명이 없음 (도감번호 ${no})`,
+               candidates: numbers.length, seen };
+    }
+    return { row, reason: "", candidates: numbers.length, seen };
+  }
+
+  // 못 찾았으면 **실패로 남긴다.** 비슷한 것을 대신 주지 않는다.
+  const names = seen.map(s => s.name || `?(${s.no})`).join(", ");
+  return { row: null, candidates: numbers.length, seen,
+           reason: `"${want}" 와 국명이 정확히 일치하는 후보 없음 — 후보 ${numbers.length}건: ${names}` };
 }
 
 // ------------------------------------------------------------
@@ -284,8 +311,11 @@ async function main(argv) {
     for (const [i, name] of names.entries()) {
       console.log(`[${i + 1}/${names.length}] ${name} 조회 중…`);
       try {
-        const { row, reason } = await fetchTaxon(name, ctx);
-        if (row) { rows.push(row); console.log(`  ✓ ${row.scientific_name}`); }
+        const { row, reason, candidates, seen } = await fetchTaxon(name, ctx);
+        if (seen?.length) {
+          console.log(`  후보 ${candidates}건: ${seen.map(s => `${s.name || "?"}(${s.no})`).join(", ")}`);
+        }
+        if (row) { rows.push(row); console.log(`  ✓ 채택 ${row.korean_name} / ${row.scientific_name}`); }
         else     { failures.push({ name, reason }); console.log(`  ✗ ${reason}`); }
       } catch (err) {
         failures.push({ name, reason: err.message });
@@ -309,13 +339,21 @@ async function main(argv) {
   }
   console.log(`빈 칸   : ${Object.entries(missing).map(([k, v]) => `${k} ${v}`).join(" · ")}`);
 
-  if (rows.length) {
-    const s = rows[0];
-    console.log(`\n예시    : ${s.korean_name} / ${s.scientific_name}`);
-    console.log(`          ${s.family} · ${s.genus} · ${s.growth_form ?? "—"} · ` +
-                `${s.sunlight ?? "—"} · ${s.flowering_months?.join("~") ?? "—"}`);
-    if (s.shpe_raw) console.log(`  원문   : ${s.shpe_raw.slice(0, 120)}`);
+  // 뽑은 값과 **그 근거가 된 원문**을 나란히 보여 준다. 잘라서 보여 주면
+  // 값이 비었을 때 원문이 말하지 않은 것인지 뽑기 규칙이 놓친 것인지
+  // 판단할 수 없다 — 분석용 출력이며 저장 구조와는 무관하다.
+  const RAW_LIMIT = 5;
+  for (const s of rows.slice(0, RAW_LIMIT)) {
+    console.log(`\n${"─".repeat(60)}`);
+    console.log(`${s.korean_name} / ${s.scientific_name}`);
+    console.log(`  과·속       : ${s.family || "—"} · ${s.genus || "—"}`);
+    console.log(`  growth_form : ${s.growth_form ?? "—"}`);
+    console.log(`  sunlight    : ${s.sunlight ?? "—"}`);
+    console.log(`  개화월      : ${s.flowering_months?.join(", ") ?? "—"}`);
+    console.log(`\n  ── shpe_raw (형태 원문) ──\n${s.shpe_raw ?? "  (비어 있음)"}`);
+    console.log(`\n  ── grw_evrnt_raw (생육환경 원문) ──\n${s.grw_evrnt_raw ?? "  (비어 있음)"}`);
   }
+  if (rows.length > RAW_LIMIT) console.log(`\n… 원문은 앞 ${RAW_LIMIT}건만 보여 준다`);
 
   if (flags.sql) {
     const sql = toSql(rows);

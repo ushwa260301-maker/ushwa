@@ -197,6 +197,51 @@ section("⑧ fetchTaxon — 2단계 조회 (네트워크 없이)");
   check("검색 결과 없으면 행을 만들지 않는다", [got.row, got.reason], [null, "검색 결과 없음"]);
 }
 
+// ── 국명 완전 일치 ────────────────────────────────────────────────────
+// 실측(2026-09-23): plantPilbkSearch("산수국") 이 떡잎산수국을 **먼저**
+// 돌려줬고, 첫 결과를 그냥 받던 코드가 다른 분류군을 조용히 채택했다.
+const KNA_DB = {
+  "42087": { plantPilbkNo: "42087", plantGnrlNm: "떡잎산수국",
+             plantSpecsScnm: "Hydrangea serrata (Thunb.) Ser. f. coreana (Nakai) T.B.Lee",
+             familyKorNm: "범의귀과", genusKorNm: "수국속",
+             shpe: "꽃은 7~8월에 핀다.", grwEvrntDesc: "산지에서 자란다." },
+  "42090": { plantPilbkNo: "42090", plantGnrlNm: "산수국",
+             plantSpecsScnm: "Hydrangea serrata (Thunb.) Ser.",
+             familyKorNm: "범의귀과", genusKorNm: "수국속",
+             shpe: "낙엽 활엽 관목이다. 꽃은 6~7월에 핀다.",
+             grwEvrntDesc: "반양지에서 자란다." }
+};
+/** 검색은 `order` 순서로 도감번호를 돌려준다. 상세는 번호로 찾는다. */
+const knaCall = order => async (op, p) =>
+  op === "plantPilbkSearch" ? order.map(no => ({ plantPilbkNo: no }))
+                            : [KNA_DB[p.reqPlantPilbkNo]].filter(Boolean);
+
+{
+  // 떡잎산수국이 먼저 와도 산수국을 골라야 한다.
+  const got = await fetchTaxon("산수국", { call: knaCall(["42087", "42090"]) });
+  check("국명이 정확히 같은 후보를 고른다", got.row.korean_name, "산수국");
+  check("학명도 그 후보의 것", got.row.scientific_name, "Hydrangea serrata (Thunb.) Ser.");
+  check("후보 수를 보고한다", got.candidates, 2);
+  check("확인한 후보를 남긴다", got.seen.map(s => s.name), ["떡잎산수국", "산수국"]);
+}
+{
+  // 첫 후보가 이미 정답이면 뒤는 보지 않는다.
+  const got = await fetchTaxon("산수국", { call: knaCall(["42090", "42087"]) });
+  check("맞는 것을 찾으면 멈춘다", got.seen.map(s => s.name), ["산수국"]);
+}
+{
+  // 정확히 일치하는 것이 없으면 **비슷한 것을 대신 주지 않는다.**
+  const got = await fetchTaxon("산수국", { call: knaCall(["42087"]) });
+  check("일치 후보 없으면 행을 만들지 않는다", got.row, null);
+  check("이유에 후보를 적는다", got.reason.includes("떡잎산수국"), true);
+  check("부분 일치로 넘어가지 않는다", got.reason.includes("정확히 일치하는 후보 없음"), true);
+}
+{
+  // 반대 방향 — 요청이 더 긴 이름이어도 부분 일치로 붙지 않는다.
+  const got = await fetchTaxon("떡잎산수국", { call: knaCall(["42090"]) });
+  check("요청 ⊃ 후보 여도 붙이지 않는다", got.row, null);
+}
+
 // ============================================================
 section("⑨ upsert SQL");
 // ============================================================
