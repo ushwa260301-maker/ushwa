@@ -6,6 +6,7 @@
  *   node species-catalog/tests/import-plant-taxa.mjs --names-file=names.txt
  *   node species-catalog/tests/import-plant-taxa.mjs --json=dump.json         # 저장해 둔 응답으로
  *   node species-catalog/tests/import-plant-taxa.mjs --names=산수국 --sql=out.sql
+ *   node species-catalog/tests/import-plant-taxa.mjs --names=산수국 --sql=out.sql --no-bom
  *   node species-catalog/tests/import-plant-taxa.mjs --names=산수국 --apply
  *
  * 테이블은 `supabase/2026-09-23_plant_taxa.sql` 이 먼저 만들어 둔다.
@@ -216,6 +217,27 @@ const COLUMNS = ["scientific_name", "korean_name", "family", "genus",
                  "growth_form", "sunlight", "flowering_months",
                  "shpe_raw", "grw_evrnt_raw", "synced_at"];
 
+/**
+ * SQL 파일 쓰기 — **UTF-8, 기본적으로 BOM 을 붙인다.**
+ *
+ * Node 의 기본 인코딩이 이미 utf8 이라 바이트는 원래도 정확했다. 깨진 것은
+ * 읽는 쪽이다: Windows PowerShell 5.1 의 `Get-Content` 는 인코딩을 주지
+ * 않으면 시스템 ANSI 코드페이지(한국어 Windows 는 CP949)로 읽는다. 그래서
+ * BOM 없는 UTF-8 파일이 `산수국` → `?곗닔援?` 로 보인다.
+ *
+ * 파일이 멀쩡해도 **사람이 검토할 수 없으면 소용이 없다.** BOM 세 바이트가
+ * 있으면 PowerShell · 메모장 · Excel 이 UTF-8 로 알아본다.
+ *
+ * psql 에 파일을 직접 먹일 때는 BOM 이 구문 오류가 될 수 있다 — 그때는
+ * `--no-bom` 을 준다. Supabase SQL Editor 에 붙여 넣는 경로는 영향 없다.
+ */
+export const UTF8_BOM = "﻿";
+
+export function writeSql(file, sql, { bom = true } = {}) {
+  fs.writeFileSync(file, (bom ? UTF8_BOM : "") + sql + "\n", "utf8");
+  return file;
+}
+
 export function toSql(rows, batchSize = 200) {
   const out = [];
   for (let i = 0; i < rows.length; i += batchSize) {
@@ -294,7 +316,8 @@ async function main(argv) {
     const names = readNames(flags);
     if (!names.length) {
       console.error("사용법: node species-catalog/tests/import-plant-taxa.mjs " +
-                    "(--names=국명,… | --names-file=f | --json=dump.json) [--sql[=out.sql]] [--apply]");
+                    "(--names=국명,… | --names-file=f | --json=dump.json) " +
+                    "[--sql[=out.sql]] [--no-bom] [--apply]");
       process.exit(2);
     }
     const key = process.env.KNA_SERVICE_KEY;
@@ -358,8 +381,14 @@ async function main(argv) {
   if (flags.sql) {
     const sql = toSql(rows);
     const out = typeof flags.sql === "string" ? flags.sql : "";
-    out ? (fs.writeFileSync(out, sql + "\n"), console.log(`\nSQL     : ${out}`))
-        : console.log("\n" + sql);
+    if (out) {
+      const bom = !flags["no-bom"];
+      writeSql(out, sql, { bom });
+      console.log(`\nSQL     : ${out}  (UTF-8${bom ? " BOM" : ", BOM 없음"})`);
+      if (bom) console.log(`          PowerShell: Get-Content .\\${path.basename(out)}`);
+    } else {
+      console.log("\n" + sql);
+    }
   }
 
   if (flags.apply) {

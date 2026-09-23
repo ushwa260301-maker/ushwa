@@ -135,7 +135,7 @@ check("빈 입력", toTaxonRow(null), null);
 section("⑥ 응답 해석 — XML item");
 // ============================================================
 const { parseItems, apiError, toSql, fetchTaxon, TABLE,
-        API_BASE, TIMEOUT_MS, normalizeServiceKey, maskUrl }
+        API_BASE, TIMEOUT_MS, normalizeServiceKey, maskUrl, writeSql, UTF8_BOM }
   = await import("./import-plant-taxa.mjs");
 
 check("item 둘", parseItems(`
@@ -292,6 +292,50 @@ check("첫 인자여도 가린다",
 check("다른 인자는 남긴다",
       maskUrl("https://x/y?a=1&serviceKey=S&b=2"), "https://x/y?a=1&serviceKey=***&b=2");
 check("키가 없으면 그대로", maskUrl("https://x/y?a=1"), "https://x/y?a=1");
+
+// ============================================================
+section("⑪ SQL 파일 인코딩 — 한글이 살아 있는가");
+// ============================================================
+// 실측(2026-09-23): 파일은 정상 UTF-8 이었는데 PowerShell 5.1 의
+// `Get-Content` 가 CP949 로 읽어 `산수국` → `?곗닔援?` 로 보였다.
+// BOM 세 바이트를 붙여 Windows 도구가 UTF-8 을 알아보게 한다.
+{
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sqlenc-"));
+  const sql = toSql([{
+    scientific_name: "Hydrangea serrata (Thunb.) Ser.", korean_name: "산수국",
+    family: "범의귀과", genus: "수국속", growth_form: "낙엽 활엽 관목",
+    sunlight: null, flowering_months: [7, 8],
+    shpe_raw: "그늘진 계곡에서 자란다", grw_evrnt_raw: "내음성이 강하다",
+    synced_at: "2026-09-23T07:00:00.000Z"
+  }]);
+
+  const withBom = writeSql(path.join(dir, "bom.sql"), sql);
+  const buf = fs.readFileSync(withBom);
+  check("BOM 세 바이트로 시작한다", [...buf.slice(0, 3)], [0xef, 0xbb, 0xbf]);
+  check("UTF-8 로 읽으면 한글 그대로", buf.toString("utf8").includes("산수국"), true);
+  check("과·속·생육형도 그대로",
+        ["범의귀과", "수국속", "낙엽 활엽 관목"].every(s => buf.toString("utf8").includes(s)), true);
+  check("원문도 그대로",
+        ["그늘진 계곡에서 자란다", "내음성이 강하다"].every(s => buf.toString("utf8").includes(s)), true);
+  check("BOM 뒤는 곧바로 SQL", buf.toString("utf8").slice(1).startsWith("insert into"), true);
+
+  const noBom = writeSql(path.join(dir, "nobom.sql"), sql, { bom: false });
+  const buf2 = fs.readFileSync(noBom);
+  check("--no-bom 이면 BOM 없음", buf2[0] === 0xef, false);
+  check("--no-bom 이어도 한글은 그대로", buf2.toString("utf8").includes("산수국"), true);
+  check("BOM 만 다르고 내용은 같다",
+        buf.toString("utf8").slice(1) === buf2.toString("utf8"), true);
+
+  // CP949 로 읽으면 깨지는 것이 정상이다 — 그것이 이번 사건의 원인이었다.
+  check("CP949 로 읽으면 깨진다 (읽는 쪽 문제였음을 고정)",
+        new TextDecoder("euc-kr").decode(buf2).includes("산수국"), false);
+
+  check("BOM 상수", UTF8_BOM, "﻿");
+  fs.rmSync(dir, { recursive: true, force: true });
+}
 
 
 console.log("\n" + "=".repeat(52));
