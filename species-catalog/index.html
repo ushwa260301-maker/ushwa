@@ -833,18 +833,64 @@
 
         <div id="pgResults" class="hist-stats" aria-label="도감 검색 결과"></div>
 
+        <!--
+          Species Detail (T12-1)
+
+          카드와 자리는 데이터가 없어도 먼저 완성한다 — 값이 비면 "—" 로
+          두고 레이아웃은 무너지지 않는다.
+
+          카드 순서는 **고정**이다 (T12-1 확정):
+            대표 이미지 → 국명 → 학명 → 과·속 → 생육형 → 광조건 → 개화월
+            → … → 거래 가격(자리만) → 출처·동기화
+          값은 plantDetailSource 가 plant_taxa · plant_images 에서 읽어 온다.
+        -->
         <div id="pgDetail" hidden>
-          <h3 id="pgDetailName"></h3>
+          <div class="pg-detail-head">
+            <!-- 대표 이미지. 없으면 자리표시자를 보여 준다(레이아웃 유지). -->
+            <figure class="pg-photo" id="pgdPhotoBox">
+              <img id="pgdImage" alt="" hidden />
+              <figcaption id="pgdPhotoEmpty" class="pg-photo-empty">이미지 없음</figcaption>
+            </figure>
+
+            <div class="pg-detail-title">
+              <h3 id="pgDetailName"></h3>
+              <p class="pg-sci" id="pgdLatin">—</p>
+            </div>
+          </div>
+
           <div class="hist-stats" aria-label="도감 상세">
-            <div class="hist-stat"><dt>학명</dt><dd id="pgdLatin">—</dd></div>
-            <div class="hist-stat"><dt>개화기</dt><dd id="pgdBloom">—</dd></div>
-            <div class="hist-stat"><dt>크기</dt><dd id="pgdHeight">—</dd></div>
+            <div class="hist-stat"><dt>과</dt><dd id="pgdFamily">—</dd></div>
+            <div class="hist-stat"><dt>속</dt><dd id="pgdGenus">—</dd></div>
+            <div class="hist-stat"><dt>생육형</dt><dd id="pgdForm">—</dd></div>
             <div class="hist-stat"><dt>광조건</dt><dd id="pgdLight">—</dd></div>
+            <div class="hist-stat"><dt>개화월</dt><dd id="pgdBloom">—</dd></div>
+            <div class="hist-stat"><dt>크기</dt><dd id="pgdHeight">—</dd></div>
             <div class="hist-stat"><dt>식재위치</dt><dd id="pgdUse">—</dd></div>
             <div class="hist-stat"><dt>유통규격</dt><dd id="pgdMarket">—</dd></div>
             <div class="hist-stat"><dt>식재밀도(㎡/본)</dt><dd id="pgdDensity">—</dd></div>
             <div class="hist-stat"><dt>도감 페이지</dt><dd id="pgdPage">—</dd></div>
           </div>
+
+          <!--
+            가격 카드 — 자리만 먼저 만든다. 채우는 것은 거래 데이터 Sprint(T13)다.
+            "데이터 없음"을 명시해야 "아직 없다"와 "0원"이 구분된다.
+          -->
+          <section class="pg-card" aria-labelledby="pgdPriceTitle">
+            <h4 id="pgdPriceTitle">거래 가격</h4>
+            <p class="muted" id="pgdPriceEmpty">데이터 없음 — 거래명세서가 쌓이면 표시됩니다.</p>
+          </section>
+
+          <!--
+            출처 카드 — 이 정보가 어디서 왔는지 화면에 남긴다. 출처 없는
+            값은 사용자가 검증할 방법이 없고, 그건 없는 것보다 나쁘다.
+          -->
+          <section class="pg-card pg-source" aria-labelledby="pgdSourceTitle">
+            <h4 id="pgdSourceTitle">출처</h4>
+            <dl class="pg-source-list">
+              <div><dt>제공</dt><dd id="pgdSource">—</dd></div>
+              <div><dt>동기화</dt><dd id="pgdSyncedAt">—</dd></div>
+            </dl>
+          </section>
         </div>
       </div>
     </div>

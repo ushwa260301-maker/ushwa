@@ -1630,3 +1630,99 @@ html.debug-mode .debug-only { display: revert !important; }
   opacity: .6;
   cursor: not-allowed;
 }
+
+/* ============================================================
+   Species Detail (T12-1) — 도감 상세
+
+   기존 .hist-stats / .hist-stat 격자는 그대로 쓰고, 그 격자로
+   표현되지 않는 것(대표 이미지 · 출처 · 가격 카드)만 여기서 다룬다.
+   데이터가 없어도 자리가 무너지지 않는 것이 이 블록의 목적이다.
+   ============================================================ */
+
+.pg-detail-head {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin: 4px 0 14px;
+}
+
+/* 이미지가 없을 때도 같은 크기를 차지한다 — 값이 채워질 때 화면이 뛰지 않는다. */
+.pg-photo {
+  flex: 0 0 132px;
+  width: 132px;
+  height: 132px;
+  margin: 0;
+  border: 1px solid var(--rule, #dae0d3);
+  border-radius: 8px;
+  background: var(--panel-2, #f8f9f4);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pg-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* `display:block` 은 특이도가 브라우저 기본 `[hidden]{display:none}` 보다
+   높아서, 이 규칙이 없으면 숨긴 이미지가 자리를 계속 차지한다
+   — 자리표시자가 칸 가운데가 아니라 옆으로 밀린다. */
+.pg-photo img[hidden] { display: none; }
+
+.pg-photo-empty {
+  font-size: 12px;
+  color: var(--muted, #6c766e);
+  text-align: center;
+  padding: 0 8px;
+}
+
+.pg-detail-title { min-width: 0; }
+
+.pg-detail-title h3 {
+  margin: 0 0 4px;
+  line-height: 1.25;
+}
+
+/* 학명은 이탤릭이 관례다. 줄바꿈 가능하게 두어 긴 명명자도 잘리지 않는다. */
+.pg-sci {
+  margin: 0;
+  font-style: italic;
+  color: var(--ink-2, #3d453f);
+  overflow-wrap: anywhere;
+}
+
+.pg-card {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule-soft, #eaeee4);
+  border-radius: 8px;
+  background: var(--panel-2, #f8f9f4);
+}
+
+.pg-card h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--ink-2, #3d453f);
+}
+
+.pg-card p { margin: 0; }
+
+.pg-source-list {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+}
+
+.pg-source-list > div { display: contents; }
+.pg-source-list dt { color: var(--muted, #6c766e); font-size: 13px; }
+.pg-source-list dd { margin: 0; font-size: 13px; }
+
+@media (max-width: 480px) {
+  .pg-detail-head { gap: 12px; }
+  .pg-photo { flex-basis: 96px; width: 96px; height: 96px; }
+}
