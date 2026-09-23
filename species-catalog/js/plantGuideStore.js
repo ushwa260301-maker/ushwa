@@ -172,6 +172,19 @@ function toGuideRecord(raw, fileMeta, seq) {
     market_size:      raw.market_size || "",
     plant_density:    raw.plant_density || null,
     image_index:      raw.image_index ?? null,
-    page
+    page,
+
+    // ── 기준정보 필드 (T12-1 UI-2) ────────────────────────────────
+    // 정적 도감(책)에는 없는 값들이다. 지금은 전부 빈 값으로 나오지만,
+    // **통로를 먼저 연다** — 이 whitelist 가 필드를 버리면 T12-2 가
+    // `plant_taxa` 를 적재해도 화면까지 닿지 못한다.
+    family:           raw.family || "",
+    genus:            raw.genus || "",
+    growth_form:      raw.growth_form || "",
+    sunlight:         raw.sunlight || "",
+    flowering_months: raw.flowering_months ?? null,
+    image_url:        raw.image_url || "",
+    source:           raw.source || "",
+    synced_at:        raw.synced_at || ""
   };
 }
