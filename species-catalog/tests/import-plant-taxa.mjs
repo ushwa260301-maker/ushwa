@@ -44,8 +44,19 @@ import { toTaxonRow, isDisplayComplete } from "../services/knaTaxonText.js";
 
 export const TABLE = "plant_taxa";
 
-/** 국립수목원 OpenAPI. 경로는 `plantResourceProvider` 가 쓰는 것과 같은 서비스다. */
-const API_BASE = "http://api.nature.go.kr/openapi/service/rest/PlantService";
+/**
+ * 국립수목원 식물자원 API. 공공데이터포털에서 확인한 주소다 (2026-09-23).
+ *
+ *     https://apis.data.go.kr/1400119/PlantResource/plantPilbkSearch
+ *
+ * 이전 값(`http://api.nature.go.kr/openapi/service/rest/PlantService`)은
+ * 근거 없이 **추측한 주소**였다. 그 주소로는 응답이 오지 않아, 타임아웃이
+ * 없던 `fetch` 가 출력 한 줄 없이 매달렸다.
+ */
+export const API_BASE = "https://apis.data.go.kr/1400119/PlantResource";
+
+/** 응답을 기다리는 한도. 없으면 서버가 침묵할 때 영원히 매달린다. */
+export const TIMEOUT_MS = 15_000;
 
 // ------------------------------------------------------------
 // 응답 해석
@@ -100,11 +111,42 @@ export function apiError(xml) {
 // 조회
 // ------------------------------------------------------------
 
-async function callApi(op, params, key) {
-  const qs = new URLSearchParams({ serviceKey: key, ...params });
-  const res = await fetch(`${API_BASE}/${op}?${qs}`);
-  const body = await res.text();
+/**
+ * 서비스 키를 **한 번만** 인코딩한다.
+ *
+ * 공공데이터포털은 키를 이미 URL 인코딩된 형태로 내려준다(`…%2BAbC%3D`).
+ * 그대로 `URLSearchParams` 에 넣으면 `%` 가 다시 `%25` 로 인코딩돼 다른
+ * 문자열이 되고, 서버는 "등록되지 않은 키" 라고 답한다. 이미 인코딩된
+ * 키는 먼저 풀어 준다 — 그러면 인코딩이 정확히 한 번 일어난다.
+ */
+export function normalizeServiceKey(key) {
+  const s = String(key ?? "").trim();
+  if (!/%[0-9A-Fa-f]{2}/.test(s)) return s;
+  try { return decodeURIComponent(s); } catch { return s; }
+}
 
+/** 로그에 실을 주소. **키는 절대 남기지 않는다.** */
+export function maskUrl(url) {
+  return String(url).replace(/([?&]serviceKey=)[^&]*/i, "$1***");
+}
+
+async function callApi(op, params, key) {
+  const qs = new URLSearchParams({ serviceKey: normalizeServiceKey(key), ...params });
+  const url = `${API_BASE}/${op}?${qs}`;
+  console.log(`  → ${maskUrl(url)}`);
+
+  let res;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+  } catch (err) {
+    // 끊긴 이유를 말해 준다 — 침묵보다 낫다.
+    const why = err?.name === "TimeoutError" || err?.name === "AbortError"
+      ? `${TIMEOUT_MS / 1000}초 안에 응답 없음`
+      : (err?.cause?.code || err?.message || "연결 실패");
+    throw new Error(`${op} 요청 실패: ${why}`);
+  }
+
+  const body = await res.text();
   if (!res.ok) throw new Error(`${op} HTTP ${res.status}`);   // 본문을 싣지 않는다 — 키가 섞일 수 있다
   const err = apiError(body);
   if (err) throw new Error(`${op} 응답 오류: ${err}`);
@@ -234,14 +276,23 @@ async function main(argv) {
       process.exit(1);
     }
     const ctx = { call: (op, p) => callApi(op, p, key), syncedAt };
-    for (const name of names) {
+    console.log(`대상    : ${names.length}건 — ${names.join(", ")}`);
+    console.log(`API     : ${API_BASE}\n`);
+
+    // 호출 전에 어디까지 왔는지 알린다. 이 줄이 없으면 네트워크가 멈췄을 때
+    // 화면이 완전히 비어, 멈춘 것인지 끝난 것인지 구분할 수 없다.
+    for (const [i, name] of names.entries()) {
+      console.log(`[${i + 1}/${names.length}] ${name} 조회 중…`);
       try {
         const { row, reason } = await fetchTaxon(name, ctx);
-        row ? rows.push(row) : failures.push({ name, reason });
+        if (row) { rows.push(row); console.log(`  ✓ ${row.scientific_name}`); }
+        else     { failures.push({ name, reason }); console.log(`  ✗ ${reason}`); }
       } catch (err) {
         failures.push({ name, reason: err.message });
+        console.log(`  ✗ ${err.message}`);
       }
     }
+    console.log("");
   }
 
   const complete = rows.filter(isDisplayComplete);

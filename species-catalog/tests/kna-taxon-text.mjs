@@ -134,7 +134,8 @@ check("빈 입력", toTaxonRow(null), null);
 // ============================================================
 section("⑥ 응답 해석 — XML item");
 // ============================================================
-const { parseItems, apiError, toSql, fetchTaxon, TABLE }
+const { parseItems, apiError, toSql, fetchTaxon, TABLE,
+        API_BASE, TIMEOUT_MS, normalizeServiceKey, maskUrl }
   = await import("./import-plant-taxa.mjs");
 
 check("item 둘", parseItems(`
@@ -216,6 +217,36 @@ section("⑨ upsert SQL");
         /do update set[\s\S]*scientific_name = excluded/.test(sql), false);
 }
 check("빈 입력이면 SQL 도 없다", toSql([]), "");
+
+// ============================================================
+section("⑩ 요청 주소 · 키 · 타임아웃");
+// ============================================================
+// 이전 주소는 근거 없이 추측한 것이었고, 응답이 오지 않아 출력 한 줄 없이
+// 매달렸다. 공공데이터포털에서 확인한 주소로 고정한다 (2026-09-23).
+check("공공데이터포털 확인 주소", API_BASE, "https://apis.data.go.kr/1400119/PlantResource");
+check("https 다", API_BASE.startsWith("https://"), true);
+check("추측했던 주소를 쓰지 않는다", API_BASE.includes("api.nature.go.kr"), false);
+check("타임아웃 15초", TIMEOUT_MS, 15000);
+
+// 포털이 내려주는 키는 이미 URL 인코딩돼 있다. 다시 인코딩하면 `%`가
+// `%25`가 되어 다른 키가 되고, 서버는 등록되지 않은 키라고 답한다.
+check("인코딩된 키는 한 번 푼다",
+      normalizeServiceKey("abc%2Bdef%3D"), "abc+def=");
+check("인코딩 안 된 키는 그대로", normalizeServiceKey("abc+def="), "abc+def=");
+check("깨진 인코딩은 원문 유지 — 던지지 않는다",
+      normalizeServiceKey("abc%ZZ"), "abc%ZZ");
+check("앞뒤 공백 제거", normalizeServiceKey("  key  "), "key");
+check("빈 키", normalizeServiceKey(null), "");
+
+// 로그에 키가 남으면 안 된다.
+check("serviceKey 를 가린다",
+      maskUrl("https://x/y?serviceKey=SECRET123&reqSearchWrd=%EC%82%B0"),
+      "https://x/y?serviceKey=***&reqSearchWrd=%EC%82%B0");
+check("첫 인자여도 가린다",
+      maskUrl("https://x/y?serviceKey=SECRET"), "https://x/y?serviceKey=***");
+check("다른 인자는 남긴다",
+      maskUrl("https://x/y?a=1&serviceKey=S&b=2"), "https://x/y?a=1&serviceKey=***&b=2");
+check("키가 없으면 그대로", maskUrl("https://x/y?a=1"), "https://x/y?a=1");
 
 
 console.log("\n" + "=".repeat(52));
