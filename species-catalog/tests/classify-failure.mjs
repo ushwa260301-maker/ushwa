@@ -231,7 +231,7 @@ function sliderFuzzy(haystack, needle, jitter = 0) {
  * Hangul 텍스트에 특화된 fuzzy 검색:
  *   ① raw 안의 각 한글 토큰 (`[가-힣]+`) 을 needle 과 비교
  *   ② 다시 raw 전체를 normalizeSpeciesName 로 눌러 붙인 뒤 슬라이딩 윈도우
- *      (공백/개행 사이에 걸친 매치 — e.g. `문명석 대림원예가듣센테` — 회수)
+ *      (공백/개행 사이에 걸친 매치 — e.g. `홍길동 대림원예가듣센테` — 회수)
  */
 function hangulTokenFuzzy(raw, needle, isNormalized) {
   const nl = isNormalized ? needle : normalizeSpeciesName(String(needle));

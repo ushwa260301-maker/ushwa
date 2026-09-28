@@ -58,13 +58,21 @@ jobs:
       - name: Service items
         run: node species-catalog/tests/service-items.mjs
 
+      # 저장 직전 개인정보 제거. 제거(계좌·전화·예금주)와 보존(금액·수량·
+      # 날짜·사업자번호·거래처명) 양방향을 고정한다.
+      - name: PII sanitizer
+        run: node species-catalog/tests/sanitize.mjs
+
   # ------------------------------------------------------------------
-  # PII 가드 — 실물 거래명세서 기반 데이터의 신규 유입을 차단한다.
+  # PII 가드 — 실제 휴대폰·계좌·예금주가 저장소에 들어오면 실패한다.
   #
-  # 차단은 **이번 변경분만** 대상으로 한다. corpus 실측(2026-09-23) 결과
-  # 휴대폰 형식은 합성 fixture 에도 존재하므로, 전수 차단으로 두면 정상
-  # 자산이 CI 를 영구히 막는다. 전체 현황은 집계로 관찰하고, corpus 가
-  # 정리되면 전수 차단으로 승격한다. (AUDIT_PROTOCOL.md §5)
+  # 2026-09-28 실물 fixture 비식별화 완료로 **전수 차단**으로 승격했다.
+  #   1) 전수 검사  in-scope 경로 전체 (감사 범위 = backend/frontend/
+  #                 mobile/shared 제외). 기존 잔존분이 다시 생기면 잡는다.
+  #   2) 변경분 검사 모든 경로의 변경 파일. 미감사 영역으로의 신규 유입도
+  #                 막는다.
+  # 휴대폰은 .github/pii-allowlist.json 의 값만 통과한다.
+  # (긴급 조치 §8 · AUDIT_PROTOCOL.md §5)
   # ------------------------------------------------------------------
   pii-guard:
     name: PII guard
@@ -116,10 +124,11 @@ jobs:
           fi
           xargs -a changed.txt -r node .github/scripts/pii-guard.mjs
 
-      # 참고 집계. 차단하지 않는다 — P0 의 Verification("PII 패턴 검사
-      # 결과 0건")이 이 숫자이며, corpus 정리 진행도를 여기서 관찰한다.
-      # 파일명은 출력하지 않는다(가드가 새 노출 경로가 되지 않도록).
-      - name: Corpus-wide count (informational)
+      # 전수 차단. P0 의 Verification("실제 PII 0건")이 이 스텝의 PASS 다.
+      - name: Guard all in-scope files
         if: always()
         run: |
-          git ls-files '*.json' | xargs -r node .github/scripts/pii-guard.mjs --count
+          set -euo pipefail
+          git ls-files \
+            | grep -vE '^(backend|frontend|mobile|shared)/|package-lock\.json$' \
+            | xargs -r node .github/scripts/pii-guard.mjs

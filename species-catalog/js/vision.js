@@ -66,10 +66,10 @@ const PRICE_RE =
 // another digit, otherwise embedded price sequences like `500 3200 1600000`
 // look like `0 3200 1600` to the naive matcher and get flagged as phones.
 //
-// 지역번호 뒤 닫는 괄호를 허용한다 — `(02) 507-7080` · `031)754-4904` 는
+// 지역번호 뒤 닫는 괄호를 허용한다 — `(02) 000-0000` · `031)754-4904` 는
 // 국내 사업자 명세서에서 하이픈만큼 흔한 표기인데 인식하지 못했다.
 // 단순 누락으로 끝나지 않고, 전화 라인이 품목 후보 필터를 통과해
-// 가짜 품목 행을 만들었다 (실환경 inv-062: `마려와 … 전화: (02) 507-7080`
+// 가짜 품목 행을 만들었다 (실환경 inv-062: `마려와 … 전화: (02) 000-0000`
 // → {name:"마려와", price:7080}).
 //
 // `\)?` 는 지역번호 **직후** 한 자리에만 붙는다. 앞뒤 경계 조건
@@ -856,7 +856,7 @@ export async function analyzeInvoiceMock(file) {
 // Internal helpers
 // ============================================================
 
-/** 구분자를 하이픈으로 통일한다. 지역번호 괄호(`031)754-4904` · `(02) 507-7080`)도
+/** 구분자를 하이픈으로 통일한다. 지역번호 괄호(`031)754-4904` · `(02) 000-0000`)도
  *  하이픈으로 바꾸고 중복·양끝 하이픈을 정리해 `031-754-4904` 형태로 맞춘다. */
 function normalizePhone(p) {
   return String(p || "")
@@ -906,7 +906,7 @@ function stripCorporateMarker(name) {
  * candidate lacking parens or with inner text that has no suffix keyword.
  *
  * Examples:
- *   "예금주: 문명석(서울원예가든센터)" → "서울원예가든센터" (inner has 원예)
+ *   "예금주: 홍길동(서울원예가든센터)" → "서울원예가든센터" (inner has 원예)
  *   "홍길동(대림원예)"                   → "대림원예"        (inner has 원예)
  *   "김철수(개인)"                        → 원래 값          (inner has no suffix)
  *   "천리포수목원"                        → 원래 값          (no parens)
@@ -1040,7 +1040,7 @@ function collectNameCandidates(head) {
   for (const line of head) {
     // 전화·날짜 라인은 상호를 담지 않는다.
     if (PHONE_TEST_RE.test(line) || DATE_LINE_RE.test(line)) continue;
-    // 계좌 라인은 `농협:251-1118-4809-83문명석대림원예가듣센테` 처럼
+    // 계좌 라인은 `농협:000-0000-0000-01홍길동대림원예가듣센테` 처럼
     // 계좌번호 뒤에 예금주+상호가 붙는 관례가 있다. 번호 앞부분은 버린다.
     const acc = line.match(ACCOUNT_LIKE_RE);
     const seg = acc ? line.slice(acc.index + acc[0].length) : line;

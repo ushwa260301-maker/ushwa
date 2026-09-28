@@ -16,6 +16,8 @@
  * load and then removed.
  */
 
+import { dropContact } from "./sanitize.js";
+
 const V2 = {
   species: "species-catalog:v2:species",
   invoices: "species-catalog:v2:invoices",
@@ -150,7 +152,7 @@ function migrateFromV1(v1) {
               invoiceDate: dateStr,
               supplier: supplier.name,
               supplierAddress: supplier.region || "",
-              supplierPhone: supplier.contact || "",
+              supplierPhone: dropContact(supplier.contact),   // 연락처는 보유하지 않는다 (sanitize.js)
               invoiceNumber: `S25-${String(invCounter).padStart(4, "0")}`,
               createdAt: `${dateStr}T09:00:00Z`
             };
@@ -180,7 +182,7 @@ function migrateFromV1(v1) {
         invoiceDate: "2025-01-01",
         supplier: supplier.name,
         supplierAddress: supplier.region || "",
-        supplierPhone: supplier.contact || "",
+        supplierPhone: dropContact(supplier.contact),   // 연락처는 보유하지 않는다 (sanitize.js)
         invoiceNumber: `C-${sp.id}`,
         createdAt: "2025-01-01T09:00:00Z"
       };

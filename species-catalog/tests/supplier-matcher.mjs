@@ -247,7 +247,7 @@ for (const [id, truth, raw] of PIPELINE) {
 
 // 상호가 raw 에 없으면 후보 랭킹으로도 못 만들어낸다 — 없는 정보는 생성하지 않는다
 const noName = parseInvoiceText(normalizeOcrText(
-  `경)| BEA 물시랑로 241(주암동) 과전화훼집하장 B\n소 재 지| @(02507-3445 H-P:010-5329-4673\nㅁ주:황병오`)).supplier;
+  `경)| BEA 물시랑로 241(주암동) 과전화훼집하장 B\n소 재 지| @(00000-0000 H-P:010-0000-0000\nㅁ주:홍길동`)).supplier;
 r = matchSupplierFromCandidates(noName.nameCandidates, [...suppliers, S("s9", "지호식물원")], []);
 eq(r.status, "new", "raw 에 상호가 없으면 후보 랭킹도 new (없는 정보를 만들지 않음)");
 

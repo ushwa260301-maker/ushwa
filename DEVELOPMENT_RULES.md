@@ -71,7 +71,18 @@ OCR 트랙은 Cloud 트랙과 독립이며 `vision.js`/`preprocess.js`/`matcher.
 - **하드코딩 금지**: 업체명·전화·계좌·주소·브랜드 등 고유명사를 규칙에
   넣지 않는다. 문서 제목(거래명세표/거래명세서/작성년월일/공급대가총액/
   합계/품목/규격/수량/단가/금액)은 일반 Noise Dictionary 로만 처리.
-- **Fixture**: 실제 명세서마다 새 fixture 추가. 절대 삭제·기존 수정 금지.
+- **Fixture**: 실제 명세서마다 새 fixture 추가. 절대 삭제 금지. 기존
+  fixture 수정은 금지하되, **개인정보 비식별화는 예외**다 — 실제 명세서
+  기반 fixture 라도 개인정보는 비식별화한 상태로 관리한다 (VISION §5).
+  - 휴대폰 → `010-0000-0000` · 계좌 → `000-0000-0000-NN` · 예금주 → `홍길동`.
+    `ocr`(원문)과 `expect`(정답)를 **함께** 바꾸고, 같은 값이 여러 fixture 에
+    걸쳐 있으면 corpus 전체를 한 번에 치환한다 (교차 참조 보존).
+  - 비식별화 전후 fixture 별 점수가 **동일**해야 한다 — 달라지면 테스트
+    의미가 바뀐 것이다.
+  - `description` · `coverage.reason` · `changeLog` 에도 원래 값이 적혀 있을
+    수 있다. `ocr`/`expect` 만 보지 않는다.
+  - 새 합성 전화번호는 `.github/pii-allowlist.json` 에 사유와 함께 추가한다.
+    CI(PII guard)가 목록 밖 휴대폰·계좌·예금주를 차단한다.
 - **OCR Engine 변경 시 A/B Test**: baseline vs candidate · 비교항목
   Supplier/Date/Rows/Confidence/CharRecall(=max NFD-jamo similarity) ·
   실패 fixture 1 + 성공 fixture 5 이상 동시 · 평균 향상 시에만 채택 ·

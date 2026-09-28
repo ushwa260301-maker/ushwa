@@ -17,6 +17,7 @@
 
 import { getSupabase, isCloudConfigured } from "./supabaseClient.js";
 import { normSupplierName } from "./supplierMatcher.js";
+import { sanitizeText, sanitizeAnalysis, sanitizeHeader, dropContact } from "./sanitize.js";
 
 /** 첨부 원본이 올라가는 Storage 버킷 이름 (supabase/storage.sql 로 생성). */
 const ATTACHMENT_BUCKET = "attachments";
@@ -61,7 +62,9 @@ function invoiceFromDb(row, attachmentByInvoice) {
     invoiceDate:     row.invoice_date,
     invoiceNumber:   row.invoice_number || "",
     supplier:        row.supplier,
-    supplierPhone:   row.supplier_phone || "",
+    // 읽기에서도 비운다. DB 정리(마이그레이션) 전에 이미 저장된 값이
+    // Cloud-first read 로 LocalStorage 캐시에 다시 들어오는 것을 막는다.
+    supplierPhone:   dropContact(row.supplier_phone),
     supplierAddress: row.supplier_address || "",
     createdAt:       row.created_at
   };
@@ -102,7 +105,10 @@ export function invoiceToRpc(inv) {
     invoiceDate:     inv.invoiceDate,
     invoiceNumber:   inv.invoiceNumber || "",
     supplier:        inv.supplier,
-    supplierPhone:   inv.supplierPhone || "",
+    // 연락처는 보유하지 않는다 (sanitize.js). rpc 가 이 값으로
+    // invoices.supplier_phone 과 suppliers.phone 을 채우므로, 여기서
+    // 비우면 두 컬럼 모두에 새 값이 들어가지 않는다.
+    supplierPhone:   dropContact(inv.supplierPhone),
     supplierAddress: inv.supplierAddress || ""
   };
 }
@@ -422,21 +428,26 @@ export async function mirrorSaveOcrCorrection(invoiceId, analysis, header, items
       return { ok: true, skipped: true };
     }
 
-    const dbg = analysis._debug || {};
+    // 저장 직전 개인정보 제거. 원문 텍스트는 두 곳에 들어간다 —
+    // raw_text/normalized_text 컬럼과 debug_meta.raw 안. stripHeavyDebug 는
+    // 이미지만 빼고 raw.text 를 그대로 두었으므로, 정제는 그보다 먼저
+    // analysis 전체에 적용한다. 이후 모든 필드는 정제된 사본에서 읽는다.
+    const clean = sanitizeAnalysis(analysis);
+    const dbg = clean._debug || {};
     const { data: userData } = await supabase.auth.getUser();
 
     const { error } = await supabase.from("ocr_corrections").insert({
       invoice_id:      invoiceId,
       version:         1,
-      raw_text:        dbg.raw?.text || "",
-      normalized_text: dbg.raw?.normalized || "",
+      raw_text:        sanitizeText(dbg.raw?.text || ""),
+      normalized_text: sanitizeText(dbg.raw?.normalized || ""),
       parsed_fields: {
-        supplier:      analysis.supplier ?? null,
-        rows:          analysis.rows ?? [],
-        invoiceDate:   analysis.invoiceDate ?? "",
-        invoiceNumber: analysis.invoiceNumber ?? ""
+        supplier:      clean.supplier ?? null,
+        rows:          clean.rows ?? [],
+        invoiceDate:   clean.invoiceDate ?? "",
+        invoiceNumber: clean.invoiceNumber ?? ""
       },
-      user_edited_fields: { header, items },
+      user_edited_fields: { header: sanitizeHeader(header), items },
       debug_meta:         stripHeavyDebug(dbg),
       engine_version:     dbg.model || "",
       uploaded_by:        userData?.user?.id || null

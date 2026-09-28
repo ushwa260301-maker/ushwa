@@ -7,7 +7,7 @@
     "supplier": {
       "name": "서울원예가든센터",
       "region": "서초구",
-      "contact": "010-5329-5933"
+      "contact": "010-0000-0000"
     }
   },
   "coverage": {
@@ -30,14 +30,14 @@
     {
       "field": "supplier.contact",
       "before": null,
-      "after": "010-5329-5933",
-      "reason": "이미지 하단 인쇄 '문의전화 010-5329-5933'. OCR raw digit runs = 0개 → 이미지 층 실패."
+      "after": "010-0000-0000",
+      "reason": "이미지 하단 인쇄 '문의전화 010-0000-0000'. OCR raw digit runs = 0개 → 이미지 층 실패."
     },
     {
       "field": "supplier.region",
       "before": null,
       "after": "서초구",
-      "reason": "이미지 상 '서울특별시 서초구 헌인릉1길 21(내곡동)' 확인. OCR raw 에 부재 (best fuzzy '성년' sim=0.33) → 이미지 층 실패."
+      "reason": "이미지 상 '서울특별시 서초구 예시로1길 00(예시동)' 확인. OCR raw 에 부재 (best fuzzy '성년' sim=0.33) → 이미지 층 실패."
     }
   ]
 }

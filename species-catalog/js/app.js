@@ -30,6 +30,7 @@ import { initAuthGate } from "./auth.js";
 import { mirrorSaveInvoice, mirrorUpdateInvoice, mirrorDeleteInvoice, mirrorSaveSpecies, mirrorDeleteSpecies, mirrorSaveAttachment, mirrorSaveOcrCorrection, mirrorSaveSupplierAlias, fetchAll } from "./cloudStore.js";
 import { addPending, removePending, listPending, hasPending, setLastSync, replayAction } from "./syncManager.js";
 import { nextId } from "./utils.js";
+import { sanitizeAnalysis, dropContact, scrubStoredData } from "./sanitize.js";
 
 // ============================================================
 // Business-logic mutation helpers
@@ -208,7 +209,7 @@ function synthesizeInvoicesForSpecies(speciesId, sp, prices, counts, existingInv
             invoiceDate: dateStr,
             supplier: supplier.name,
             supplierAddress: supplier.region || "",
-            supplierPhone: supplier.contact || "",
+            supplierPhone: dropContact(supplier.contact),
             invoiceNumber: `M-${speciesId}-${m}`,
             createdAt: nowIso
           };
@@ -237,7 +238,7 @@ function synthesizeInvoicesForSpecies(speciesId, sp, prices, counts, existingInv
       invoiceDate: today,
       supplier: supplier.name,
       supplierAddress: supplier.region || "",
-      supplierPhone: supplier.contact || "",
+      supplierPhone: dropContact(supplier.contact),
       invoiceNumber: `C-${speciesId}`,
       createdAt: nowIso
     };
@@ -317,7 +318,7 @@ function projectInvoiceSave(header, items) {
       bloomMonths: [],
       colors: [],
       suppliers: header.supplier
-        ? [{ name: header.supplier, region: header.supplierAddress, contact: header.supplierPhone }]
+        ? [{ name: header.supplier, region: header.supplierAddress, contact: dropContact(header.supplierPhone) }]
         : [],
       notes: `${new Date().toISOString().slice(0, 10)} 거래명세서 등록으로 자동 생성`
     };
@@ -331,7 +332,7 @@ function projectInvoiceSave(header, items) {
     invoiceDate:     header.invoiceDate,
     supplier:        header.supplier,
     supplierAddress: header.supplierAddress || "",
-    supplierPhone:   header.supplierPhone   || "",
+    supplierPhone:   dropContact(header.supplierPhone),
     invoiceNumber:   header.invoiceNumber   || "",
     createdAt:       new Date().toISOString()
   };
@@ -435,7 +436,7 @@ async function saveInvoice(header, items, extras = {}) {
       bloomMonths: [],
       colors: [],
       suppliers: header.supplier
-        ? [{ name: header.supplier, region: header.supplierAddress, contact: header.supplierPhone }]
+        ? [{ name: header.supplier, region: header.supplierAddress, contact: dropContact(header.supplierPhone) }]
         : [],
       notes: `${new Date().toISOString().slice(0, 10)} 거래명세서 등록으로 자동 생성`
     };
@@ -450,14 +451,16 @@ async function saveInvoice(header, items, extras = {}) {
     invoiceDate: header.invoiceDate,
     supplier: header.supplier,
     supplierAddress: header.supplierAddress || "",
-    supplierPhone: header.supplierPhone || "",
+    supplierPhone: dropContact(header.supplierPhone),
     invoiceNumber: header.invoiceNumber || "",
     createdAt: new Date().toISOString()
   };
   state.data.invoices.push(invoice);
 
   // 2b. Persist raw AI analysis (for the viewer's compare tab).
-  if (extras && extras.analysis) invoice.analysis = extras.analysis;
+  //     저장 사본은 개인정보를 제거한다 (sanitize.js). 화면에서 쓰는
+  //     extras.analysis 원본은 건드리지 않는다.
+  if (extras && extras.analysis) invoice.analysis = sanitizeAnalysis(extras.analysis);
 
   // 2c. Persist the original file (image / PDF) to IndexedDB and
   //     stash metadata onto the invoice record. Failures are non-fatal —
@@ -561,7 +564,7 @@ async function updateInvoice(invoiceId, header, items) {
   inv.invoiceDate     = header.invoiceDate;
   inv.invoiceNumber   = header.invoiceNumber   || "";
   inv.supplier        = header.supplier;
-  inv.supplierPhone   = header.supplierPhone   || "";
+  inv.supplierPhone   = dropContact(header.supplierPhone);
   inv.supplierAddress = header.supplierAddress || "";
 
   // 2. Purge items belonging to this invoice
@@ -594,7 +597,7 @@ async function updateInvoice(invoiceId, header, items) {
           bloomMonths: [],
           colors: [],
           suppliers: header.supplier
-            ? [{ name: header.supplier, region: header.supplierAddress, contact: header.supplierPhone }]
+            ? [{ name: header.supplier, region: header.supplierAddress, contact: dropContact(header.supplierPhone) }]
             : [],
           notes: `${new Date().toISOString().slice(0, 10)} 거래 편집으로 자동 생성`
         };
@@ -952,7 +955,9 @@ function wireToolbar() {
     try {
       const parsed = await importJson(file);
       if (!confirm(`${parsed.species.length}개 수종으로 덮어씁니다. 계속?`)) return;
-      state.data = parsed;
+      // 이 조치 이전에 내보낸 백업에는 연락처·OCR 원문이 들어 있을 수 있다.
+      // 부팅 시 정리(scrubStoredData)와 같은 규칙을 가져오기에도 적용한다.
+      state.data = scrubStoredData(parsed).data;
       persistAndRerender();
       toast("가져오기 완료");
     } catch (err) {
@@ -1068,6 +1073,16 @@ async function init() {
       alert("데이터를 불러올 수 없습니다. 로컬 서버(python3 -m http.server)로 열어주세요.");
       data = { categories: [], colors: [], species: [] };
     }
+  }
+
+  // 이 조치 이전에 캐시된 연락처·OCR 원문을 정리한다 (sanitize.js).
+  // Cloud-first read 보다 먼저 한다 — pending 재시도(flushPendingWrites)가
+  // 로컬 invoice.analysis 를 원본으로 쓰기 때문이다.
+  const scrubbed = scrubStoredData(data);
+  if (scrubbed.changed) {
+    data = scrubbed.data;
+    storage.save(data);
+    console.info("[app] 저장된 개인정보(연락처·OCR 원문) 정리 완료");
   }
 
   // T6 Phase 1 — 읽기 경로 Cloud 우선. 성공 시 Cloud 채택 + 캐시 갱신,
