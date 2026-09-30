@@ -20,6 +20,7 @@
  */
 
 import { load, search, getById, listLoaded, status } from "./plantGuideStore.js";
+import { canonicalScientificName } from "../services/scientificName.js";
 import { fetchDetail, mergeDetail, resolveScientificName, sourceLabel }
   from "./plantDetailSource.js";
 
@@ -60,6 +61,13 @@ function init() {
   els.dImage    = document.getElementById("pgdImage");
   els.dPhotoBox = document.getElementById("pgdPhotoBox");
   els.dPhotoNil = document.getElementById("pgdPhotoEmpty");
+
+  // KNA 원문 (T12-2B)
+  els.dRawBox      = document.getElementById("pgdRawBox");
+  els.dHabitatBox  = document.getElementById("pgdHabitatBox");
+  els.dHabitat     = document.getElementById("pgdHabitat");
+  els.dShapeBox    = document.getElementById("pgdShapeBox");
+  els.dShape       = document.getElementById("pgdShape");
 
   els.openBtn.addEventListener("click", open);
   els.modal.querySelectorAll("[data-close-guide]").forEach(el =>
@@ -160,7 +168,12 @@ export function toDetailView(g) {
   if (!g) return null;
   return {
     name:           g.name || "",
-    scientificName: g.scientific_name || "",
+    // 화면은 **canonical** 을 보여 준다 — 명명자는 서지 정보라 도감 독자에게
+    // 뜻이 없다. 품종·계급은 남는다(`'Miranda'` · `var.`). DB 원문은
+    // `scientificNameRaw` 로 함께 넘겨, 마우스를 올리면 볼 수 있게 한다.
+    //   Hydrangea serrata (Thunb.) Ser.  → Hydrangea serrata
+    scientificName:    canonicalScientificName(g.scientific_name || ""),
+    scientificNameRaw: String(g.scientific_name || "").trim(),
     family:         g.family || "",
     genus:          g.genus || "",
     // 생육형 — 관목·교목·초본. `form`/`plant_type` 은 이전 도감 표기.
@@ -179,7 +192,10 @@ export function toDetailView(g) {
     page:           g.page ? `p.${g.page}` : "",
     imageUrl:       g.image_url || "",
     source:         sourceLabel(g.source),      // KNA_IMAGE_CSV → 국립수목원 표준식물목록
-    syncedAt:       formatDate(g.synced_at)
+    syncedAt:       formatDate(g.synced_at),
+    // KNA 서술 원문. 생육형·광조건·개화월을 여기서 뽑았다.
+    habitatRaw:     String(g.grw_evrnt_raw ?? "").trim(),
+    shapeRaw:       String(g.shpe_raw ?? "").trim()
   };
 }
 
@@ -299,6 +315,9 @@ async function getCloudClient() {
 function render(v) {
   els.dName.textContent   = v.name;
   els.dLatin.textContent  = dash(v.scientificName);
+  // 원문이 canonical 과 다를 때만 툴팁으로 남긴다 — 같으면 소음이다.
+  els.dLatin.title = v.scientificNameRaw && v.scientificNameRaw !== v.scientificName
+    ? v.scientificNameRaw : "";
   els.dFamily.textContent = dash(v.family);
   els.dGenus.textContent  = dash(v.genus);
   els.dForm.textContent   = dash(v.form);
@@ -312,6 +331,30 @@ function render(v) {
   els.dSource.textContent = dash(v.source);
   els.dSynced.textContent = dash(v.syncedAt);
   renderPhoto(v.imageUrl, v.name);
+  renderRaw(v.habitatRaw, v.shapeRaw);
+}
+
+/**
+ * KNA 원문 (T12-2B). 접어 둔 채로 보여 주고, 원문이 없으면 그 칸을 숨긴다.
+ *
+ * 빈 칸을 "—" 로 남기지 않는 이유: 원문 카드는 "근거" 를 보여 주는 자리라,
+ * 근거가 없으면 칸이 있는 것 자체가 오해를 부른다. 두 원문이 모두 없으면
+ * 카드째 숨긴다 — 정적 도감(책)에서 연 종은 원문이 없다.
+ *
+ * 종을 바꿔 열 때 이전 종의 펼침 상태가 남지 않도록 매번 접는다.
+ */
+function renderRaw(habitat, shape) {
+  if (!els.dRawBox) return;
+  const put = (box, el, text) => {
+    if (!box || !el) return false;
+    el.textContent = text;
+    box.hidden = !text;
+    box.open = false;
+    return !!text;
+  };
+  const any = [put(els.dHabitatBox, els.dHabitat, habitat),
+               put(els.dShapeBox, els.dShape, shape)].some(Boolean);
+  els.dRawBox.hidden = !any;
 }
 
 /**

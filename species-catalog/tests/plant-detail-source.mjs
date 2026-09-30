@@ -26,7 +26,7 @@ globalThis.location = { search: "" };
 
 const { toDetailView, formatFloweringMonths } = await import("../js/plantGuideModal.js");
 const { fetchDetail, mergeDetail, pickPrimaryImage, resolveScientificName, sourceLabel,
-        IMAGE_TABLE, TAXA_TABLE } = await import("../js/plantDetailSource.js");
+        IMAGE_TABLE, TAXA_TABLE, TAXA_COLUMNS } = await import("../js/plantDetailSource.js");
 
 let pass = 0, fail = 0; const failed = [];
 function check(label, actual, expected) {
@@ -305,6 +305,58 @@ check("빈 이름", await resolveScientificName(fakeClient({}), "  "), "");
   const cloud = await fetchDetail(client, "Hydrangea serrata");
   const v = toDetailView(mergeDetail({ name: "", scientific_name: "Hydrangea serrata" }, cloud));
   check("국명을 기준정보가 채운다", v.name, "산수국");
+}
+
+// ============================================================
+section("⑩ T12-2B — 화면이 canonical 학명을 보여 준다");
+// ============================================================
+// DB 에는 원문(명명자 포함)을 둔다. 화면은 명명자만 뗀 이름을 보여 준다.
+{
+  const v = toDetailView({ scientific_name: "Hydrangea serrata (Thunb.) Ser." });
+  check("명명자를 떼고 보여 준다", v.scientificName, "Hydrangea serrata");
+  check("DB 원문은 따로 들고 있다", v.scientificNameRaw, "Hydrangea serrata (Thunb.) Ser.");
+}
+{
+  // 품종은 다른 분류군이다 — 화면에서도 떼지 않는다.
+  const v = toDetailView({ scientific_name: "Hydrangea serrata 'Miranda'" });
+  check("품종은 남긴다", v.scientificName, "Hydrangea serrata 'Miranda'");
+}
+{
+  const v = toDetailView({ scientific_name: "Acer palmatum var. dissectum (Thunb.) K.Koch" });
+  check("계급은 남기고 명명자만 뗀다", v.scientificName, "Acer palmatum var. dissectum");
+}
+check("명명자가 없으면 그대로", toDetailView({ scientific_name: "Phragmites communis" }).scientificName,
+      "Phragmites communis");
+check("학명이 비면 빈 값", toDetailView({}).scientificName, "");
+
+// ============================================================
+section("⑪ T12-2B — KNA 원문이 화면까지 온다");
+// ============================================================
+// 생육형·광조건·개화월은 원문에서 뽑았다. 원문이 화면에 있어야 사람이 대조한다.
+check("조회 컬럼에 형태 원문", TAXA_COLUMNS.includes("shpe_raw"), true);
+check("조회 컬럼에 생육환경 원문", TAXA_COLUMNS.includes("grw_evrnt_raw"), true);
+{
+  const taxa = { ...SANSUGUK_TAXA,
+                 shpe_raw: "낙엽 활엽 관목이다. 꽃은 7~8월에 핀다.",
+                 grw_evrnt_raw: "그늘진 계곡에서 자란다." };
+  const merged = mergeDetail({ name: "산수국" }, { taxa, image: null });
+  check("mergeDetail 이 형태 원문을 옮긴다", merged.shpe_raw, taxa.shpe_raw);
+  check("mergeDetail 이 생육환경 원문을 옮긴다", merged.grw_evrnt_raw, taxa.grw_evrnt_raw);
+
+  const v = toDetailView(merged);
+  check("형태 원문이 화면 모델까지", v.shapeRaw, taxa.shpe_raw);
+  check("생육환경 원문이 화면 모델까지", v.habitatRaw, taxa.grw_evrnt_raw);
+}
+{
+  // 정적 도감(책)에서 연 종은 원문이 없다 — 빈 값이어야 카드가 숨는다.
+  const v = toDetailView({ name: "갈대", scientific_name: "Phragmites communis" });
+  check("원문이 없으면 빈 값", [v.shapeRaw, v.habitatRaw], ["", ""]);
+}
+{
+  // 원문이 비어 있는 행이 와도 도감 값을 지우지 않는다.
+  const merged = mergeDetail({ name: "x", shpe_raw: "책 원문" },
+                             { taxa: { ...SANSUGUK_TAXA, shpe_raw: null }, image: null });
+  check("빈 원문은 덮어쓰지 않는다", merged.shpe_raw, "책 원문");
 }
 
 

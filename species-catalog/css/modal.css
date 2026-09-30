@@ -1711,16 +1711,62 @@ html.debug-mode .debug-only { display: revert !important; }
 
 .pg-card p { margin: 0; }
 
-.pg-source-list {
+/* 이름–값 두 칸 목록. 기준정보 카드와 거래 카드가 같이 쓴다. */
+.pg-source-list,
+.pg-kv {
   margin: 0;
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: 2px 12px;
 }
 
-.pg-source-list > div { display: contents; }
-.pg-source-list dt { color: var(--muted, #6c766e); font-size: 13px; }
-.pg-source-list dd { margin: 0; font-size: 13px; }
+.pg-source-list > div,
+.pg-kv > div { display: contents; }
+.pg-source-list dt,
+.pg-kv dt { color: var(--muted, #6c766e); font-size: 13px; }
+.pg-source-list dd,
+.pg-kv dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+
+/* `display: contents` 가 브라우저 기본 `[hidden]{display:none}` 보다
+   특이도가 높다 — 이 규칙이 없으면 숨긴 "제공" 줄이 그대로 보인다.
+   `.pg-photo img[hidden]` 과 같은 함정이다. */
+.pg-source-list > div[hidden],
+.pg-kv > div[hidden] { display: none; }
+
+/* 값이 아직 없는 칸 — 값과 구분되게 흐리게. */
+.pg-kv dd.pg-empty { color: var(--muted, #6c766e); }
+
+.pg-card .pg-note {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+/* KNA 원문 (T12-2B) — 접어 두고 펼쳐 읽는다. */
+.pg-raw details + details { margin-top: 6px; }
+
+.pg-raw summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2, #3d453f);
+  padding: 4px 0;
+}
+
+.pg-raw summary::after {
+  content: " 펼치기";
+  font-weight: 400;
+  color: var(--muted, #6c766e);
+}
+
+.pg-raw details[open] > summary::after { content: " 접기"; }
+
+.pg-raw details p {
+  margin: 4px 0 2px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-line;          /* 원문 줄바꿈을 살린다 */
+  overflow-wrap: anywhere;         /* 긴 학명·URL 이 390px 를 넘지 않게 */
+}
 
 @media (max-width: 480px) {
   .pg-detail-head { gap: 12px; }

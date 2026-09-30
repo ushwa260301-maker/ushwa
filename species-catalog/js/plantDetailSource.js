@@ -45,7 +45,10 @@ export const IMAGE_COLUMNS = "scientific_name, korean_name, image_type, image_ur
  */
 export const TAXA_TABLE = "plant_taxa";
 export const TAXA_COLUMNS =
-  "scientific_name, korean_name, family, genus, growth_form, sunlight, flowering_months, synced_at";
+  "scientific_name, korean_name, family, genus, growth_form, sunlight, flowering_months, " +
+  "shpe_raw, grw_evrnt_raw, synced_at";
+// ↑ 원문 두 칸(T12-2B). 화면이 KNA 서술을 펼쳐 보여 준다 — 생육형·개화월을
+//   원문과 대조할 수 있어야 뽑은 값을 믿을 수 있다.
 
 /**
  * 적재 코드 → 화면에 쓰는 이름 (T12-1.4).
@@ -173,6 +176,8 @@ export function mergeDetail(guide, cloud) {
     if (taxa.growth_form)      merged.growth_form = taxa.growth_form;
     if (taxa.sunlight)         merged.sunlight = taxa.sunlight;
     if (taxa.flowering_months != null) merged.flowering_months = taxa.flowering_months;
+    if (taxa.shpe_raw)         merged.shpe_raw = taxa.shpe_raw;
+    if (taxa.grw_evrnt_raw)    merged.grw_evrnt_raw = taxa.grw_evrnt_raw;
     if (taxa.synced_at)        merged.synced_at = taxa.synced_at;
   }
 
