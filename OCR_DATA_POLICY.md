@@ -102,7 +102,7 @@ fixture 24번(`24-parens-account-holder-supplier`)은 실제 명세서 1장에�
 등록 기능에서 결정한다. 둘 다 VISION §7 표의 ⏸️ 항목이다.
 
 **구현 위치** — 저장 직전 정제 `species-catalog/js/sanitize.js` · 기존 Cloud
-데이터 정리 `species-catalog/supabase/2026-09-28_remove_ocr_pii.sql` · 재유입
+데이터 정리 `species-catalog/supabase/2026-09-28_remove_ocr_pii_{1_preview,2_cleanup,3_verify}.sql` (순서대로 한 파일씩 · 2 는 자기 검증 실패 시 전체 롤백) · 재유입
 차단 CI `.github/scripts/pii-guard.mjs`. **라벨 없는 실명**(OCR 이 다른 글자와
 붙여 읽은 이름 등)은 패턴으로 판정할 수 없어 남을 수 있다.
 
