@@ -9,6 +9,7 @@
 
 작성 시점 — T9 배선 실환경 검증 완료(2026-07-30) · 누적 학습 데이터 1건 ·
 OCR 회귀 fixture 24개 / 240 필드 / 229 PASS (95.4%).
+개정 — 2026-09-28 개인정보 최소수집(원칙 5) · 원칙 1·3 예외 추가.
 
 ---
 
@@ -26,6 +27,7 @@ OCR 회귀 fixture 24개 / 240 필드 / 229 PASS (95.4%).
 거래명세서 이미지
    ↓                        Storage(attachments) · 영구 보관
 OCR raw 데이터               ocr_corrections.raw_text / normalized_text
+   ↓ (저장 직전)             js/sanitize.js — 개인정보 치환 (원칙 5)
    ↓
 파서 추출값                  ocr_corrections.parsed_fields
    ↓
@@ -50,10 +52,21 @@ fixture 24번(`24-parens-account-holder-supplier`)은 실제 명세서 1장에�
 
 | # | 원칙 |
 |---|---|
-| 1 | **원본을 버리지 않는다** — raw_text 는 파서를 바꿔도 재평가할 수 있는 유일한 기준점이다 |
+| 1 | **원본을 버리지 않는다** — raw_text 는 파서를 바꿔도 재평가할 수 있는 유일한 기준점이다. **단 개인정보는 예외 (원칙 5)** |
 | 2 | **사용자 수정은 정답이다** — 오류 기록이 아니라 라벨(label)이다 (§7) |
-| 3 | **append-only** — `ocr_corrections` 는 UPDATE/DELETE 정책 부재로 DB 가 강제한다. 과거 데이터를 고쳐 쓰지 않는다 |
+| 3 | **append-only** — `ocr_corrections` 는 UPDATE/DELETE 정책 부재로 DB 가 강제한다. 과거 데이터를 고쳐 쓰지 않는다. **단 개인정보 제거 목적의 마이그레이션은 예외 (원칙 5)** |
 | 4 | **측정 없는 개선은 개선이 아니다** — 규칙 변경은 반드시 회귀 수치로 검증한다 |
+| 5 | **개인정보 최소수집** — 전화·휴대폰·팩스 번호, 계좌번호, 예금주는 OCR 원문에 있더라도 **저장 전에 제거하거나 비식별화한다.** 이 값들을 저장하거나 학습 데이터로 쓰지 않는다. 기존 저장분도 개인정보 제거 목적의 마이그레이션으로 수정한다 (VISION §7) |
+
+**원칙 5 는 원칙 1·3 보다 우선한다.** 원문 보존과 append-only 는 학습
+데이터의 재평가 가능성을 지키기 위한 것이고, 그 목적에 개인정보는 필요하지
+않다. 치환은 값만 토큰(`[PHONE]` · `[ACCOUNT]` · `[HOLDER]`)으로 바꾸고
+자리·줄 구조는 남기므로, 파서 재평가라는 원칙 1 의 목적은 유지된다.
+
+원칙 5 의 대가 — **연락처 파싱 품질은 `ocr_corrections` 로 측정하지 않는다.**
+`parsed_fields` · `user_edited_fields` 모두 연락처가 비어 있으므로 연락처에
+대해서는 diff(오류 목록)가 생기지 않는다. 연락처 파싱은 fixture 회귀
+(`expect.supplier.contact`, 24필드)로만 측정한다.
 
 ---
 
@@ -64,11 +77,11 @@ fixture 24번(`24-parens-account-holder-supplier`)은 실제 명세서 1장에�
 | 컬럼 | 출처 | 의미 | 활용 목적 |
 |---|---|---|---|
 | `invoice_id` | 저장된 거래 id | 거래와의 연결. FK → `invoices` | 원본 이미지·품목·가격과 조인. **삭제 시 `set null`** — 거래를 지워도 학습 데이터는 남는다 |
-| `raw_text` | `_debug.raw.text` | Tesseract 가 읽은 **가공 전** 원문 | **가장 중요한 컬럼.** 파서를 바꾼 뒤 과거 데이터를 재평가하는 기준. fixture 변환의 입력 |
-| `normalized_text` | `_debug.raw.normalized` | `normalizeOcrText()` 적용 후 | 정규화 단계 자체의 개선 여부 측정 (raw→normalized 손실 추적) |
-| `parsed_fields` | `{supplier, rows, invoiceDate, invoiceNumber}` | 파서가 뽑아낸 값 | 사용자 수정값과의 **diff 가 곧 오류 목록** |
-| `user_edited_fields` | `{header, items}` | 사용자가 최종 확정한 값 | **정답 라벨.** 자동 수정 후보·alias·규칙의 근거 |
-| `debug_meta` | `_debug` (썸네일 제외) | confidence · psm 패스별 결과 · latency · 저신뢰 라인 | 등급 판정(§3) · 이미지 품질 진단 · 엔진 버전별 추이 |
+| `raw_text` | `_debug.raw.text` | Tesseract 가 읽은 **가공 전** 원문 (개인정보만 토큰 치환 · 원칙 5) | **가장 중요한 컬럼.** 파서를 바꾼 뒤 과거 데이터를 재평가하는 기준. fixture 변환의 입력 |
+| `normalized_text` | `_debug.raw.normalized` | `normalizeOcrText()` 적용 후 (개인정보 토큰 치환) | 정규화 단계 자체의 개선 여부 측정 (raw→normalized 손실 추적) |
+| `parsed_fields` | `{supplier, rows, invoiceDate, invoiceNumber}` | 파서가 뽑아낸 값 (`supplier.contact` 는 빈 값) | 사용자 수정값과의 **diff 가 곧 오류 목록** |
+| `user_edited_fields` | `{header, items}` | 사용자가 최종 확정한 값 (`header.supplierPhone` 은 빈 값) | **정답 라벨.** 자동 수정 후보·alias·규칙의 근거 |
+| `debug_meta` | `_debug` (썸네일 제외 · 모든 문자열 개인정보 치환) | confidence · psm 패스별 결과 · latency · 저신뢰 라인 | 등급 판정(§3) · 이미지 품질 진단 · 엔진 버전별 추이 |
 | `engine_version` | `_debug.model` | 예: `tesseract-5 (kor+eng)` | 엔진 교체 시 성능 비교의 기준. **엔진을 바꾸면 과거 데이터와 섞어 평가하지 않는다** |
 | `version` | 고정 `1` | 수정 회차 | 향후 "수정할 때마다 새 행" 용도로 예약. 현재는 최초 1행만 기록 |
 | `uploaded_by` | `auth.uid()` | 등록자 | 다중 업체 운영 시 데이터 출처 추적 |
@@ -80,6 +93,18 @@ fixture 24번(`24-parens-account-holder-supplier`)은 실제 명세서 1장에�
 |---|---|
 | `raw.originalImage` · `raw.preprocessedImage` | base64 썸네일. 각 수십 KB 로 행을 비대화시키고 학습에 쓰이지 않는다. **원본 이미지는 Storage(`attachments`) 에 있다** |
 | 이미지 자체 | Storage 가 담당. DB 에 blob 을 넣지 않는다 |
+| 전화 · 휴대폰 · 팩스 번호 | 원칙 5. 원문·진단 트리에서는 `[PHONE]` 토큰, 연락처 필드(`contact` · `supplierPhone` · `phone`)는 빈 값 |
+| 계좌번호 | 원칙 5. `[ACCOUNT]` 토큰. 사업자등록번호(3-2-5)·날짜·금액은 계좌로 보지 않는다 |
+| 예금주 | 원칙 5. 라벨은 남기고 이름만 `[HOLDER]` 토큰 |
+
+**보류 항목** — 개인 주소는 사업장 주소와 OCR 만으로 구분할 수 없어 현재
+구분 없이 저장한다(지역 매칭에 사용). 사업자등록번호는 현재 저장하며 판매자
+등록 기능에서 결정한다. 둘 다 VISION §7 표의 ⏸️ 항목이다.
+
+**구현 위치** — 저장 직전 정제 `species-catalog/js/sanitize.js` · 기존 Cloud
+데이터 정리 `species-catalog/supabase/2026-09-28_remove_ocr_pii.sql` · 재유입
+차단 CI `.github/scripts/pii-guard.mjs`. **라벨 없는 실명**(OCR 이 다른 글자와
+붙여 읽은 이름 등)은 패턴으로 판정할 수 없어 남을 수 있다.
 
 ### confidence 의 위치
 
