@@ -16,9 +16,8 @@
 --   invoices.supplier_phone                       → ''
 --   suppliers.phone                               → ''
 --   ocr_corrections.raw_text / normalized_text    → 정제 (값을 토큰으로 치환)
---   ocr_corrections.debug_meta.raw.text/normalized→ 정제 (원문이 두 번 저장됨)
---   ocr_corrections.parsed_fields.supplier.contact→ ''
---   ocr_corrections.user_edited_fields.header.supplierPhone → ''
+--   ocr_corrections.debug_meta 전체               → 재귀 정제 (원문 · 저신뢰 줄 등)
+--   ocr_corrections.parsed_fields · user_edited_fields → 모든 위치의 연락처 키 ''
 --   audit_log (invoices · suppliers 기록의 old_data/new_data 안 전화) → ''
 --
 -- 대상이 아닌 것
@@ -44,15 +43,22 @@
 -- ---------------------------------------------------------------------
 with t as (
   -- 원문은 컬럼 2곳 + debug_meta 2곳에 저장된다. 한 번에 본다.
+  -- debug_meta 는 경로를 나열하지 않고 모든 문자열 잎을 모은다 ('data:' 이미지 제외).
   select concat_ws(E'\n', raw_text, normalized_text,
-                   debug_meta #>> '{raw,text}', debug_meta #>> '{raw,normalized}') as txt,
-         parsed_fields, user_edited_fields
+                   (select string_agg(x #>> '{}', E'\n')
+                      from jsonb_path_query(debug_meta, 'strict $.** ? (@.type() == "string")') as q(x)
+                     where left(x #>> '{}', 5) <> 'data:')) as txt,
+         parsed_fields, user_edited_fields, debug_meta
     from public.ocr_corrections
 ), pii as (
   -- sanitize.js 와 같은 판정: 전화 · 예금주 · 계좌 후보(10~16자리, 사업자번호 제외)
   select * from t
-   where coalesce(parsed_fields #>> '{supplier,contact}', '') <> ''
-      or coalesce(user_edited_fields #>> '{header,supplierPhone}', '') <> ''
+   where exists (select 1
+                   from jsonb_path_query(coalesce(parsed_fields, '{}') || jsonb_build_object('_u', user_edited_fields)
+                                         || jsonb_build_object('_d', debug_meta),
+                                         'strict $.** ? (@.type() == "object")') as o(v)
+                  where coalesce(v ->> 'contact', '') <> '' or coalesce(v ->> 'supplierPhone', '') <> ''
+                     or coalesce(v ->> 'phone', '') <> '')
       or txt ~ '(?<![0-9-])(?:\(0[0-9]{1,2}\)\s?|0[0-9]{1,2}[-.]?)[0-9]{3,4}[-.]?[0-9]{4}(?![0-9-])'
       or txt ~ '(?:예\s*금\s*주|수\s*취\s*인)\s*[:：]?\s*[가-힣]{2,4}'
       or txt ~ '(?:계\s*좌|예\s*금(?!\s*주))[^\n:：0-9]{0,10}[:：]?[ \t]*[0-9][0-9 \t-]{8,}'
@@ -129,6 +135,45 @@ begin
 end
 $fn$;
 
+-- js/sanitize.js scrubTree() 의 SQL 이식. jsonb 트리를 재귀로 걷는다.
+--   연락처 키(contact · supplierPhone · phone) → ""
+--   scrub=true 면 나머지 모든 문자열 → sanitize_ocr_text (단 'data:' 이미지 URL 제외)
+-- 필드 경로를 나열하지 않는다: debug_meta.raw 에는 text/normalized 외에도
+-- lowConfidenceLines[].text(저신뢰 OCR 줄 원문) 등이 있다 (브라우저 E2E 로 발견).
+create or replace function pg_temp.sanitize_jsonb(j jsonb, scrub boolean)
+returns jsonb language plpgsql immutable as $fn$
+declare
+  r jsonb;
+  k text;
+  v jsonb;
+begin
+  if j is null then return null; end if;
+  case jsonb_typeof(j)
+    when 'object' then
+      r := '{}'::jsonb;
+      for k, v in select key, value from jsonb_each(j) loop
+        if k in ('contact', 'supplierPhone', 'phone') and jsonb_typeof(v) in ('string', 'null') then
+          r := r || jsonb_build_object(k, '');
+        else
+          r := r || jsonb_build_object(k, pg_temp.sanitize_jsonb(v, scrub));
+        end if;
+      end loop;
+      return r;
+    when 'array' then
+      select coalesce(jsonb_agg(pg_temp.sanitize_jsonb(e, scrub) order by ord), '[]'::jsonb)
+        into r from jsonb_array_elements(j) with ordinality as t(e, ord);
+      return r;
+    when 'string' then
+      if scrub and left(j #>> '{}', 5) <> 'data:' then
+        return to_jsonb(pg_temp.sanitize_ocr_text(j #>> '{}'));
+      end if;
+      return j;
+    else
+      return j;
+  end case;
+end
+$fn$;
+
 alter table public.invoices  disable trigger trg_audit_invoices;
 alter table public.invoices  disable trigger trg_touch_invoices;
 alter table public.suppliers disable trigger trg_audit_suppliers;
@@ -142,30 +187,15 @@ alter table public.suppliers enable trigger trg_audit_suppliers;
 
 -- ocr_corrections — audit 트리거 없음. INSERT-ONLY 는 RLS 정책이며 postgres
 -- 역할(테이블 소유자)은 RLS 를 우회한다.
--- jsonb_set 은 STRICT 라 NULL 을 넣으면 컬럼 전체가 NULL 이 된다 → 경로가
--- 문자열일 때만 적용한다.
+-- JSON 컬럼은 재귀 정제. parsed_fields · user_edited_fields 는 거래 데이터라
+-- 연락처 키만 비우고 문자열은 건드리지 않는다(오탐 방지). debug_meta 는 진단
+-- 트리라 문자열까지 정제한다. NULL 컬럼은 NULL 그대로 (함수가 NULL 을 돌려준다).
 update public.ocr_corrections set
-  raw_text        = pg_temp.sanitize_ocr_text(raw_text),
-  normalized_text = pg_temp.sanitize_ocr_text(normalized_text),
-  parsed_fields = case
-      when jsonb_typeof(parsed_fields #> '{supplier,contact}') = 'string'
-      then jsonb_set(parsed_fields, '{supplier,contact}', '""'::jsonb, false)
-      else parsed_fields end,
-  user_edited_fields = case
-      when jsonb_typeof(user_edited_fields #> '{header,supplierPhone}') = 'string'
-      then jsonb_set(user_edited_fields, '{header,supplierPhone}', '""'::jsonb, false)
-      else user_edited_fields end,
-  debug_meta = (
-    select case
-        when jsonb_typeof(d1 #> '{raw,normalized}') = 'string'
-        then jsonb_set(d1, '{raw,normalized}',
-               to_jsonb(pg_temp.sanitize_ocr_text(d1 #>> '{raw,normalized}')), false)
-        else d1 end
-      from (select case
-          when jsonb_typeof(debug_meta #> '{raw,text}') = 'string'
-          then jsonb_set(debug_meta, '{raw,text}',
-                 to_jsonb(pg_temp.sanitize_ocr_text(debug_meta #>> '{raw,text}')), false)
-          else debug_meta end as d1) s);
+  raw_text           = pg_temp.sanitize_ocr_text(raw_text),
+  normalized_text    = pg_temp.sanitize_ocr_text(normalized_text),
+  parsed_fields      = coalesce(pg_temp.sanitize_jsonb(parsed_fields, false), parsed_fields),
+  user_edited_fields = pg_temp.sanitize_jsonb(user_edited_fields, false),
+  debug_meta         = coalesce(pg_temp.sanitize_jsonb(debug_meta, true), debug_meta);
 
 -- audit_log — 과거 기록 안의 전화. 키는 남기고 값만 비운다 (기록 형태 보존).
 update public.audit_log set
@@ -194,15 +224,22 @@ commit;
 -- ---------------------------------------------------------------------
 with t as (
   -- 원문은 컬럼 2곳 + debug_meta 2곳에 저장된다. 한 번에 본다.
+  -- debug_meta 는 경로를 나열하지 않고 모든 문자열 잎을 모은다 ('data:' 이미지 제외).
   select concat_ws(E'\n', raw_text, normalized_text,
-                   debug_meta #>> '{raw,text}', debug_meta #>> '{raw,normalized}') as txt,
-         parsed_fields, user_edited_fields
+                   (select string_agg(x #>> '{}', E'\n')
+                      from jsonb_path_query(debug_meta, 'strict $.** ? (@.type() == "string")') as q(x)
+                     where left(x #>> '{}', 5) <> 'data:')) as txt,
+         parsed_fields, user_edited_fields, debug_meta
     from public.ocr_corrections
 ), pii as (
   -- sanitize.js 와 같은 판정: 전화 · 예금주 · 계좌 후보(10~16자리, 사업자번호 제외)
   select * from t
-   where coalesce(parsed_fields #>> '{supplier,contact}', '') <> ''
-      or coalesce(user_edited_fields #>> '{header,supplierPhone}', '') <> ''
+   where exists (select 1
+                   from jsonb_path_query(coalesce(parsed_fields, '{}') || jsonb_build_object('_u', user_edited_fields)
+                                         || jsonb_build_object('_d', debug_meta),
+                                         'strict $.** ? (@.type() == "object")') as o(v)
+                  where coalesce(v ->> 'contact', '') <> '' or coalesce(v ->> 'supplierPhone', '') <> ''
+                     or coalesce(v ->> 'phone', '') <> '')
       or txt ~ '(?<![0-9-])(?:\(0[0-9]{1,2}\)\s?|0[0-9]{1,2}[-.]?)[0-9]{3,4}[-.]?[0-9]{4}(?![0-9-])'
       or txt ~ '(?:예\s*금\s*주|수\s*취\s*인)\s*[:：]?\s*[가-힣]{2,4}'
       or txt ~ '(?:계\s*좌|예\s*금(?!\s*주))[^\n:：0-9]{0,10}[:：]?[ \t]*[0-9][0-9 \t-]{8,}'

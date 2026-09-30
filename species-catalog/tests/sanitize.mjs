@@ -102,6 +102,31 @@ eq(countPii(clean._debug.raw.text), { phone: 0, account: 0, holder: 0 }, "raw.te
 eq(countPii(clean._debug.raw.normalized), { phone: 0, account: 0, holder: 0 }, "raw.normalized 잔존 PII 0");
 eq(sanitizeAnalysis(null), null,                 "null 안전");
 
+console.log("\n[sanitizeAnalysis] _debug 전체 — 필드 이름에 기대지 않는다");
+// 실제 결함(2026-09-28 · 브라우저 E2E): 1차 구현은 raw.text/normalized 만 정제해
+// raw.lowConfidenceLines[].text(저신뢰 OCR 줄 원문)와 raw.supplier.contact 가 남았다.
+const IMG = "data:image/png;base64,iVBORw0KGgo01077778888AAAA";   // base64 안 숫자열 (전화 형식과 우연히 일치)
+const deep = sanitizeAnalysis({
+  supplier: { name: "테스트농원", contact: "010-7777-8888" },
+  rows: [{ name: "수국", spec: "H0.5", unitPrice: 12000 }],
+  invoiceNumber: "No. 2025-0612",
+  _debug: { model: "tesseract-5 (kor+eng)", raw: {
+    text: "핸드폰 010-7777-8888",
+    lowConfidenceLines: [{ text: `계좌 : 국민 ${ACCT4}`, confidence: 41 }, { text: "예금주: 김철수", confidence: 38 }],
+    supplier: { name: "테스트농원", contact: "010-7777-8888" },
+    passes: [{ psm: 6, confidence: 72, textLength: 120 }],
+    originalImage: IMG } }
+});
+eq(deep._debug.raw.lowConfidenceLines[0].text, `계좌 : 국민 ${A}`, "저신뢰 줄 원문 — 계좌 치환");
+eq(deep._debug.raw.lowConfidenceLines[1].text, `예금주: ${H}`,     "저신뢰 줄 원문 — 예금주 치환");
+eq(deep._debug.raw.lowConfidenceLines[0].confidence, 41,           "저신뢰 줄 신뢰도 보존");
+eq(deep._debug.raw.supplier.contact, "",                           "중첩 raw.supplier.contact 비움");
+eq(deep._debug.raw.passes, [{ psm: 6, confidence: 72, textLength: 120 }], "숫자 진단값 보존");
+eq(deep._debug.raw.originalImage, IMG,                             "data: URL 은 건드리지 않는다 (이미지 손상 방지)");
+eq(deep.invoiceNumber, "No. 2025-0612",                            "거래 필드는 문자열 정제 대상 아님");
+eq(deep.rows, [{ name: "수국", spec: "H0.5", unitPrice: 12000 }],  "품목 행 보존");
+eq(JSON.stringify(deep).includes("7777-8888"), false,              "사본 어디에도 휴대폰 값 없음");
+
 console.log("\n[sanitizeHeader]");
 eq(sanitizeHeader({ supplier: "테스트농원", supplierPhone: "010-7777-8888", invoiceDate: "2025-06-03" }),
    { supplier: "테스트농원", supplierPhone: "", invoiceDate: "2025-06-03" }, "supplierPhone 만 비움");

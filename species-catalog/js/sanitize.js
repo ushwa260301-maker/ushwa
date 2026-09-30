@@ -127,15 +127,53 @@ export function dropContact(_value) {
   return "";
 }
 
+/** 이 이름의 키는 위치와 무관하게 값을 비운다 — 연락처 필드. */
+const CONTACT_KEYS = new Set(["contact", "supplierPhone", "phone"]);
+
+/**
+ * 객체 트리를 제자리에서 정제한다.
+ *
+ * - 연락처 키(CONTACT_KEYS) → 빈 문자열
+ * - `scrubStrings` 가 참이면 나머지 모든 문자열 → sanitizeText
+ *   단 `data:` URL(전처리 미리보기 base64)은 건너뛴다. base64 안의 숫자열이
+ *   전화 형식과 우연히 맞으면 치환이 이미지를 깨뜨린다.
+ *
+ * **필드 이름을 하나씩 나열하지 않는 이유**: 1차 구현은 `raw.text` /
+ * `raw.normalized` 만 정제했고, 브라우저 E2E 검증에서 `raw.lowConfidenceLines[].text`
+ * (저신뢰 OCR 줄 원문)와 Mock 의 `raw.supplier.contact` 가 그대로 저장되는 것이
+ * 드러났다. `_debug` 는 진단용이라 형태가 계속 바뀐다 — 전체를 걷는다.
+ */
+function scrubTree(node, scrubStrings) {
+  if (Array.isArray(node)) {
+    for (let i = 0; i < node.length; i++) {
+      if (typeof node[i] === "string") {
+        if (scrubStrings && !node[i].startsWith("data:")) node[i] = sanitizeText(node[i]);
+      } else if (node[i] && typeof node[i] === "object") {
+        scrubTree(node[i], scrubStrings);
+      }
+    }
+    return;
+  }
+  for (const [k, v] of Object.entries(node)) {
+    if (CONTACT_KEYS.has(k) && (typeof v === "string" || v == null)) {
+      node[k] = dropContact(v);
+    } else if (typeof v === "string") {
+      if (scrubStrings && !v.startsWith("data:")) node[k] = sanitizeText(v);
+    } else if (v && typeof v === "object") {
+      scrubTree(v, scrubStrings);
+    }
+  }
+}
+
 /**
  * OCR 분석 결과(vision.js `analyzeInvoice()` 반환값)의 저장용 사본을 만든다.
  * 원본은 변경하지 않는다 — 호출자가 화면 표시에 계속 쓰기 때문이다.
  *
- * 치환 대상
- *   `_debug.raw.text` · `_debug.raw.normalized`  OCR 원문 (계좌·전화·예금주 포함)
- *   `supplier.contact`                           파싱된 연락처
+ * 정제 범위
+ *   `_debug` 전체   모든 문자열을 sanitizeText (원문 · 정규화문 · 저신뢰 줄 등)
+ *   전체 트리       연락처 키(contact · supplierPhone · phone) → 빈 문자열
  *
- * 보존 대상
+ * 보존 (문자열 정제를 적용하지 않음 — 거래 데이터 오탐 방지)
  *   `rows` · `invoiceDate` · `invoiceNumber` · `supplier.name` · `supplier.region`
  *
  * @param {object|null|undefined} analysis
@@ -152,16 +190,10 @@ export function sanitizeAnalysis(analysis) {
     return analysis;            // 직렬화 불가 — 건드리지 않는다
   }
 
-  if (copy.supplier && typeof copy.supplier === "object") {
-    copy.supplier.contact = dropContact(copy.supplier.contact);
+  scrubTree(copy, false);                                        // 연락처 키만
+  if (copy._debug && typeof copy._debug === "object") {
+    scrubTree(copy._debug, true);                                // 진단 트리는 문자열까지
   }
-
-  const raw = copy._debug?.raw;
-  if (raw && typeof raw === "object") {
-    if (typeof raw.text === "string")       raw.text       = sanitizeText(raw.text);
-    if (typeof raw.normalized === "string") raw.normalized = sanitizeText(raw.normalized);
-  }
-
   return copy;
 }
 
