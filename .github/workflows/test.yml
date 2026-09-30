@@ -63,6 +63,11 @@ jobs:
       - name: PII sanitizer
         run: node species-catalog/tests/sanitize.mjs
 
+      # 저장소의 Supabase SQL 을 일회용 로컬 PostgreSQL 에 적용해 검증한다.
+      # 운영 DB 에 접속하지 않는다. 러너에 PostgreSQL 이 없으면 SKIP(exit 0).
+      - name: DB schema (local PostgreSQL)
+        run: node species-catalog/tests/db-schema.mjs
+
   # ------------------------------------------------------------------
   # PII 가드 — 실제 휴대폰·계좌·예금주가 저장소에 들어오면 실패한다.
   #
