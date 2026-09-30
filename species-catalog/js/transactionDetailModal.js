@@ -69,7 +69,6 @@ export function initTransactionDetailModal(deps) {
   els.date       = document.getElementById("detailDate");
   els.number     = document.getElementById("detailNumber");
   els.supplier   = document.getElementById("detailSupplier");
-  els.phone      = document.getElementById("detailPhone");
   els.address    = document.getElementById("detailAddress");
 
   wireEvents();
@@ -103,7 +102,7 @@ function wireEvents() {
   });
 
   // Header edits → dirty tracking
-  for (const inp of [els.date, els.number, els.supplier, els.phone, els.address]) {
+  for (const inp of [els.date, els.number, els.supplier, els.address]) {
     inp.addEventListener("input", updateDirty);
   }
 }
@@ -195,7 +194,6 @@ function setMode(mode) {
   els.date.readOnly     = readonly;
   els.number.readOnly   = readonly;
   els.supplier.readOnly = readonly;
-  els.phone.readOnly    = readonly;
   els.address.readOnly  = readonly;
   for (const item of session.items) applyReadonlyToRow(item, readonly);
 }
@@ -320,7 +318,6 @@ function writeHeaderInputs() {
   els.date.value     = session.header.invoiceDate;
   els.number.value   = session.header.invoiceNumber;
   els.supplier.value = session.header.supplier;
-  els.phone.value    = session.header.supplierPhone;
   els.address.value  = session.header.supplierAddress;
 }
 
@@ -329,7 +326,7 @@ function readHeaderInputs() {
     invoiceDate:     els.date.value,
     invoiceNumber:   els.number.value.trim(),
     supplier:        els.supplier.value.trim(),
-    supplierPhone:   els.phone.value.trim(),
+    supplierPhone:   "",   // 연락처는 보유하지 않는다 (VISION §7) — 입력칸 없음
     supplierAddress: els.address.value.trim()
   };
 }

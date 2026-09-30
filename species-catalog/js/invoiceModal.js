@@ -104,7 +104,6 @@ export function initInvoiceModal(deps) {
   els.invDate          = document.getElementById("invDate");
   els.invNumber        = document.getElementById("invNumber");
   els.invSupplier      = document.getElementById("invSupplier");
-  els.invPhone         = document.getElementById("invPhone");
   els.invAddress       = document.getElementById("invAddress");
   els.itemCount        = document.getElementById("invItemCount");
   els.itemRows         = document.getElementById("invItemRows");
@@ -150,7 +149,6 @@ function wireEvents() {
   bindHeader(els.invSupplier, "supplier");
   // 거래처를 직접 입력하는 동안에는 배지만 갱신한다 — 입력란은 덮어쓰지 않는다.
   els.invSupplier.addEventListener("input", () => refreshSupplierBadge());
-  bindHeader(els.invPhone,    "supplierPhone");
   bindHeader(els.invAddress,  "supplierAddress");
 }
 
@@ -207,7 +205,6 @@ function resetSession() {
   els.invDate.value = "";
   els.invNumber.value = "";
   els.invSupplier.value = "";
-  els.invPhone.value = "";
   els.invAddress.value = "";
 
   els.successSummary.innerHTML = "";
@@ -347,13 +344,12 @@ function enterReview() {
     invoiceDate: a.invoiceDate || new Date().toISOString().slice(0, 10),
     invoiceNumber: a.invoiceNumber || "",
     supplier: a.supplier?.name || "",
-    supplierPhone: a.supplier?.contact || "",
+    supplierPhone: "",   // OCR 이 읽은 연락처는 분석 요약(asPhone)에만 표시하고 세션에 싣지 않는다
     supplierAddress: a.supplier?.region || ""
   };
   els.invDate.value = session.header.invoiceDate;
   els.invNumber.value = session.header.invoiceNumber;
   els.invSupplier.value = session.header.supplier;
-  els.invPhone.value = session.header.supplierPhone;
   els.invAddress.value = session.header.supplierAddress;
 
   // 공급처 매칭 — 파서가 넘긴 후보 배열을 거래처 목록 기준으로 판정한다.
@@ -948,7 +944,9 @@ async function onSaveClicked() {
     invoiceDate: els.invDate.value,
     invoiceNumber: els.invNumber.value.trim(),
     supplier: els.invSupplier.value.trim(),
-    supplierPhone: els.invPhone.value.trim(),
+    // 연락처는 보유하지 않는다 (VISION §7) — 입력칸을 두지 않는다. 헤더 형태는
+    // 저장 경로(app.js · cloudStore.js)와의 계약이라 키는 유지한다.
+    supplierPhone: "",
     supplierAddress: els.invAddress.value.trim()
   };
 
